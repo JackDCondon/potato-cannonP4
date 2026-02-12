@@ -5,10 +5,12 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "scripts": {
+    "rebuild:node": "pnpm install --force",
+    "rebuild:electron": "npx electron-rebuild -f -w better-sqlite3",
     "dev": "pnpm --filter @potato-cannon/daemon dev & pnpm --filter @potato-cannon/frontend dev",
     "dev:daemon": "pnpm --filter @potato-cannon/daemon dev",
     "dev:frontend": "pnpm --filter @potato-cannon/frontend dev",
-    "dev:desktop": "pnpm --filter @potato-cannon/desktop dev",
+    "dev:desktop": "pnpm -w run rebuild:electron && pnpm --filter @potato-cannon/desktop dev",
     "build": "pnpm -r build",
     "build:shared": "pnpm --filter @potato-cannon/shared build",
     "build:daemon": "pnpm --filter @potato-cannon/daemon build",
