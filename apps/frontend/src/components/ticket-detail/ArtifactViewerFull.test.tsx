@@ -52,7 +52,6 @@ const mockContent = '# Test Heading\n\nSome **bold** content.'
 describe('ArtifactViewerFull - Copy Button', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(api.getTicketArtifact).mockResolvedValue(mockContent)
   })
 
   afterEach(() => {
@@ -60,6 +59,8 @@ describe('ArtifactViewerFull - Copy Button', () => {
   })
 
   it('renders copy button when content is loaded', async () => {
+    vi.mocked(api.getTicketArtifact).mockResolvedValue(mockContent)
+
     render(
       <ArtifactViewerFull
         projectId="proj-1"
@@ -72,5 +73,56 @@ describe('ArtifactViewerFull - Copy Button', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Copy to clipboard')).toBeTruthy()
     })
+  })
+
+  it('does not render copy button during loading', () => {
+    // Mock API to never resolve - component stays in loading state
+    vi.mocked(api.getTicketArtifact).mockReturnValue(new Promise(() => {}))
+
+    render(
+      <ArtifactViewerFull
+        projectId="proj-1"
+        ticketId="ticket-1"
+        artifact={mockArtifact}
+        onClose={vi.fn()}
+      />
+    )
+
+    // Button should not be visible while loading
+    expect(screen.queryByLabelText('Copy to clipboard')).toBeNull()
+  })
+
+  it('does not render copy button when there is an error', async () => {
+    vi.mocked(api.getTicketArtifact).mockRejectedValue(new Error('Fetch failed'))
+
+    render(
+      <ArtifactViewerFull
+        projectId="proj-1"
+        ticketId="ticket-1"
+        artifact={mockArtifact}
+        onClose={vi.fn()}
+      />
+    )
+
+    // Wait for the error state to be set
+    await waitFor(() => {
+      expect(screen.getByText('Fetch failed')).toBeTruthy()
+    })
+
+    // Button should not be visible when there's an error
+    expect(screen.queryByLabelText('Copy to clipboard')).toBeNull()
+  })
+
+  it('does not render copy button when artifact is null', () => {
+    const { container } = render(
+      <ArtifactViewerFull
+        projectId="proj-1"
+        ticketId="ticket-1"
+        artifact={null}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(container.innerHTML).toBe('')
   })
 })
