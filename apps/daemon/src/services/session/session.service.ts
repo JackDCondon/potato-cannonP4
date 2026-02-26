@@ -424,7 +424,10 @@ export class SessionService {
 
     this.eventEmitter.emit("session:started", { sessionId, ...meta });
 
-    let claudeSessionIdCaptured = false;
+    // Don't overwrite claude_session_id for resumed sessions — Claude gives
+    // resumed sessions a new transient ID, but --resume only works with the
+    // original session ID. The stored session already has the correct one.
+    let claudeSessionIdCaptured = !!claudeResumeSessionId;
 
     proc.onData((data: string) => {
       const lines = data.split("\n").filter(Boolean);
