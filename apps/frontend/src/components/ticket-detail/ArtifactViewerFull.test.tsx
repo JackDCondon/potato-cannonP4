@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, cleanup } from '@testing-library/react'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
 
 // Mock the API client
@@ -55,6 +55,7 @@ describe('ArtifactViewerFull - Copy Button', () => {
   })
 
   afterEach(() => {
+    cleanup()
     vi.restoreAllMocks()
   })
 
