@@ -57,7 +57,7 @@ import {
   getActiveSessionForTicket,
   getActiveSessionForBrainstorm,
 } from "../stores/session.store.js";
-import { scanPendingResponses, clearQuestion, clearResponse } from "../stores/chat.store.js";
+import { scanPendingResponses, clearQuestion, clearResponse, readQuestion } from "../stores/chat.store.js";
 import { artifactChatStore } from "../stores/artifact-chat.store.js";
 import { SESSIONS_DIR, LOCK_FILE, PID_FILE, TASKS_DIR } from "../config/paths.js";
 import type { GlobalConfig, Project } from "../types/config.types.js";
@@ -633,40 +633,42 @@ export async function main(): Promise<void> {
           } else if (handled && context.ticketId) {
             // Ticket session resumption
             try {
-              const ticket = await getTicket(
-                context.projectId,
-                context.ticketId,
-              );
-              if (!ticket) {
-                console.error(
-                  `[Telegram] Ticket ${context.ticketId} not found`,
-                );
-                return handled;
-              }
-
               // Check if there's an active session for this ticket
-              const lastSession = ticket.history
-                ?.filter((h) => h.sessionId)
-                .pop();
-              const lastSessionId = lastSession?.sessionId;
+              const activeSession = getActiveSessionForTicket(context.ticketId);
 
-              if (!lastSessionId || !sessionService?.isActive(lastSessionId)) {
+              if (!activeSession || !sessionService?.isActive(activeSession.id)) {
                 const projects = getProjects();
                 const project = projects.get(context.projectId);
 
                 if (project && sessionService) {
-                  const newSessionId = await sessionService.spawnForTicket(
-                    context.projectId,
-                    context.ticketId,
-                    ticket.phase,
-                    project.path,
-                  );
-                  await updateTicket(context.projectId, context.ticketId, {
-                    sessionId: newSessionId,
-                  });
-                  console.log(
-                    `[Telegram] Spawned new session ${newSessionId} to continue ticket ${context.ticketId}`,
-                  );
+                  // Check if this is a suspended session (has pending question)
+                  const pendingQuestion = await readQuestion(context.projectId, context.ticketId);
+
+                  if (pendingQuestion) {
+                    // Suspended session — resume with --resume flag
+                    const newSessionId = await sessionService.resumeSuspendedTicket(
+                      context.projectId,
+                      context.ticketId,
+                      answer,
+                    );
+                    console.log(
+                      `[Telegram] Resumed suspended session ${newSessionId} for ticket ${context.ticketId}`,
+                    );
+                  } else {
+                    // Not suspended — spawn fresh session (legacy behavior)
+                    const ticket = await getTicket(context.projectId, context.ticketId);
+                    if (ticket) {
+                      const newSessionId = await sessionService.spawnForTicket(
+                        context.projectId,
+                        context.ticketId,
+                        ticket.phase,
+                        project.path,
+                      );
+                      console.log(
+                        `[Telegram] Spawned new session ${newSessionId} for ticket ${context.ticketId}`,
+                      );
+                    }
+                  }
                 }
               }
             } catch (err) {
