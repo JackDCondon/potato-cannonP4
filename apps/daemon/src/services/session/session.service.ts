@@ -24,6 +24,7 @@ import {
   createStoredSession,
   endStoredSession,
   getLatestClaudeSessionId,
+  getLatestClaudeSessionIdForTicket,
   updateClaudeSessionId,
   getActiveSessionForBrainstorm,
   getActiveSessionForTicket,
@@ -293,6 +294,7 @@ export class SessionService {
     stage: number,
     additionalDisallowedTools?: string[],
     model?: string,
+    claudeResumeSessionId?: string,
   ): string {
     // Save prompt for debugging (non-blocking)
     if (ticketId && phase) {
@@ -374,6 +376,11 @@ export class SessionService {
     }
     if (disallowed.length > 0) {
       args.push("--disallowedTools", disallowed.join(","));
+    }
+
+    // Support --resume for suspended ticket sessions
+    if (claudeResumeSessionId) {
+      args.push("--resume", claudeResumeSessionId);
     }
 
     // Agent instructions are included in the prompt
@@ -907,6 +914,110 @@ export class SessionService {
       0,
       agentWorker.disallowTools,
       resolvedModel ?? undefined,
+    );
+  }
+
+  /**
+   * Resume a suspended ticket session after user responds.
+   * Mirrors spawnForBrainstorm's resume pattern:
+   * - Reads pending context for conversation injection
+   * - Gets latest Claude session ID for --resume
+   * - Clears pending files
+   * - Spawns new session with --resume flag
+   */
+  async resumeSuspendedTicket(
+    projectId: string,
+    ticketId: string,
+    userResponse: string,
+  ): Promise<string> {
+    console.log(`[resumeSuspendedTicket] Resuming suspended ticket ${ticketId}`);
+
+    const ticket = await getTicket(projectId, ticketId);
+    const project = getProjectById(projectId);
+    if (!project) throw new Error(`Project ${projectId} not found`);
+
+    // Safety: terminate any lingering session for this ticket
+    await this.terminateExistingSession("ticket", ticketId);
+
+    // Get the Claude session ID from the most recent session for --resume
+    const claudeSessionId = getLatestClaudeSessionIdForTicket(ticketId);
+    if (!claudeSessionId) {
+      throw new Error(`No Claude session ID found for ticket ${ticketId} — cannot resume`);
+    }
+
+    // Mark the pending question as answered in conversation store
+    if (ticket.conversationId) {
+      const { answerQuestion, getPendingQuestion, addMessage } = await import(
+        "../../stores/conversation.store.js"
+      );
+      const pendingQuestion = getPendingQuestion(ticket.conversationId);
+      if (pendingQuestion) {
+        answerQuestion(pendingQuestion.id);
+      }
+      addMessage(ticket.conversationId, {
+        type: "user",
+        text: userResponse,
+      });
+    }
+
+    // Clear pending files
+    await clearQuestion(projectId, ticketId);
+    await clearResponse(projectId, ticketId);
+
+    // Emit SSE event for the user's response
+    eventBus.emit("ticket:message", {
+      projectId,
+      ticketId,
+      message: { type: "user", text: userResponse, timestamp: new Date().toISOString() },
+    });
+
+    // Create stored session record
+    const storedSession = createStoredSession({
+      projectId,
+      ticketId,
+      claudeSessionId,
+      agentSource: "resume",
+      phase: ticket.phase,
+    });
+
+    const branchPrefix = project.branchPrefix || "potato";
+    const needsWorktree = await phaseRequiresWorktree(projectId, ticket.phase);
+    const worktreePath = needsWorktree
+      ? await ensureWorktree(project.path, ticketId, branchPrefix)
+      : project.path;
+
+    const meta: SessionMeta = {
+      projectId,
+      ticketId,
+      ticketTitle: ticket.title,
+      phase: ticket.phase,
+      worktreePath,
+      branchName: `${branchPrefix}/${ticketId}`,
+      startedAt: new Date().toISOString(),
+      status: "running",
+      agentType: "resume",
+      stage: 0,
+    };
+
+    // With --resume, Claude already has the full conversation context.
+    // The user's response is the new prompt input.
+    const prompt = userResponse;
+
+    return this.spawnClaudeSession(
+      storedSession.id,
+      meta,
+      prompt,
+      worktreePath,
+      projectId,
+      ticketId,
+      "",
+      "resume",
+      ticket.phase,
+      project.path,
+      0,
+      undefined,
+      undefined,
+      claudeSessionId, // triggers --resume flag
     );
   }
 
