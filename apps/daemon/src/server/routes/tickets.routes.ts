@@ -420,6 +420,31 @@ export function registerTicketRoutes(
 
         await writeResponse(projectId, ticketId, { answer: message });
 
+        // Check if there's an active session for this ticket.
+        // If not, this is a response to a suspended session — spawn a resumed session.
+        const activeSession = getActiveSessionForTicket(ticketId);
+
+        if (!activeSession) {
+          const projects = getProjects();
+          const project = projects.get(projectId);
+
+          if (project) {
+            try {
+              const newSessionId = await sessionService.resumeSuspendedTicket(
+                projectId,
+                ticketId,
+                message,
+              );
+              console.log(`[input] Spawned resumed session ${newSessionId} for suspended ticket ${ticketId}`);
+              res.json({ success: true, sessionId: newSessionId, resumed: true });
+              return;
+            } catch (err) {
+              console.error(`[input] Failed to resume suspended ticket: ${(err as Error).message}`);
+              // Fall through — response is already written, blocking session may pick it up
+            }
+          }
+        }
+
         res.json({ success: true });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
