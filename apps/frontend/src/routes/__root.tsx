@@ -5,6 +5,7 @@ import { ViewTabs } from '@/components/layout/ViewTabs'
 import { MobileBottomBar } from '@/components/layout/MobileBottomBar'
 import { EmptyProjects } from '@/components/layout/EmptyProjects'
 import { TicketDetailPanel } from '@/components/ticket-detail'
+import { BrainstormDetailPanel } from '@/components/brainstorm/BrainstormDetailPanel'
 import { AddTicketModal } from '@/components/board/AddTicketModal'
 import { AddProjectModal } from '@/components/layout/AddProjectModal'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
@@ -14,7 +15,6 @@ import { getProjectIcon } from '@/components/configure/ProjectIconPicker'
 
 const SUBPAGE_LABELS: Record<string, string> = {
   board: 'Board',
-  brainstorm: 'Brainstorm',
   configure: 'Configure',
 }
 
@@ -135,6 +135,7 @@ function RootLayout() {
             )}
           </main>
           <TicketDetailPanel />
+          <BrainstormDetailPanel />
         </div>
         {hasProjects && <MobileBottomBar />}
       </SidebarInset>
