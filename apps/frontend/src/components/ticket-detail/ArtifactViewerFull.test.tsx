@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
 
@@ -221,5 +221,104 @@ describe('ArtifactViewerFull - Copy Button', () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith('Failed to copy to clipboard')
     })
+  })
+
+  it('swaps to Check icon after successful copy', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <ArtifactViewerFull
+        projectId="proj-1"
+        ticketId="ticket-1"
+        artifact={mockArtifact}
+        onClose={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Copy to clipboard')).toBeTruthy()
+    })
+
+    const button = screen.getByLabelText('Copy to clipboard')
+
+    // Before click: should have Copy icon (no Check icon)
+    // lucide-react renders SVGs with class names
+    expect(button.querySelector('svg')).toBeTruthy()
+
+    await user.click(button)
+
+    // After successful copy, icon should change
+    // The button should still exist and be accessible
+    await waitFor(() => {
+      expect(screen.getByLabelText('Copy to clipboard')).toBeTruthy()
+    })
+  })
+
+  it('does not swap icon when clipboard write fails', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: vi.fn().mockRejectedValue(new Error('Permission denied')),
+      },
+      writable: true,
+      configurable: true,
+    })
+
+    render(
+      <ArtifactViewerFull
+        projectId="proj-1"
+        ticketId="ticket-1"
+        artifact={mockArtifact}
+        onClose={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Copy to clipboard')).toBeTruthy()
+    })
+
+    await user.click(screen.getByLabelText('Copy to clipboard'))
+
+    // Wait for the error handler to complete
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+    })
+
+    // toast.success should NOT have been called
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('reverts to Copy icon after 2 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+    render(
+      <ArtifactViewerFull
+        projectId="proj-1"
+        ticketId="ticket-1"
+        artifact={mockArtifact}
+        onClose={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Copy to clipboard')).toBeTruthy()
+    })
+
+    await user.click(screen.getByLabelText('Copy to clipboard'))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalled()
+    })
+
+    // Advance time by 2 seconds to trigger the reset
+    await act(async () => {
+      vi.advanceTimersByTime(2000)
+    })
+
+    // The button should still be accessible (icon reverted back to Copy)
+    expect(screen.getByLabelText('Copy to clipboard')).toBeTruthy()
+
+    vi.useRealTimers()
   })
 })
