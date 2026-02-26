@@ -53,6 +53,7 @@ function RootLayout() {
   const { projectSlug, subpage } = useCurrentProject()
   const setCurrentProjectId = useAppStore((s) => s.setCurrentProjectId)
   const ticketSheetOpen = useAppStore((s) => s.ticketSheetOpen)
+  const brainstormSheetOpen = useAppStore((s) => s.brainstormSheetOpen)
 
   // Look up project by slug from URL
   const currentProject = projects?.find((p) => p.slug === projectSlug)
@@ -97,7 +98,7 @@ function RootLayout() {
             <ViewTabs />
           </header>
         )}
-        <div className="board-container flex-1 flex overflow-hidden min-h-0" data-detail-open={ticketSheetOpen}>
+        <div className="board-container flex-1 flex overflow-hidden min-h-0" data-detail-open={ticketSheetOpen} data-brainstorm-open={brainstormSheetOpen}>
           <main className="flex-1 min-w-0 overflow-hidden relative bg-bg-primary pb-14 sm:pb-0">
             {!isLoading && !hasProjects ? (
               <EmptyProjects />
