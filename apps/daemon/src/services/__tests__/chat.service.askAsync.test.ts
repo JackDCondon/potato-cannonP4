@@ -263,6 +263,26 @@ describe("ChatService.askAsync", () => {
     assert.strictEqual(ticketEvents.length, 0);
   });
 
+  it("should emit ticket:message event for ticket context", async () => {
+    const context = { projectId: "test-project", ticketId: "POT-999" };
+
+    await service.askAsync(context, "Ticket suspend question");
+
+    const ticketEvents = eventBusEmitCalls.filter(
+      (c) => c.event === "ticket:message"
+    );
+    assert.strictEqual(ticketEvents.length, 1);
+    const eventData = ticketEvents[0].data as {
+      projectId: string;
+      ticketId: string;
+      message: { type: string; text: string };
+    };
+    assert.strictEqual(eventData.projectId, "test-project");
+    assert.strictEqual(eventData.ticketId, "POT-999");
+    assert.strictEqual(eventData.message.type, "question");
+    assert.strictEqual(eventData.message.text, "Ticket suspend question");
+  });
+
   it("should handle null options", async () => {
     const context = { projectId: "test-project", brainstormId: "brain_null" };
 

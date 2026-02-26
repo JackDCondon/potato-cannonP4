@@ -286,7 +286,14 @@ export class ChatService {
       `[ChatService] askAsync - question saved for ${contextId}: ${truncatedQuestion}`,
     );
 
-    // Emit SSE event for frontend
+    // Emit SSE events for frontend
+    if (context.ticketId) {
+      eventBus.emit("ticket:message", {
+        projectId: context.projectId,
+        ticketId: context.ticketId,
+        message: { type: "question", text: question, options, timestamp: now },
+      });
+    }
     if (context.brainstormId) {
       eventBus.emit("brainstorm:message", {
         projectId: context.projectId,
