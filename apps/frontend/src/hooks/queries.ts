@@ -26,7 +26,7 @@ export function useAddProject() {
 export function useUpdateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string } }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null } }) =>
       api.updateProject(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
@@ -59,6 +59,46 @@ export function useDeleteProject() {
     mutationFn: (id: string) => api.deleteProject(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+    }
+  })
+}
+
+// ============ Folders ============
+
+export function useFolders() {
+  return useQuery({
+    queryKey: ['folders'],
+    queryFn: api.getFolders
+  })
+}
+
+export function useCreateFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => api.createFolder(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] })
+    }
+  })
+}
+
+export function useRenameFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.renameFolder(id, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] })
+    }
+  })
+}
+
+export function useDeleteFolder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.deleteFolder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] })
     }
   })
 }

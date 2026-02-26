@@ -20,6 +20,7 @@ type SSEEventType =
   | 'brainstorm:message'
   | 'log:entry'
   | 'processing:sync'
+  | 'folder:updated'
 
 interface SSEEventData {
   [key: string]: unknown
@@ -81,6 +82,11 @@ export function useSSE() {
         eventSource.addEventListener(event, () => {
           queryClient.refetchQueries({ queryKey: ['brainstorms'] })
         })
+      })
+
+      // Folder events - invalidate folders query
+      eventSource.addEventListener('folder:updated', () => {
+        queryClient.refetchQueries({ queryKey: ['folders'] })
       })
 
       // Session events - invalidate sessions and tickets queries
