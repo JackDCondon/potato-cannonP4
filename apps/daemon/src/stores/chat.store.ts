@@ -293,3 +293,45 @@ export async function scanPendingResponses(): Promise<PendingContext[]> {
 
   return results;
 }
+
+/**
+ * Scan all tickets for pending questions (pending-question.json files).
+ * Returns ticket IDs grouped by project ID.
+ * Used by the processing:sync heartbeat to provide authoritative pending state.
+ */
+export async function getPendingQuestionsByProject(): Promise<
+  Map<string, string[]>
+> {
+  const result = new Map<string, string[]>();
+
+  try {
+    const projectDirs = await fs.readdir(TASKS_DIR);
+    for (const projectDir of projectDirs) {
+      const projectPath = path.join(TASKS_DIR, projectDir);
+      const stat = await fs.stat(projectPath);
+      if (!stat.isDirectory()) continue;
+
+      const ticketDirs = await fs.readdir(projectPath);
+      const pendingTicketIds: string[] = [];
+
+      for (const ticketDir of ticketDirs) {
+        const questionPath = path.join(projectPath, ticketDir, "pending-question.json");
+        try {
+          await fs.access(questionPath);
+          pendingTicketIds.push(ticketDir);
+        } catch {
+          // No pending question for this ticket
+        }
+      }
+
+      if (pendingTicketIds.length > 0) {
+        const projectId = projectDir.replace(/__/g, "/");
+        result.set(projectId, pendingTicketIds);
+      }
+    }
+  } catch {
+    // TASKS_DIR may not exist
+  }
+
+  return result;
+}

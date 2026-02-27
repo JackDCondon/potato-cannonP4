@@ -11,6 +11,8 @@ import {
   writeResponse,
   clearResponse,
   clearQuestion,
+  getPendingQuestionsByProject,
+  writeQuestion,
 } from "../chat.store.js";
 
 // Override BRAINSTORMS_DIR for testing
@@ -95,5 +97,65 @@ describe("chat.store cancellation", () => {
 
     const result = await waitForResponse(projectId, contextId, 10000);
     assert.strictEqual(result, "backwards compat");
+  });
+});
+
+describe("getPendingQuestionsByProject", () => {
+  const projectId = "test-project";
+  const ticketId1 = "ticket-1";
+  const ticketId2 = "ticket-2";
+  const ticketId3 = "ticket-3";
+
+  afterEach(async () => {
+    // Clean up all test tickets
+    for (const id of [ticketId1, ticketId2, ticketId3]) {
+      await clearQuestion(projectId, id);
+    }
+  });
+
+  it("should return empty map when no pending questions exist", async () => {
+    const result = await getPendingQuestionsByProject();
+    const tickets = result.get(projectId);
+    // Either undefined or empty array
+    assert.ok(!tickets || tickets.length === 0);
+  });
+
+  it("should return ticket IDs with pending questions grouped by project", async () => {
+    // Write pending questions for two tickets
+    await writeQuestion(projectId, ticketId1, {
+      conversationId: "conv-1",
+      question: "What color?",
+      options: null,
+      askedAt: new Date().toISOString(),
+    });
+    await writeQuestion(projectId, ticketId2, {
+      conversationId: "conv-2",
+      question: "What size?",
+      options: ["S", "M", "L"],
+      askedAt: new Date().toISOString(),
+    });
+
+    const result = await getPendingQuestionsByProject();
+    const tickets = result.get(projectId);
+    assert.ok(tickets);
+    assert.ok(tickets.includes(ticketId1));
+    assert.ok(tickets.includes(ticketId2));
+    assert.strictEqual(tickets.length, 2);
+  });
+
+  it("should not include tickets without pending questions", async () => {
+    // Only write question for ticket1, not ticket2
+    await writeQuestion(projectId, ticketId1, {
+      conversationId: "conv-1",
+      question: "What color?",
+      options: null,
+      askedAt: new Date().toISOString(),
+    });
+
+    const result = await getPendingQuestionsByProject();
+    const tickets = result.get(projectId);
+    assert.ok(tickets);
+    assert.ok(tickets.includes(ticketId1));
+    assert.ok(!tickets.includes(ticketId2));
   });
 });

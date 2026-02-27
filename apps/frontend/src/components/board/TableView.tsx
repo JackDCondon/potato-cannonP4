@@ -106,6 +106,7 @@ interface TableViewProps {
 export function TableView({ projectId }: TableViewProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
   const isTicketProcessingFn = useAppStore((s) => s.isTicketProcessing)
+  const isTicketPendingFn = useAppStore((s) => s.isTicketPending)
 
   // Queries
   const { data: projects } = useProjects()
@@ -285,6 +286,7 @@ export function TableView({ projectId }: TableViewProps) {
           <tbody className="divide-y divide-border">
             {sortedTickets.map((ticket) => {
               const isProcessing = isTicketProcessingFn(projectId, ticket.id)
+              const isPending = isTicketPendingFn(projectId, ticket.id)
 
               return (
                 <tr
@@ -308,6 +310,11 @@ export function TableView({ projectId }: TableViewProps) {
                       </span>
                       {isProcessing && (
                         <span className="inline-block w-2 h-2 bg-accent rounded-full animate-pulse flex-shrink-0" />
+                      )}
+                      {isPending && (
+                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex-shrink-0">
+                          ?
+                        </span>
                       )}
                     </div>
                   </td>
