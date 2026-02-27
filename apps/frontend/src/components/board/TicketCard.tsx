@@ -20,6 +20,7 @@ interface TicketCardProps {
 export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
   const isProcessing = useAppStore((s) => s.isTicketProcessing(projectId, ticket.id))
+  const isPending = useAppStore((s) => s.isTicketPending(projectId, ticket.id))
   const isArchiving = useAppStore((s) => s.isTicketArchiving(projectId, ticket.id))
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const archiveTicket = useArchiveTicket()
@@ -107,6 +108,15 @@ export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps
           >
             <Archive className="h-4 w-4" />
           </IconButton>
+        </div>
+      )}
+
+      {/* Pending question badge */}
+      {isPending && (
+        <div className="absolute top-1.5 right-1.5 z-10">
+          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">
+            ?
+          </span>
         </div>
       )}
 

@@ -30,6 +30,9 @@ export function useSSE() {
   const queryClient = useQueryClient()
   const setProcessingTickets = useAppStore((s) => s.setProcessingTickets)
   const removeProcessingTicket = useAppStore((s) => s.removeProcessingTicket)
+  const setPendingTickets = useAppStore((s) => s.setPendingTickets)
+  const addPendingTicket = useAppStore((s) => s.addPendingTicket)
+  const removePendingTicket = useAppStore((s) => s.removePendingTicket)
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectDelayRef = useRef(1000)
 
@@ -141,12 +144,16 @@ export function useSSE() {
       // Processing sync heartbeat - update store with currently processing sessions
       eventSource.addEventListener('processing:sync', (e) => {
         try {
-          const { projectId, ticketIds } = JSON.parse(e.data) as {
+          const { projectId, ticketIds, pendingTicketIds } = JSON.parse(e.data) as {
             projectId: string
             ticketIds: string[]
+            pendingTicketIds?: string[]
           }
           // Update the store with the authoritative processing state from the server
           setProcessingTickets(projectId, ticketIds)
+          if (pendingTicketIds) {
+            setPendingTickets(projectId, pendingTicketIds)
+          }
         } catch (err) {
           console.error('Failed to parse processing:sync:', err)
         }
@@ -167,6 +174,20 @@ export function useSSE() {
         try {
           const data = JSON.parse(e.data) as SSEEventData
           window.dispatchEvent(new CustomEvent('sse:ticket-message', { detail: data }))
+
+          // Update pending tickets based on message type
+          const { projectId, ticketId, message } = data as {
+            projectId?: string
+            ticketId?: string
+            message?: { type?: string }
+          }
+          if (projectId && ticketId && message) {
+            if (message.type === 'question') {
+              addPendingTicket(projectId, ticketId)
+            } else if (message.type === 'user') {
+              removePendingTicket(projectId, ticketId)
+            }
+          }
         } catch (err) {
           console.error('Failed to parse ticket message:', err)
         }
@@ -186,7 +207,7 @@ export function useSSE() {
         eventSourceRef.current = null
       }
     }
-  }, [queryClient, setProcessingTickets, removeProcessingTicket])
+  }, [queryClient, setProcessingTickets, removeProcessingTicket, setPendingTickets, addPendingTicket, removePendingTicket])
 }
 
 // Hook for subscribing to log entries

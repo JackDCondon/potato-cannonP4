@@ -32,6 +32,16 @@ interface AppState {
   isTicketProcessing: (projectId: string, ticketId: string) => boolean
 
   /**
+   * Set of ticket IDs with pending questions, keyed by project ID.
+   * Updated by SSE processing:sync and ticket:message events.
+   */
+  pendingTickets: Map<string, Set<string>>
+  setPendingTickets: (projectId: string, ticketIds: string[]) => void
+  addPendingTicket: (projectId: string, ticketId: string) => void
+  removePendingTicket: (projectId: string, ticketId: string) => void
+  isTicketPending: (projectId: string, ticketId: string) => boolean
+
+  /**
    * Set of ticket IDs currently being archived, keyed by project ID.
    * Used to disable ticket cards during archive operations.
    */
@@ -109,6 +119,36 @@ export const useAppStore = create<AppState>()(
         }),
       isTicketProcessing: (projectId, ticketId) => {
         const projectSet = get().processingTickets.get(projectId)
+        return projectSet?.has(ticketId) ?? false
+      },
+
+      // Pending tickets - updated by SSE processing:sync and ticket:message events
+      pendingTickets: new Map(),
+      setPendingTickets: (projectId, ticketIds) =>
+        set((state) => {
+          const newMap = new Map(state.pendingTickets)
+          newMap.set(projectId, new Set(ticketIds))
+          return { pendingTickets: newMap }
+        }),
+      addPendingTicket: (projectId, ticketId) =>
+        set((state) => {
+          const newMap = new Map(state.pendingTickets)
+          const projectSet = new Map(state.pendingTickets).get(projectId) ?? new Set()
+          projectSet.add(ticketId)
+          newMap.set(projectId, projectSet)
+          return { pendingTickets: newMap }
+        }),
+      removePendingTicket: (projectId, ticketId) =>
+        set((state) => {
+          const newMap = new Map(state.pendingTickets)
+          const projectSet = newMap.get(projectId)
+          if (projectSet) {
+            projectSet.delete(ticketId)
+          }
+          return { pendingTickets: newMap }
+        }),
+      isTicketPending: (projectId, ticketId) => {
+        const projectSet = get().pendingTickets.get(projectId)
         return projectSet?.has(ticketId) ?? false
       },
 
