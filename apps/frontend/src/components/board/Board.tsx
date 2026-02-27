@@ -301,8 +301,8 @@ export function Board({ projectId }: BoardProps) {
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="h-full overflow-x-auto overflow-y-hidden p-4">
               <div className="flex gap-4 h-full">
-                {/* Brainstorm column: scrolls on mobile, sticky on desktop */}
-                <div className="shrink-0 sm:sticky sm:left-4 sm:z-10 sm:bg-bg-primary sm:pr-4">
+                {/* Brainstorm column */}
+                <div className="shrink-0">
                   <BrainstormColumn projectId={projectId} />
                 </div>
 
