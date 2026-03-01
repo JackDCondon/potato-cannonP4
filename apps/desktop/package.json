@@ -2,6 +2,11 @@
   "name": "@potato-cannon/desktop",
   "version": "1.0.0",
   "private": true,
+  "homepage": "https://github.com/crathgeb/potato-cannon",
+  "author": {
+    "name": "Chris Rathgeb",
+    "email": "chrisrathgeb@gmail.com"
+  },
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
