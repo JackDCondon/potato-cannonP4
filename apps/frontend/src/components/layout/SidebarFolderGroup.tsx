@@ -126,7 +126,11 @@ export function SidebarFolderGroup({
               const Icon = getProjectIcon(project.icon || 'package')
               const colorStyle = project.color ? { color: project.color } : undefined
               return (
-                <DropdownMenuItem key={project.id} asChild>
+                <DropdownMenuItem
+                  key={project.id}
+                  asChild
+                  className="focus:bg-sidebar-accent focus:text-sidebar-accent-foreground"
+                >
                   <Link
                     to="/projects/$projectId/board"
                     params={{ projectId: project.slug }}
