@@ -259,6 +259,17 @@ body {
   50% { opacity: 0.5; }
 }
 
+@keyframes pending-glow {
+  0%, 100% {
+    box-shadow: 0 0 4px 1px rgba(251, 191, 36, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 10px 4px rgba(251, 191, 36, 0.5);
+    transform: scale(1.15);
+  }
+}
+
 @keyframes bounce {
   0%, 100% {
     transform: translateY(0);
@@ -297,6 +308,10 @@ body {
 
 .animate-pulse {
   animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-pending-glow {
+  animation: pending-glow 3s ease-in-out infinite;
 }
 
 .animate-spin {
@@ -729,6 +744,13 @@ button, a, [role="button"] {
     background:
       linear-gradient(var(--color-bg-tertiary), var(--color-bg-tertiary)) padding-box,
       linear-gradient(var(--color-accent), var(--color-accent)) border-box;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pending-glow {
+    animation: none;
+    box-shadow: 0 0 6px 2px rgba(251, 191, 36, 0.4);
   }
 }
 
