@@ -77,6 +77,7 @@ describe('BrainstormCard', () => {
     )
     const button = container.querySelector('button')
     expect(button?.className).toContain('thinking-shimmer')
+    expect(button?.className).toContain('rounded-lg')
   })
 
   it('does not apply thinking-shimmer when completed', () => {
