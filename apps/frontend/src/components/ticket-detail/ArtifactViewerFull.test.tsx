@@ -119,7 +119,7 @@ describe('ArtifactViewerFull - Copy Button', () => {
     })
   })
 
-  it('does not render copy button during loading', () => {
+  it('disables copy button during loading', () => {
     // Mock API to never resolve - component stays in loading state
     vi.mocked(api.getTicketArtifact).mockReturnValue(new Promise(() => {}))
 
@@ -132,11 +132,12 @@ describe('ArtifactViewerFull - Copy Button', () => {
       />
     )
 
-    // Button should not be visible while loading
-    expect(screen.queryByLabelText('Copy to clipboard')).toBeNull()
+    // Button should be disabled while loading
+    const copyButton = screen.getByLabelText('Copy to clipboard')
+    expect((copyButton as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('does not render copy button when there is an error', async () => {
+  it('disables copy button when there is an error', async () => {
     vi.mocked(api.getTicketArtifact).mockRejectedValue(new Error('Fetch failed'))
 
     render(
@@ -153,8 +154,9 @@ describe('ArtifactViewerFull - Copy Button', () => {
       expect(screen.getByText('Fetch failed')).toBeTruthy()
     })
 
-    // Button should not be visible when there's an error
-    expect(screen.queryByLabelText('Copy to clipboard')).toBeNull()
+    // Button should be disabled when there's an error
+    const copyButton = screen.getByLabelText('Copy to clipboard')
+    expect((copyButton as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('does not render copy button when artifact is null', () => {

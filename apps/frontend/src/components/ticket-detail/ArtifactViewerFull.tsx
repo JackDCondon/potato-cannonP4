@@ -184,56 +184,71 @@ export function ArtifactViewerFull({
             <div className="group/content flex-1 min-h-0 flex flex-col bg-bg-primary">
               <ScrollArea className="flex-1 min-h-0">
                 <div className="py-0 px-0 md:py-8 md:px-8">
-                  <div className="mx-auto max-w-5xl px-4 md:px-0 pt-4 md:pt-0 pb-3">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-text-muted shrink-0" />
-                      <span className="text-sm font-semibold text-text-primary truncate">
-                        {artifact.filename}
-                      </span>
-                      {artifact.type && (
-                        <Badge variant="outline" className="shrink-0">
-                          {artifact.type}
-                        </Badge>
-                      )}
-                      <div className="ml-auto flex items-center gap-1 shrink-0">
-                        {isEditing ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={handleCancelEdit}
-                              className="h-7 px-2 text-xs"
-                            >
-                              <X className="h-3.5 w-3.5 mr-1" />
-                              Cancel
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={handleSave}
-                              disabled={!hasUnsavedChanges || updateArtifact.isPending}
-                              className="h-7 px-2 text-xs"
-                            >
-                              <Save className="h-3.5 w-3.5 mr-1" />
-                              {updateArtifact.isPending ? 'Saving...' : 'Save'}
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleStartEdit}
-                            disabled={isLoading || !!error}
-                            className="h-7 px-2 text-xs"
-                          >
-                            <Pencil className="h-3.5 w-3.5 mr-1" />
-                            Edit
-                          </Button>
+                  <div className="sticky top-0 z-10 bg-bg-primary">
+                    <div className="mx-auto max-w-5xl px-4 md:px-0 pt-4 md:pt-0 pb-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-text-muted shrink-0" />
+                        <span className="text-sm font-semibold text-text-primary truncate">
+                          {artifact.filename}
+                        </span>
+                        {artifact.type && (
+                          <Badge variant="outline" className="shrink-0">
+                            {artifact.type}
+                          </Badge>
                         )}
+                        <div className="ml-auto flex items-center gap-1 shrink-0">
+                          {isEditing ? (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleCancelEdit}
+                                className="h-7 px-2 text-xs"
+                              >
+                                <X className="h-3.5 w-3.5 mr-1" />
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={handleSave}
+                                disabled={!hasUnsavedChanges || updateArtifact.isPending}
+                                className="h-7 px-2 text-xs"
+                              >
+                                <Save className="h-3.5 w-3.5 mr-1" />
+                                {updateArtifact.isPending ? 'Saving...' : 'Save'}
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleCopy}
+                                disabled={isLoading || !!error || !content}
+                                aria-label="Copy to clipboard"
+                                className="h-7 px-2 text-xs"
+                              >
+                                {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                                {copied ? 'Copied' : 'Copy'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleStartEdit}
+                                disabled={isLoading || !!error}
+                                className="h-7 px-2 text-xs"
+                              >
+                                <Pencil className="h-3.5 w-3.5 mr-1" />
+                                Edit
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      {artifact.description && (
+                        <p className="text-xs text-text-muted mt-1">{artifact.description}</p>
+                      )}
                     </div>
-                    {artifact.description && (
-                      <p className="text-xs text-text-muted mt-1">{artifact.description}</p>
-                    )}
                   </div>
                   {isEditing ? (
                     <div className="mx-auto max-w-5xl bg-bg-secondary md:rounded-lg md:shadow-lg overflow-hidden"
@@ -247,19 +262,6 @@ export function ArtifactViewerFull({
                     </div>
                   ) : (
                     <div className="relative mx-auto max-w-5xl bg-bg-secondary md:rounded-lg md:shadow-lg p-4 md:p-12">
-                      {content && !isLoading && !error && (
-                        <button
-                          onClick={handleCopy}
-                          aria-label="Copy to clipboard"
-                          className="absolute top-3 right-3 z-10 p-1.5 rounded-md
-                            bg-bg-tertiary/80 backdrop-blur-sm border border-border
-                            text-text-muted hover:text-text-primary
-                            opacity-0 group-hover/content:opacity-100
-                            transition-opacity cursor-pointer"
-                        >
-                          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        </button>
-                      )}
                       {isLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="h-5 w-5 animate-spin text-text-muted" />
