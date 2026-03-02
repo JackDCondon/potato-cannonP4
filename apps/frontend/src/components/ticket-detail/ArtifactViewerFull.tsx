@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Check, Copy, FileText, Loader2, X } from 'lucide-react'
+import { Check, Copy, FileText, Loader2 } from 'lucide-react'
 import { renderMarkdown } from '@/lib/markdown'
 import { api } from '@/api/client'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -101,29 +100,6 @@ export function ArtifactViewerFull({
       className="fullscreen-modal fixed inset-0 z-50 bg-black/80"
     >
       <div className="bg-bg-secondary w-full h-full flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-text-muted" />
-            <h2 className="text-lg font-semibold text-text-primary">
-              {artifact.filename}
-            </h2>
-            {artifact.type && (
-              <Badge variant="outline" className="ml-2">
-                {artifact.type}
-              </Badge>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-text-muted hover:text-text-primary"
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-
         {/* Mobile Tabs - visible only below md breakpoint */}
         <div className="md:hidden border-b border-border shrink-0">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'document' | 'chat')}>
@@ -141,17 +117,25 @@ export function ArtifactViewerFull({
             "flex-1 md:w-[70%] border-r border-border flex flex-col min-w-0",
             activeTab !== 'document' && 'hidden md:flex'
           )}>
-            <div className="px-4 py-2 border-b border-border bg-bg-tertiary">
-              <span className="text-xs font-medium text-text-muted uppercase tracking-wide">
-                Document
-              </span>
-              {artifact.description && (
-                <p className="text-xs text-text-muted mt-1">{artifact.description}</p>
-              )}
-            </div>
             <div className="group/content flex-1 min-h-0 flex flex-col bg-bg-primary">
               <ScrollArea className="flex-1 min-h-0">
                 <div className="py-0 px-0 md:py-8 md:px-8">
+                  <div className="mx-auto max-w-5xl px-4 md:px-0 pt-4 md:pt-0 pb-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-text-muted shrink-0" />
+                      <span className="text-sm font-semibold text-text-primary truncate">
+                        {artifact.filename}
+                      </span>
+                      {artifact.type && (
+                        <Badge variant="outline" className="shrink-0">
+                          {artifact.type}
+                        </Badge>
+                      )}
+                    </div>
+                    {artifact.description && (
+                      <p className="text-xs text-text-muted mt-1">{artifact.description}</p>
+                    )}
+                  </div>
                   <div className="relative mx-auto max-w-5xl bg-bg-secondary md:rounded-lg md:shadow-lg p-4 md:p-12">
                     {content && !isLoading && !error && (
                       <button
@@ -206,6 +190,7 @@ export function ArtifactViewerFull({
               projectId={projectId}
               ticketId={ticketId}
               artifactFilename={artifact.filename}
+              onClose={onClose}
             />
           </div>
         </div>
