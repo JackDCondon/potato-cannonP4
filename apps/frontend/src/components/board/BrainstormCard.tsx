@@ -57,9 +57,9 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
         'w-full text-left overflow-hidden relative',
         'px-3 py-2 cursor-pointer transition-all',
         'border border-transparent',
-        'hover:bg-white/5',
-        isSelected && 'border-accent/30 bg-accent/10',
-        isThinking && 'thinking-shimmer'
+        'hover:bg-white/5 hover:rounded-lg',
+        isSelected && 'border-accent/30 bg-accent/10 rounded-lg',
+        isThinking && 'thinking-shimmer rounded-lg'
       )}
     >
       <div className="flex items-center gap-2 min-w-0">

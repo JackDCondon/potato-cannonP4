@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import {
   SidebarMenuItem,
   SidebarMenuButton,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -16,13 +17,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Link } from '@tanstack/react-router'
+import { getProjectIcon } from '@/components/configure/ProjectIconPicker'
 import type { Folder as FolderType } from '@potato-cannon/shared'
+import type { Project } from '@potato-cannon/shared'
 
 interface SidebarFolderGroupProps {
   folder: FolderType
   projectCount: number
   isCollapsed: boolean
   children: React.ReactNode
+  projects: Project[]
+  containsActiveProject: boolean
 }
 
 export function SidebarFolderGroup({
@@ -30,7 +36,11 @@ export function SidebarFolderGroup({
   projectCount,
   isCollapsed,
   children,
+  projects,
+  containsActiveProject,
 }: SidebarFolderGroupProps) {
+  const { state } = useSidebar()
+  const isSidebarCollapsed = state === 'collapsed'
   const queryClient = useQueryClient()
   const toggleFolderCollapsed = useAppStore((s) => s.toggleFolderCollapsed)
 
@@ -84,6 +94,59 @@ export function SidebarFolderGroup({
   }, [folder.id, queryClient])
 
   const FolderIcon = isCollapsed ? Folder : FolderOpen
+
+  if (isSidebarCollapsed) {
+    return (
+      <div ref={setNodeRef}>
+      <SidebarMenuItem
+        className={cn(
+          'transition-colors rounded-md',
+          isOver && 'ring-2 ring-accent/50 bg-accent/5'
+        )}
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              tooltip={folder.name}
+              className={cn(
+                containsActiveProject && 'border border-accent/50 bg-accent/10'
+              )}
+            >
+              <div className="relative">
+                <Folder className="h-4 w-4 text-text-muted" />
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-text-primary leading-none mt-px">
+                  {folder.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <span>{folder.name}</span>
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start">
+            {projects.map((project) => {
+              const Icon = getProjectIcon(project.icon || 'package')
+              const colorStyle = project.color ? { color: project.color } : undefined
+              return (
+                <DropdownMenuItem
+                  key={project.id}
+                  asChild
+                  className="focus:bg-sidebar-accent focus:text-sidebar-accent-foreground"
+                >
+                  <Link
+                    to="/projects/$projectId/board"
+                    params={{ projectId: project.slug }}
+                  >
+                    <Icon className="h-4 w-4 mr-2" style={colorStyle} />
+                    {project.displayName || project.id}
+                  </Link>
+                </DropdownMenuItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </div>
+    )
+  }
 
   return (
     <div ref={setNodeRef}>

@@ -50,8 +50,12 @@ describe('BrainstormCard', () => {
     const cardElement = container.querySelector('.rounded-lg.shadow-md')
     expect(cardElement).toBeNull()
 
-    // Should have a top-level button
+    // Idle state should not have rounded corners (check for standalone rounded-lg class, not hover:rounded-lg)
     const button = container.querySelector('button')
+    const classes = button?.className?.split(' ') || []
+    expect(classes).not.toContain('rounded-lg')
+
+    // Should have a top-level button
     expect(button).toBeDefined()
   })
 
@@ -63,6 +67,7 @@ describe('BrainstormCard', () => {
     const button = container.querySelector('button')
     expect(button?.className).toContain('border-accent/30')
     expect(button?.className).toContain('bg-accent/10')
+    expect(button?.className).toContain('rounded-lg')
   })
 
   it('applies thinking-shimmer class when active with session and no pending question', () => {
@@ -76,6 +81,7 @@ describe('BrainstormCard', () => {
     )
     const button = container.querySelector('button')
     expect(button?.className).toContain('thinking-shimmer')
+    expect(button?.className).toContain('rounded-lg')
   })
 
   it('does not apply thinking-shimmer when completed', () => {
