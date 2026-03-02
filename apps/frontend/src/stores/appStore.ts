@@ -50,6 +50,15 @@ interface AppState {
   removeArchivingTicket: (projectId: string, ticketId: string) => void
   isTicketArchiving: (projectId: string, ticketId: string) => boolean
 
+  /**
+   * Per-ticket activity text from session:output events, keyed by project ID.
+   * Updated by SSE session:output, cleared by session:ended.
+   */
+  ticketActivity: Map<string, Map<string, string>>
+  setTicketActivity: (projectId: string, ticketId: string, activity: string) => void
+  clearTicketActivity: (projectId: string, ticketId: string) => void
+  getTicketActivity: (projectId: string, ticketId: string) => string | undefined
+
   // UI State
   ticketSheetOpen: boolean
   ticketSheetTicketId: string | null
@@ -174,6 +183,29 @@ export const useAppStore = create<AppState>()(
       isTicketArchiving: (projectId, ticketId) => {
         const projectSet = get().archivingTickets.get(projectId)
         return projectSet?.has(ticketId) ?? false
+      },
+
+      // Per-ticket activity text - updated by SSE session:output
+      ticketActivity: new Map(),
+      setTicketActivity: (projectId, ticketId, activity) =>
+        set((state) => {
+          const next = new Map(state.ticketActivity)
+          const projectMap = new Map(next.get(projectId) ?? new Map())
+          projectMap.set(ticketId, activity)
+          next.set(projectId, projectMap)
+          return { ticketActivity: next }
+        }),
+      clearTicketActivity: (projectId, ticketId) =>
+        set((state) => {
+          const next = new Map(state.ticketActivity)
+          const projectMap = next.get(projectId)
+          if (projectMap) {
+            projectMap.delete(ticketId)
+          }
+          return { ticketActivity: next }
+        }),
+      getTicketActivity: (projectId, ticketId) => {
+        return get().ticketActivity.get(projectId)?.get(ticketId)
       },
 
       // Ticket sheet — closes brainstorm sidebar (mutual exclusion)
