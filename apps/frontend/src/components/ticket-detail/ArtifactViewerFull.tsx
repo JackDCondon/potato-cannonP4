@@ -222,57 +222,65 @@ export function ArtifactViewerFull({
                             {artifact.type}
                           </Badge>
                         )}
-                        <div className="ml-auto flex items-center gap-1 shrink-0">
-                          {isEditing ? (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={handleCancelEdit}
-                                className="h-7 px-2 text-xs"
-                              >
-                                <X className="h-3.5 w-3.5 mr-1" />
-                                Cancel
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={handleSave}
-                                disabled={!hasUnsavedChanges || updateArtifact.isPending}
-                                className="h-7 px-2 text-xs"
-                              >
-                                <Save className="h-3.5 w-3.5 mr-1" />
-                                {updateArtifact.isPending ? 'Saving...' : 'Save'}
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={handleCopy}
-                                disabled={isLoading || !!error || !content}
-                                aria-label="Copy to clipboard"
-                                className="h-7 px-2 text-xs"
-                              >
-                                {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
-                                {copied ? 'Copied' : 'Copy'}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={handleStartEdit}
-                                disabled={isLoading || !!error}
-                                className="h-7 px-2 text-xs"
-                              >
-                                <Pencil className="h-3.5 w-3.5 mr-1" />
-                                Edit
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                        {isStuck && (
+                          <div className="ml-auto flex items-center gap-1 shrink-0">
+                            {isEditing ? (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2 text-xs">
+                                  <X className="h-3.5 w-3.5 mr-1" />
+                                  Cancel
+                                </Button>
+                                <Button size="sm" onClick={handleSave} disabled={!hasUnsavedChanges || updateArtifact.isPending} className="h-7 px-2 text-xs">
+                                  <Save className="h-3.5 w-3.5 mr-1" />
+                                  {updateArtifact.isPending ? 'Saving...' : 'Save'}
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={handleCopy} disabled={isLoading || !!error || !content} aria-label="Copy to clipboard" className="h-7 px-2 text-xs">
+                                  {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                                  {copied ? 'Copied' : 'Copy'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={handleStartEdit} disabled={isLoading || !!error} className="h-7 px-2 text-xs">
+                                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                                  Edit
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {artifact.description && !isStuck && (
-                        <p className="text-xs text-text-muted mt-1">{artifact.description}</p>
+                      {!isStuck && (
+                        <div className="flex items-center gap-2 mt-1">
+                          {artifact.description && (
+                            <p className="text-xs text-text-muted truncate min-w-0">{artifact.description}</p>
+                          )}
+                          <div className="ml-auto flex items-center gap-1 shrink-0">
+                            {isEditing ? (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="h-7 px-2 text-xs">
+                                  <X className="h-3.5 w-3.5 mr-1" />
+                                  Cancel
+                                </Button>
+                                <Button size="sm" onClick={handleSave} disabled={!hasUnsavedChanges || updateArtifact.isPending} className="h-7 px-2 text-xs">
+                                  <Save className="h-3.5 w-3.5 mr-1" />
+                                  {updateArtifact.isPending ? 'Saving...' : 'Save'}
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={handleCopy} disabled={isLoading || !!error || !content} aria-label="Copy to clipboard" className="h-7 px-2 text-xs">
+                                  {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
+                                  {copied ? 'Copied' : 'Copy'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={handleStartEdit} disabled={isLoading || !!error} className="h-7 px-2 text-xs">
+                                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                                  Edit
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
