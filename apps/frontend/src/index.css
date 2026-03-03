@@ -814,6 +814,14 @@ button, a, [role="button"] {
   background-color: transparent;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .thinking-shimmer[data-slot="sidebar-menu-item"]::before {
+    background:
+      linear-gradient(var(--color-sidebar-accent), var(--color-sidebar-accent)) padding-box,
+      linear-gradient(var(--color-accent), var(--color-accent)) border-box;
+  }
+}
+
 /* ================================================
    ELECTRON TITLE BAR
    Handles macOS traffic lights and window dragging
