@@ -286,7 +286,7 @@ export function ActivityTab({ projectId, ticketId, currentPhase: propPhase, hist
                 variant="outline"
                 size="sm"
                 onClick={() => handleOptionClick(option)}
-                className="text-xs"
+                className="text-xs whitespace-normal h-auto min-h-8 text-left shrink"
               >
                 {option}
               </Button>
