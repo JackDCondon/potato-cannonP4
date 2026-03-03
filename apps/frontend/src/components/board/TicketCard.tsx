@@ -20,6 +20,8 @@ interface TicketCardProps {
 export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
   const isProcessing = useAppStore((s) => s.isTicketProcessing(projectId, ticket.id))
+  const activity = useAppStore((s) => s.getTicketActivity(projectId, ticket.id))
+  const isPending = useAppStore((s) => s.isTicketPending(projectId, ticket.id))
   const isArchiving = useAppStore((s) => s.isTicketArchiving(projectId, ticket.id))
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const archiveTicket = useArchiveTicket()
@@ -110,6 +112,15 @@ export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps
         </div>
       )}
 
+      {/* Pending question badge */}
+      {isPending && (
+        <div className="absolute top-1.5 right-1.5 z-10">
+          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold animate-pending-glow">
+            ?
+          </span>
+        </div>
+      )}
+
       {/* Ticket ID */}
       <div className="text-xs text-text-muted font-mono mb-1">{ticket.id}</div>
 
@@ -120,27 +131,28 @@ export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps
 
       {/* Meta row */}
       <div className="flex items-center justify-between text-xs text-text-muted">
-        <div className="flex items-center gap-2">
-          {imageCount > 0 && (
-            <span className="flex items-center gap-1">
-              <Image className="h-3 w-3" />
-              {imageCount}
+        <div className="flex items-center gap-2 min-w-0">
+          {isProcessing ? (
+            <span className="flex items-center gap-1 text-accent truncate">
+              <span className="inline-block w-2 h-2 bg-accent rounded-full animate-pulse shrink-0" />
+              <span className="truncate">{activity || 'Processing...'}</span>
             </span>
+          ) : (
+            <>
+              {imageCount > 0 && (
+                <span className="flex items-center gap-1">
+                  <Image className="h-3 w-3" />
+                  {imageCount}
+                </span>
+              )}
+            </>
           )}
         </div>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1 shrink-0">
           <Clock className="h-3 w-3" />
           {timeAgo(ticket.updatedAt)}
         </span>
       </div>
-
-      {/* Processing indicator */}
-      {isProcessing && (
-        <div className="mt-2 text-xs text-accent flex items-center gap-1">
-          <span className="inline-block w-2 h-2 bg-accent rounded-full animate-pulse" />
-          Processing...
-        </div>
-      )}
 
       <ArchiveConfirmDialog
         open={archiveConfirmOpen}

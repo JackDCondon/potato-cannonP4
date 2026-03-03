@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react'
-import { Send, Loader2, AlertCircle, MessageSquare } from 'lucide-react'
+import { Send, Loader2, AlertCircle, MessageSquare, X } from 'lucide-react'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,6 +13,7 @@ interface ArtifactChatProps {
   projectId: string
   ticketId: string
   artifactFilename: string
+  onClose?: () => void
   onSessionEnd?: () => void
 }
 
@@ -20,6 +21,7 @@ export function ArtifactChat({
   projectId,
   ticketId,
   artifactFilename,
+  onClose,
   onSessionEnd
 }: ArtifactChatProps) {
   const [messages, setMessages] = useState<ArtifactChatMessage[]>([])
@@ -243,6 +245,14 @@ export function ArtifactChat({
             Session ended
           </span>
         )}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="ml-auto p-1 rounded text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Messages area */}
@@ -354,7 +364,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
             <span className="text-xs font-medium">Error</span>
           </div>
         )}
-        <p className="text-sm whitespace-pre-wrap">
+        <p className="text-sm whitespace-pre-wrap break-words">
           <Linkify text={message.text || ''} />
         </p>
         {message.timestamp && (

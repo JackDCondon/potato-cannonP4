@@ -8,6 +8,7 @@ import { lock } from "proper-lockfile";
 
 import { DEFAULT_PORT } from "@potato-cannon/shared";
 import { eventBus } from "../utils/event-bus.js";
+import { formatListenUrls } from "../utils/listen-urls.js";
 import { Logger } from "../utils/logger.js";
 import { SessionService } from "../services/session/index.js";
 import { chatService } from "../services/chat.service.js";
@@ -58,7 +59,7 @@ import {
   getActiveSessionForTicket,
   getActiveSessionForBrainstorm,
 } from "../stores/session.store.js";
-import { scanPendingResponses, clearQuestion, clearResponse, readQuestion } from "../stores/chat.store.js";
+import { scanPendingResponses, clearQuestion, clearResponse, readQuestion, getPendingQuestionsByProject } from "../stores/chat.store.js";
 import { artifactChatStore } from "../stores/artifact-chat.store.js";
 import { SESSIONS_DIR, LOCK_FILE, PID_FILE, TASKS_DIR } from "../config/paths.js";
 import type { GlobalConfig, Project } from "../types/config.types.js";
@@ -518,11 +519,26 @@ export async function main(): Promise<void> {
 
   // Processing sync heartbeat - broadcasts currently processing sessions every 5 seconds
   // This ensures frontend stays in sync even if SSE events are missed
-  setInterval(() => {
+  setInterval(async () => {
     if (!sessionService) return;
     const processingByProject = sessionService.getProcessingByProject();
-    for (const [projectId, { ticketIds, brainstormIds }] of processingByProject) {
-      eventBus.emit("processing:sync", { projectId, ticketIds, brainstormIds });
+    const pendingByProject = await getPendingQuestionsByProject();
+
+    // Collect all project IDs from both maps
+    const allProjectIds = new Set([
+      ...processingByProject.keys(),
+      ...pendingByProject.keys(),
+    ]);
+
+    for (const projectId of allProjectIds) {
+      const processing = processingByProject.get(projectId);
+      const pendingTicketIds = pendingByProject.get(projectId) ?? [];
+      eventBus.emit("processing:sync", {
+        projectId,
+        ticketIds: processing?.ticketIds ?? [],
+        brainstormIds: processing?.brainstormIds ?? [],
+        pendingTicketIds,
+      });
     }
   }, 5000);
 
@@ -614,7 +630,8 @@ export async function main(): Promise<void> {
     process.env.POTATO_DAEMON_PORT || globalConfig?.daemon?.port || DEFAULT_PORT;
   const port = typeof portValue === 'string' ? parseInt(portValue, 10) : portValue;
   server = app.listen(port, '0.0.0.0', async () => {
-    console.log(`Dashboard running at http://localhost:${port}`);
+    const urls = formatListenUrls('0.0.0.0', port);
+    console.log(`Dashboard running at:\n${urls.map((u) => `  ${u}`).join('\n')}`);
     await writePid(process.pid);
     await writeDaemonInfo({
       url: `http://localhost:${port}/mcp`,

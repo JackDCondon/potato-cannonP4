@@ -318,12 +318,19 @@ export function AppSidebar() {
                 ) : (
                   <>
                     {/* Render folders with their projects */}
-                    {sortedFolders.map((folder) => (
+                    {sortedFolders.map((folder) => {
+                      const folderProjects = groupedProjects[folder.id] || []
+                      const containsActive = folderProjects.some(
+                        (project) => project.slug === currentProjectSlug
+                      )
+                      return (
                       <SidebarFolderGroup
                         key={folder.id}
                         folder={folder}
-                        projectCount={groupedProjects[folder.id]?.length || 0}
+                        projectCount={folderProjects.length}
                         isCollapsed={collapsedFolders.includes(folder.id)}
+                        projects={folderProjects}
+                        containsActiveProject={containsActive}
                       >
                         <SidebarMenu>
                           {groupedProjects[folder.id]?.map((project) => (
@@ -337,7 +344,8 @@ export function AppSidebar() {
                           ))}
                         </SidebarMenu>
                       </SidebarFolderGroup>
-                    ))}
+                    )
+                    })}
 
                     {/* Render ungrouped projects */}
                     <UngroupedDropZone>

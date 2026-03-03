@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from 'react'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
 import { ArrowLeft, Send, Loader2, AlertCircle, Trash2, Bot, Brain } from 'lucide-react'
+import { renderMarkdown } from '@/lib/markdown'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -442,8 +441,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
   const renderedContent = useMemo(() => {
     if ((!isQuestion && !isNotification) || !message.text) return null
     try {
-      const html = marked(message.text) as string
-      return DOMPurify.sanitize(html)
+      return renderMarkdown(message.text)
     } catch {
       return null
     }
@@ -479,7 +477,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
         )}
         {(isQuestion || isNotification) && renderedContent ? (
           <div
-            className="prose prose-sm prose-invert max-w-none text-text-secondary
+            className="prose prose-sm prose-invert max-w-none text-text-secondary break-words
               [&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0
               [&_a]:text-accent [&_a]:no-underline hover:[&_a]:underline
               [&_code]:bg-bg-tertiary [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded
@@ -493,7 +491,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
             dangerouslySetInnerHTML={{ __html: renderedContent }}
           />
         ) : (
-          <p className="text-sm whitespace-pre-wrap">
+          <p className="text-sm whitespace-pre-wrap break-words">
             <Linkify text={message.text || ''} />
           </p>
         )}
