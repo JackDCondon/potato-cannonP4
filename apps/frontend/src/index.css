@@ -805,6 +805,11 @@ button, a, [role="button"] {
     ) border-box;
 }
 
+.thinking-shimmer[data-slot="sidebar-menu-item"] > [data-slot="sidebar-menu-button"] {
+  position: relative;
+  z-index: 2;
+}
+
 /* ================================================
    ELECTRON TITLE BAR
    Handles macOS traffic lights and window dragging
