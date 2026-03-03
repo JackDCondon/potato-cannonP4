@@ -14,13 +14,23 @@ export class SlackApi {
    * Requires the `channels:read` scope.
    */
   async discoverChannel(): Promise<{ id: string; name: string } | null> {
+    // Identify the bot user so we can pass it explicitly
+    const auth = await this.client.auth.test();
+    const botUserId = auth.user_id;
+    console.log(`[SlackApi] Bot user ID: ${botUserId}`);
+
     const result = await this.client.users.conversations({
+      user: botUserId,
       types: "public_channel",
       exclude_archived: true,
       limit: 100,
     });
 
     const channels = result.channels ?? [];
+    console.log(
+      `[SlackApi] users.conversations returned ${channels.length} channel(s): ${channels.map((ch) => `#${ch.name}`).join(", ") || "(none)"}`,
+    );
+
     // Prefer a non-#general channel; fall back to #general
     const match = channels.find((ch) => !ch.is_general) ?? channels[0];
     if (match?.id && match?.name) {
