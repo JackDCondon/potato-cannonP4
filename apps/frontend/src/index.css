@@ -810,6 +810,10 @@ button, a, [role="button"] {
   z-index: 2;
 }
 
+.thinking-shimmer[data-slot="sidebar-menu-item"] > [data-active="true"][data-slot="sidebar-menu-button"] {
+  background-color: transparent;
+}
+
 /* ================================================
    ELECTRON TITLE BAR
    Handles macOS traffic lights and window dragging
