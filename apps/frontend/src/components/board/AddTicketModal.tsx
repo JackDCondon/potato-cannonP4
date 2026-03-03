@@ -84,6 +84,7 @@ export function AddTicketModal() {
               placeholder="Ticket title"
               disabled={isSubmitting}
               autoFocus
+              autoComplete="off"
               className="bg-bg-tertiary border-border"
             />
           </div>
