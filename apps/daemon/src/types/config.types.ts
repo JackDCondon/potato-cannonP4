@@ -5,9 +5,15 @@ export interface TelegramConfig {
   mode: 'auto' | 'webhook' | 'polling';
 }
 
+export interface SlackConfig {
+  appToken: string;   // xapp-... (Socket Mode)
+  botToken: string;   // xoxb-... (Web API)
+  channelId?: string; // Explicit channel override. Auto-discovered if unset.
+}
+
 export interface ProvidersConfig {
   telegram?: TelegramConfig;
-  // Future providers go here
+  slack?: SlackConfig;
 }
 
 export interface DaemonConfig {
@@ -17,6 +23,7 @@ export interface DaemonConfig {
 export interface GlobalConfig {
   // Keep old structure for backward compatibility
   telegram?: TelegramConfig;
+  slack?: SlackConfig;
   // New structure
   providers?: ProvidersConfig;
   daemon: DaemonConfig;

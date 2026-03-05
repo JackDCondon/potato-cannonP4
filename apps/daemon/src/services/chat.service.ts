@@ -302,13 +302,22 @@ export class ChatService {
       });
     }
 
-    // Broadcast to providers (Telegram)
+    // Broadcast to providers (Telegram, Slack, etc.)
     const providers = this.getActiveProviders();
     if (providers.length > 0) {
       const message: OutboundMessage = { text: question, options, phase };
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         providers.map((p) => this.sendToProvider(p, context, message)),
       );
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === "rejected") {
+          console.warn(
+            `[ChatService] Failed to send question via ${providers[i].id}:`,
+            r.reason,
+          );
+        }
+      }
     }
 
     // Return immediately - don't wait for response
@@ -354,9 +363,18 @@ export class ChatService {
 
     const outbound: OutboundMessage = { text: message };
 
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       providers.map((p) => this.sendToProvider(p, context, outbound)),
     );
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === "rejected") {
+        console.warn(
+          `[ChatService] Failed to send notification via ${providers[i].id}:`,
+          r.reason,
+        );
+      }
+    }
   }
 
   async handleResponse(
@@ -428,12 +446,15 @@ export class ChatService {
     context: ChatContext,
     message: OutboundMessage,
   ): Promise<void> {
+    const contextId = context.ticketId || context.brainstormId || "unknown";
     let thread = await getProviderThread(context, provider.id);
 
     if (!thread) {
       const title = context.ticketId || context.brainstormId || "Chat";
+      console.log(`[ChatService] Creating ${provider.id} thread for ${contextId}`);
       thread = await provider.createThread(context, title);
       await setProviderThread(context, thread);
+      console.log(`[ChatService] Created ${provider.id} thread for ${contextId}`);
     }
 
     // Degrade buttons to numbered text if provider doesn't support them
@@ -450,6 +471,7 @@ export class ChatService {
     }
 
     await provider.send(thread, finalMessage);
+    console.log(`[ChatService] Sent message via ${provider.id} for ${contextId}`);
   }
 
   private mapNumberedResponse(contextKey: string, answer: string): string {

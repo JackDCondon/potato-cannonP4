@@ -17,12 +17,19 @@ export class Logger {
     this.stream = fs.createWriteStream(this.logFile, { flags: 'a' });
 
     const originalLog = console.log;
+    const originalWarn = console.warn;
     const originalError = console.error;
 
     console.log = (...args: unknown[]): void => {
       const msg = this.format('INFO', args);
       this.write(msg);
       originalLog.apply(console, args);
+    };
+
+    console.warn = (...args: unknown[]): void => {
+      const msg = this.format('WARN', args);
+      this.write(msg);
+      originalWarn.apply(console, args);
     };
 
     console.error = (...args: unknown[]): void => {

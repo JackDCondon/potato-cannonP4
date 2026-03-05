@@ -1,0 +1,37 @@
+# Slack App Manifest for Potato Cannon
+#
+# Use this as a reference when creating your Slack app at https://api.slack.com/apps
+# You can paste this into "Create from manifest" or configure settings manually.
+#
+# After creating the app:
+#   1. Install it to your workspace
+#   2. Copy the Bot Token (xoxb-...) and App-Level Token (xapp-...) to your config
+#   3. The App-Level Token needs the "connections:write" scope
+
+display_information:
+  name: Potato Cannon
+  description: Multi-agent software engineering daemon
+  background_color: "#8B4513"
+
+features:
+  bot_user:
+    display_name: Potato Cannon
+    always_online: true
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write           # Post messages
+      - channels:history     # Read channel message history (for threaded replies)
+      - channels:read        # Auto-discover channels the bot is in
+      - im:history           # Read DM message history (for threaded replies)
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.channels     # Receive channel messages (primary)
+      - message.im           # Receive DM messages (threaded replies may arrive as DMs)
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
