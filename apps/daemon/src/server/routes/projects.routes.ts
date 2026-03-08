@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import fs from "fs/promises";
 import path from "path";
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import {
   getAllProjectsMap,
   getProjectById,
@@ -198,6 +198,9 @@ export function registerProjectRoutes(
         disabledPhaseMigration: p.disabledPhaseMigration,
         swimlaneColors: p.swimlaneColors,
         folderId: p.folderId,
+        p4Stream: p.p4Stream,
+        agentWorkspaceRoot: p.agentWorkspaceRoot,
+        helixSwarmUrl: p.helixSwarmUrl,
       }));
       res.json(list);
     } catch (error) {
@@ -240,6 +243,20 @@ export function registerProjectRoutes(
         // Not a git repo
       }
 
+      // Detect Perforce stream for the project path
+      let suggestedP4Stream: string | undefined;
+      try {
+        const p4InfoResult = spawnSync('p4', ['info'], {
+          cwd: projectPath,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        if (p4InfoResult.status === 0 && p4InfoResult.stdout) {
+          const streamMatch = p4InfoResult.stdout.match(/^Client stream:\s+(.+)$/m);
+          if (streamMatch) suggestedP4Stream = streamMatch[1].trim();
+        }
+      } catch { /* p4 not available or not configured */ }
+
       // Create project with auto-generated UUID
       const project = createProject({
         displayName: name,
@@ -267,7 +284,7 @@ export function registerProjectRoutes(
 
       // Return the full project object so frontend has id and slug
       const refreshedProject = getProjectById(project.id);
-      res.json(refreshedProject);
+      res.json({ ...refreshedProject, suggestedP4Stream });
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -288,12 +305,26 @@ export function registerProjectRoutes(
   app.patch("/api/projects/:id", async (req: Request, res: Response) => {
     try {
       const id = decodeURIComponent(req.params.id);
-      const updates = req.body as {
+      const {
+        displayName,
+        icon,
+        color,
+        swimlaneColors,
+        folderId,
+        p4Stream,
+        agentWorkspaceRoot,
+        helixSwarmUrl,
+        template,
+      } = req.body as {
         displayName?: string;
         icon?: string;
         color?: string;
         swimlaneColors?: Record<string, string>;
         folderId?: string | null;
+        p4Stream?: string;
+        agentWorkspaceRoot?: string;
+        helixSwarmUrl?: string;
+        template?: string;
       };
 
       const project = getProjectById(id);
@@ -302,8 +333,45 @@ export function registerProjectRoutes(
         return;
       }
 
-      const updatedProject = updateProject(id, updates);
+      // Auto-assign template when p4Stream is set and no template explicitly supplied
+      const effectiveTemplate = template ?? (p4Stream ? "product-development-p4" : undefined);
+
+      const updates: Parameters<typeof updateProject>[1] = {
+        displayName,
+        icon,
+        color,
+        swimlaneColors,
+        folderId,
+        p4Stream,
+        agentWorkspaceRoot,
+        helixSwarmUrl,
+      };
+
+      // Apply core field updates
+      updateProject(id, updates);
+
+      // Apply template separately if specified, to resolve version from catalog
+      if (effectiveTemplate) {
+        const catalogTemplate = await getTemplate(effectiveTemplate);
+        if (catalogTemplate) {
+          const version = typeof catalogTemplate.version === "number"
+            ? `${catalogTemplate.version}.0.0`
+            : catalogTemplate.version;
+          updateProjectTemplate(id, effectiveTemplate, version);
+          // Copy template files to project if not already present
+          if (!(await hasProjectTemplate(id))) {
+            try {
+              const copied = await copyTemplateToProject(id, effectiveTemplate);
+              updateProjectTemplate(id, effectiveTemplate, copied.version);
+            } catch (err) {
+              console.error(`[projects] Failed to copy template: ${(err as Error).message}`);
+            }
+          }
+        }
+      }
+
       await refreshProjects();
+      const updatedProject = getProjectById(id);
       res.json(updatedProject);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
