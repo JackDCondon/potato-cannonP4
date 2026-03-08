@@ -1,10 +1,11 @@
 // src/marketplace/bootstrap.ts
-import { execSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
 import { existsSync, rmSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { resolveExecutable } from '../utils/resolve-executable.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,16 +20,7 @@ interface CommandResult {
 }
 
 function getClaudePath(): string | null {
-  try {
-    return execSync('which claude', { encoding: 'utf-8', stdio: 'pipe' }).trim();
-  } catch {
-    // Fallback to common installation path
-    const fallback = path.join(os.homedir(), '.local', 'bin', 'claude');
-    if (existsSync(fallback)) {
-      return fallback;
-    }
-    return null;
-  }
+  return resolveExecutable('claude');
 }
 
 function runClaudeCommand(claudePath: string, args: string[]): Promise<CommandResult> {

@@ -1,6 +1,6 @@
-import { spawn, execSync } from "child_process";
+import { spawn } from "child_process";
 import os from "os";
-import path from "path";
+import { resolveExecutable } from '../utils/resolve-executable.js';
 
 /**
  * Extract a clean title from Claude's response.
@@ -38,12 +38,7 @@ function extractTitle(output: string): string | null {
  * Uses minimal system prompt to save tokens.
  */
 export async function summarizeToTitle(text: string): Promise<string> {
-  let claudePath: string;
-  try {
-    claudePath = execSync("which claude", { encoding: "utf-8" }).trim();
-  } catch {
-    claudePath = path.join(process.env.HOME || "", ".local", "bin", "claude");
-  }
+  const claudePath: string = resolveExecutable("claude") ?? "claude";
 
   const prompt = `Generate a 3-6 word title for the text below. OUTPUT THE TITLE ONLY. Nothing else. Violations: explanations/preamble/commentary = FAILED; fewer than 3 words = FAILED; more than 6 words = FAILED; quotes around title = FAILED; trailing punctuation = FAILED. Red flags that mean failure: "Let me explain...", "Here's a title:", "The title is:", any context. Just the title. 3-6 words. No quotes. No punctuation. Nothing else. TEXT: ${text}`;
 

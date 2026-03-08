@@ -1,5 +1,4 @@
 import type { Express, Request, Response } from "express";
-import { execSync } from "child_process";
 import { createWriteStream } from "fs";
 import path from "path";
 import pty from "node-pty";
@@ -14,6 +13,7 @@ import {
 import { listArtifacts, getTicket, getArtifactContent } from "../../stores/ticket.store.js";
 import { tryLoadAgentDefinition } from "../../services/session/index.js";
 import { SESSIONS_DIR } from "../../config/paths.js";
+import { resolveExecutable } from "../../utils/resolve-executable.js";
 import type { SessionService } from "../../services/session/index.js";
 import type { Project } from "../../types/config.types.js";
 
@@ -343,12 +343,7 @@ async function spawnArtifactChatSession(
     prompt,
   ];
 
-  let claudePath: string;
-  try {
-    claudePath = execSync("which claude", { encoding: "utf-8" }).trim();
-  } catch {
-    claudePath = path.join(process.env.HOME || "", ".local", "bin", "claude");
-  }
+  const claudePath: string = resolveExecutable("claude") ?? "claude";
 
   const proc = pty.spawn(claudePath, args, {
     name: "xterm-256color",
