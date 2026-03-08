@@ -36,14 +36,20 @@ export class GitProvider implements IVCSProvider {
    * Creates the worktree and associated branch if they do not already exist.
    */
   async ensureWorkspace(ticketId: string): Promise<WorkspaceInfo> {
-    const workspacePath = await ensureWorktree(
+    const worktreePath = await ensureWorktree(
       this.projectPath,
       ticketId,
       this.branchPrefix,
     );
 
+    if (worktreePath === this.projectPath) {
+      throw new Error(
+        `Failed to create git worktree for ticket ${ticketId}: worktree creation returned project root`,
+      );
+    }
+
     return {
-      workspacePath,
+      workspacePath: worktreePath,
       workspaceLabel: `${this.branchPrefix}/${ticketId}`,
     };
   }
