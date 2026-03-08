@@ -33,7 +33,7 @@
     "icon": "build/icon.icns"
   },
   "win": {
-    "target": ["nsis", "zip"],
+    "target": ["dir"],
     "icon": "build/icon.ico"
   },
   "linux": {

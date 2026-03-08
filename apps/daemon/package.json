@@ -9,7 +9,7 @@
     "potato-cannon": "./bin/potato-cannon.js"
   },
   "scripts": {
-    "build": "tsc && cp -r src/system-agents/agents dist/system-agents/",
+    "build": "tsc && node -e \"require('fs').cpSync('src/system-agents/agents', 'dist/system-agents/agents', {recursive:true})\"",
     "start": "node dist/index.js",
     "dev": "tsc -b -w & NODE_ENV=development node --watch dist/index.js",
     "test": "node --experimental-test-module-mocks --test dist/**/*.test.js",

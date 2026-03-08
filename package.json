@@ -13,6 +13,7 @@
     "dev:desktop": "pnpm -w run rebuild:electron && pnpm --filter @potato-cannon/desktop dev",
     "build": "pnpm -r build && pnpm run fix:node-pty",
     "fix:node-pty": "chmod +x node_modules/.pnpm/node-pty@*/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper 2>/dev/null || true",
+    "postinstall": "node scripts/install-7za-wrapper.js",
     "build:shared": "pnpm --filter @potato-cannon/shared build",
     "build:daemon": "pnpm --filter @potato-cannon/daemon build",
     "build:frontend": "pnpm --filter @potato-cannon/frontend build",
@@ -26,5 +27,10 @@
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "patchedDependencies": {
+      "node-pty@1.1.0": "patches/node-pty@1.1.0.patch"
+    }
+  }
 }

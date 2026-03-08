@@ -86,7 +86,7 @@ export async function restartToPhase(
   // Remove worktree and rename branch to preserve commits
   // The branch is renamed to potato-resets/{ticketId}-{timestamp}
   if (project) {
-    const worktreeResult = await removeWorktreeAndRenameBranch(project.path, ticketId);
+    const worktreeResult = await removeWorktreeAndRenameBranch(project.path, ticketId, project.branchPrefix);
     worktreeRemoved = worktreeResult.worktreeRemoved;
     branchRenamed = worktreeResult.newBranchName;
 

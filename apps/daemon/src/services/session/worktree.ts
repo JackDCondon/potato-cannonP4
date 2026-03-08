@@ -99,7 +99,8 @@ export async function ensureWorktree(
  */
 export async function removeWorktreeAndRenameBranch(
   projectPath: string,
-  ticketId: string
+  ticketId: string,
+  branchPrefix?: string,
 ): Promise<{ worktreeRemoved: boolean; branchRenamed: boolean; newBranchName: string | null; errors: string[] }> {
   const errors: string[] = [];
   let worktreeRemoved = false;
@@ -107,9 +108,10 @@ export async function removeWorktreeAndRenameBranch(
   let newBranchName: string | null = null;
 
   const worktreePath = path.join(projectPath, ".potato", "worktrees", ticketId);
-  const branchName = `potato/${ticketId}`;
+  const prefix = branchPrefix || 'potato';
+  const branchName = `${prefix}/${ticketId}`;
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const resetBranchName = `potato-resets/${ticketId}-${timestamp}`;
+  const resetBranchName = `${prefix}-resets/${ticketId}-${timestamp}`;
 
   // Remove worktree first (must be done before branch rename)
   if (existsSync(worktreePath)) {
@@ -163,14 +165,15 @@ export async function removeWorktreeAndRenameBranch(
  */
 export async function removeWorktreeAndBranch(
   projectPath: string,
-  ticketId: string
+  ticketId: string,
+  branchPrefix?: string,
 ): Promise<{ worktreeRemoved: boolean; branchRemoved: boolean; errors: string[] }> {
   const errors: string[] = [];
   let worktreeRemoved = false;
   let branchRemoved = false;
 
   const worktreePath = path.join(projectPath, ".potato", "worktrees", ticketId);
-  const branchName = `potato/${ticketId}`;
+  const branchName = `${branchPrefix || 'potato'}/${ticketId}`;
 
   // Remove worktree first (must be done before branch deletion)
   if (existsSync(worktreePath)) {

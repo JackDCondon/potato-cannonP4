@@ -1,0 +1,69 @@
+diff --git a/binding.gyp b/binding.gyp
+index 5f63978b07ab50aaf7523219a2170ec737a6b5db..b3309a07ef99dea7967d7bdd04b9fc3500acacae 100644
+--- a/binding.gyp
++++ b/binding.gyp
+@@ -5,9 +5,6 @@
+     ],
+     'conditions': [
+       ['OS=="win"', {
+-        'msvs_configuration_attributes': {
+-          'SpectreMitigation': 'Spectre'
+-        },
+         'msvs_settings': {
+             'VCCLCompilerTool': {
+               'AdditionalOptions': [
+diff --git a/deps/winpty/src/gen/GenVersion.h b/deps/winpty/src/gen/GenVersion.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..a7ff876131994ba29a2ae7634a2103ad7dc146ad
+--- /dev/null
++++ b/deps/winpty/src/gen/GenVersion.h
+@@ -0,0 +1,3 @@
++// Pre-generated for Windows builds (avoids running UpdateGenVersion.bat via node-gyp)
++const char GenVersion_Version[] = "0.4.4-dev";
++const char GenVersion_Commit[] = "none";
+diff --git a/deps/winpty/src/winpty.gyp b/deps/winpty/src/winpty.gyp
+index 1ac5758bedd8cf54f32280dea4e4aeb5afdee30d..d3342ee4ca9b58275af0d16cca0058af4f34a90d 100644
+--- a/deps/winpty/src/winpty.gyp
++++ b/deps/winpty/src/winpty.gyp
+@@ -10,7 +10,8 @@
+     #    make -j4 CXX=i686-w64-mingw32-g++ LDFLAGS="-static -static-libgcc -static-libstdc++"
+ 
+     'variables': {
+-        'WINPTY_COMMIT_HASH%': '<!(cmd /c "cd shared && GetCommitHash.bat")',
++        # Windows build fix: hardcode hash to avoid GetCommitHash.bat path issues
++        'WINPTY_COMMIT_HASH%': 'none',
+     },
+     'target_defaults' : {
+         'defines' : [
+@@ -20,9 +21,8 @@
+             'NOMINMAX',
+         ],
+         'include_dirs': [
+-            # Add the 'src/gen' directory to the include path and force gyp to
+-            # run the script (re)generating the version header.
+-            '<!(cmd /c "cd shared && UpdateGenVersion.bat <(WINPTY_COMMIT_HASH)")',
++            # Windows build fix: hardcoded path; GenVersion.h is pre-generated
++            'gen',
+         ]
+     },
+     'targets' : [
+@@ -40,9 +40,6 @@
+                 '-lshell32',
+                 '-luser32',
+             ],
+-            'msvs_configuration_attributes': {
+-                'SpectreMitigation': 'Spectre'
+-            },
+             'msvs_settings': {
+                 # Specify this setting here to override a setting from somewhere
+                 # else, such as node's common.gypi.
+@@ -142,9 +139,6 @@
+                 '-ladvapi32',
+                 '-luser32',
+             ],
+-            'msvs_configuration_attributes': {
+-                'SpectreMitigation': 'Spectre'
+-            },
+             'msvs_settings': {
+                 # Specify this setting here to override a setting from somewhere
+                 # else, such as node's common.gypi.

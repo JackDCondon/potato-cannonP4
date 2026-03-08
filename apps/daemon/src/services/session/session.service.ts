@@ -60,6 +60,65 @@ import {
 import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 
+/**
+ * Resolve the Claude CLI executable path, cross-platform.
+ * On Windows, npm installs claude as a .cmd wrapper; we find the underlying
+ * Node.js script and run it directly via node to avoid cmd.exe escaping issues.
+ */
+function resolveClaudeExecutable(nodeExecutable: string): { claudePath: string; claudePrependArgs: string[] } {
+  // Try Unix 'which' first (works on macOS, Linux, and Git Bash on Windows)
+  try {
+    const found = execSync("which claude", { encoding: "utf-8" }).trim();
+    if (found) return { claudePath: found, claudePrependArgs: [] };
+  } catch { /* continue */ }
+
+  if (process.platform === "win32") {
+    // Try Windows 'where' command to find claude on PATH
+    try {
+      const results = execSync("where claude", { encoding: "utf-8" })
+        .trim()
+        .split(/\r?\n/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+      // Prefer .exe if available (native/standalone installer)
+      const exePath = results.find((p) => /\.exe$/i.test(p));
+      if (exePath && existsSync(exePath)) {
+        return { claudePath: exePath, claudePrependArgs: [] };
+      }
+
+      // .cmd found (npm global install) — find the underlying JS entry point
+      const cmdPath = results[0];
+      if (cmdPath && existsSync(cmdPath)) {
+        const npmBinDir = path.dirname(cmdPath);
+        const jsPath = path.join(npmBinDir, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+        if (existsSync(jsPath)) {
+          return { claudePath: nodeExecutable, claudePrependArgs: [jsPath] };
+        }
+      }
+    } catch { /* where command failed */ }
+
+    // Fallback: check APPDATA/npm (common npm global install location)
+    const appData = process.env.APPDATA;
+    if (appData) {
+      const jsPath = path.join(appData, "npm", "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+      if (existsSync(jsPath)) {
+        return { claudePath: nodeExecutable, claudePrependArgs: [jsPath] };
+      }
+    }
+
+    // Last resort — hope claude.exe is findable by the OS
+    return { claudePath: "claude", claudePrependArgs: [] };
+  }
+
+  // Unix fallback
+  const linuxFallback = path.join(process.env.HOME || "", ".local", "bin", "claude");
+  return {
+    claudePath: existsSync(linuxFallback) ? linuxFallback : "claude",
+    claudePrependArgs: [],
+  };
+}
+
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private eventEmitter: EventEmitter;
@@ -386,15 +445,10 @@ export class SessionService {
     // Agent instructions are included in the prompt
     args.push("--print", prompt);
 
-    let claudePath: string;
-    try {
-      claudePath = execSync("which claude", { encoding: "utf-8" }).trim();
-    } catch {
-      claudePath = path.join(process.env.HOME || "", ".local", "bin", "claude");
-    }
+    const { claudePath, claudePrependArgs } = resolveClaudeExecutable(nodePath);
     console.log(`[spawnClaudeSession] Spawning ${agentType} at: ${claudePath}`);
 
-    const proc = pty.spawn(claudePath, args, {
+    const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
       name: "xterm-256color",
       cols: 120,
       rows: 40,
@@ -717,14 +771,9 @@ export class SessionService {
     }
     args.push("--print", fullPrompt);
 
-    let claudePath: string;
-    try {
-      claudePath = execSync("which claude", { encoding: "utf-8" }).trim();
-    } catch {
-      claudePath = path.join(process.env.HOME || "", ".local", "bin", "claude");
-    }
+    const { claudePath, claudePrependArgs } = resolveClaudeExecutable(nodePath);
 
-    const proc = pty.spawn(claudePath, args, {
+    const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
       name: "xterm-256color",
       cols: 120,
       rows: 40,

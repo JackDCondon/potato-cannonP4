@@ -524,7 +524,7 @@ export async function archiveTicket(
     throw new Error(`Project ${projectId} not found`);
   }
 
-  const cleanup = await removeWorktreeAndBranch(project.path, ticketId);
+  const cleanup = await removeWorktreeAndBranch(project.path, ticketId, project.branchPrefix);
 
   return { ticket, cleanup };
 }
