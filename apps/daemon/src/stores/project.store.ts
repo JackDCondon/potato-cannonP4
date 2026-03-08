@@ -10,6 +10,9 @@ export interface CreateProjectInput {
   color?: string;
   templateName?: string;
   templateVersion?: string;
+  p4Stream?: string;
+  agentWorkspaceRoot?: string;
+  helixSwarmUrl?: string;
 }
 
 /**
@@ -63,6 +66,9 @@ function rowToProject(row: Record<string, unknown>): Project {
       : undefined,
     branchPrefix: (row.branch_prefix as string) || 'potato',
     folderId: (row.folder_id as string) || null,
+    p4Stream: (row.p4_stream as string) || undefined,
+    agentWorkspaceRoot: (row.agent_workspace_root as string) || undefined,
+    helixSwarmUrl: (row.helix_swarm_url as string) || undefined,
   };
 }
 
@@ -125,8 +131,9 @@ export class ProjectStore {
     this.db.prepare(`
       INSERT INTO projects (
         id, slug, display_name, path, registered_at,
-        icon, color, template_name, template_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        icon, color, template_name, template_version,
+        p4_stream, agent_workspace_root, helix_swarm_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       slug,
@@ -136,7 +143,10 @@ export class ProjectStore {
       input.icon || null,
       input.color || null,
       input.templateName || null,
-      input.templateVersion || null
+      input.templateVersion || null,
+      input.p4Stream || null,
+      input.agentWorkspaceRoot || null,
+      input.helixSwarmUrl || null
     );
 
     return this.getProjectById(id)!;
@@ -203,6 +213,18 @@ export class ProjectStore {
     if (updates.folderId !== undefined) {
       fields.push("folder_id = ?");
       values.push(updates.folderId || null);
+    }
+    if (updates.p4Stream !== undefined) {
+      fields.push("p4_stream = ?");
+      values.push(updates.p4Stream || null);
+    }
+    if (updates.agentWorkspaceRoot !== undefined) {
+      fields.push("agent_workspace_root = ?");
+      values.push(updates.agentWorkspaceRoot || null);
+    }
+    if (updates.helixSwarmUrl !== undefined) {
+      fields.push("helix_swarm_url = ?");
+      values.push(updates.helixSwarmUrl || null);
     }
 
     if (fields.length === 0) {

@@ -46,6 +46,9 @@ export interface Project {
   swimlaneColors?: Record<string, string>;  // phase name -> hex color
   branchPrefix?: string;  // Custom branch prefix (default: 'potato')
   folderId?: string | null;  // FK to folders table
+  p4Stream?: string;           // Perforce stream depot path (e.g. //depot/main)
+  agentWorkspaceRoot?: string; // Root directory for P4 agent workspaces
+  helixSwarmUrl?: string;      // Helix Swarm review server URL
 }
 
 export interface DaemonInfo {
