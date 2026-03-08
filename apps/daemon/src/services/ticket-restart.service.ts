@@ -5,7 +5,7 @@ import { deleteTasksForPhases } from "../stores/task.store.js";
 import { deleteRalphFeedbackForPhases } from "../stores/ralph-feedback.store.js";
 import { getProjectById } from "../stores/project.store.js";
 import { getPhaseConfig } from "./session/phase-config.js";
-import { removeWorktreeAndRenameBranch } from "./session/worktree.js";
+import { createVCSProvider } from "./session/vcs/factory.js";
 import type { SessionService } from "./session/index.js";
 import type { Ticket } from "../types/ticket.types.js";
 
@@ -86,12 +86,13 @@ export async function restartToPhase(
   // Remove worktree and rename branch to preserve commits
   // The branch is renamed to potato-resets/{ticketId}-{timestamp}
   if (project) {
-    const worktreeResult = await removeWorktreeAndRenameBranch(project.path, ticketId, project.branchPrefix);
-    worktreeRemoved = worktreeResult.worktreeRemoved;
-    branchRenamed = worktreeResult.newBranchName;
+    const provider = createVCSProvider(project);
+    const resetResult = await provider.resetWorkspace(ticketId);
+    worktreeRemoved = resetResult.errors.length === 0; // true if P4 workspace reset without errors
+    branchRenamed = null; // P4 has no branch to rename; frontend must handle null gracefully
 
-    if (worktreeResult.errors.length > 0) {
-      console.warn(`[restart] Worktree cleanup warnings: ${worktreeResult.errors.join(", ")}`);
+    if (resetResult.errors.length > 0) {
+      console.warn(`[restart] Worktree cleanup warnings: ${resetResult.errors.join(", ")}`);
     }
     if (worktreeRemoved) {
       console.log(`[restart] Removed worktree for ${ticketId}`);
