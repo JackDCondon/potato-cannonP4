@@ -531,7 +531,8 @@ export async function archiveTicket(
   }
   const cleanup = {
     worktreeRemoved: cleanupResult.errors.length === 0,
-    branchRemoved: false,
+    // For Git projects, archiveWorkspace removes the branch; for P4 there is no branch.
+    branchRemoved: !project.p4Stream && cleanupResult.errors.length === 0,
     errors: cleanupResult.errors,
   };
 
