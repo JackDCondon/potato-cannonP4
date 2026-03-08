@@ -6,7 +6,7 @@ import pty from "node-pty";
 import { fileURLToPath } from "url";
 import type { SystemAgentResult, SystemAgentOptions } from "./types.js";
 import { loadSystemAgent } from "./loader.js";
-import { resolveExecutable } from "../utils/resolve-executable.js";
+import { resolveNode, resolveClaude } from "../utils/resolve-executable.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -67,13 +67,13 @@ export async function runSystemAgent<TInput>(
   ];
 
   // Find claude binary
-  const claudePath: string = resolveExecutable("claude") ?? "claude";
+  const { claudePath, claudePrependArgs } = resolveClaude(resolveNode());
 
   return new Promise((resolve) => {
     let outputBuffer = "";
     let timeoutId: NodeJS.Timeout | undefined;
 
-    const proc = pty.spawn(claudePath, args, {
+    const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
       name: "xterm-256color",
       cols: 120,
       rows: 40,

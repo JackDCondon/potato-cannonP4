@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import os from "os";
-import { resolveExecutable } from '../utils/resolve-executable.js';
+import { resolveNode, resolveClaude } from '../utils/resolve-executable.js';
 
 /**
  * Extract a clean title from Claude's response.
@@ -38,7 +38,7 @@ function extractTitle(output: string): string | null {
  * Uses minimal system prompt to save tokens.
  */
 export async function summarizeToTitle(text: string): Promise<string> {
-  const claudePath: string = resolveExecutable("claude") ?? "claude";
+  const { claudePath, claudePrependArgs } = resolveClaude(resolveNode());
 
   const prompt = `Generate a 3-6 word title for the text below. OUTPUT THE TITLE ONLY. Nothing else. Violations: explanations/preamble/commentary = FAILED; fewer than 3 words = FAILED; more than 6 words = FAILED; quotes around title = FAILED; trailing punctuation = FAILED. Red flags that mean failure: "Let me explain...", "Here's a title:", "The title is:", any context. Just the title. 3-6 words. No quotes. No punctuation. Nothing else. TEXT: ${text}`;
 
@@ -55,6 +55,7 @@ export async function summarizeToTitle(text: string): Promise<string> {
     const proc = spawn(
       claudePath,
       [
+        ...claudePrependArgs,
         "--print",
         prompt,
         "--model",

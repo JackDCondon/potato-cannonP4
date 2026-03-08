@@ -13,7 +13,7 @@ import {
 import { listArtifacts, getTicket, getArtifactContent } from "../../stores/ticket.store.js";
 import { tryLoadAgentDefinition } from "../../services/session/index.js";
 import { SESSIONS_DIR } from "../../config/paths.js";
-import { resolveExecutable } from "../../utils/resolve-executable.js";
+import { resolveNode, resolveClaude } from "../../utils/resolve-executable.js";
 import type { SessionService } from "../../services/session/index.js";
 import type { Project } from "../../types/config.types.js";
 
@@ -343,9 +343,9 @@ async function spawnArtifactChatSession(
     prompt,
   ];
 
-  const claudePath: string = resolveExecutable("claude") ?? "claude";
+  const { claudePath, claudePrependArgs } = resolveClaude(resolveNode());
 
-  const proc = pty.spawn(claudePath, args, {
+  const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
     name: "xterm-256color",
     cols: 120,
     rows: 40,
