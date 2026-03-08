@@ -120,6 +120,14 @@ export class P4Provider implements IVCSProvider {
       encoding: "utf-8",
     });
 
+    if (existsResult.error) {
+      throw new Error(`p4 binary not found or failed to spawn: ${existsResult.error.message}`);
+    }
+
+    if (existsResult.status !== 0 && !existsResult.stdout?.trim()) {
+      throw new Error(`Failed to check P4 workspace existence: ${existsResult.stderr || '(no error detail)'}`);
+    }
+
     if (existsResult.stdout && existsResult.stdout.trim().length > 0) {
       console.log(`[P4Provider] Workspace ${workspaceName} already exists; reusing.`);
       return {
@@ -156,10 +164,10 @@ export class P4Provider implements IVCSProvider {
     });
 
     if (createResult.status !== 0) {
-      const stderr = createResult.stderr ?? "";
-      throw new Error(
-        `[P4Provider] Failed to create workspace ${workspaceName}: ${stderr}`
-      );
+      // Clean up the directory created by fs.mkdir to avoid orphaned state
+      await fs.rm(workspaceRootPath, { recursive: true, force: true }).catch(() => {});
+      const stderr = createResult.stderr || createResult.error?.message || '(no error detail)';
+      throw new Error(`Failed to create P4 workspace ${workspaceName}: ${stderr}`);
     }
 
     console.log(`[P4Provider] Workspace ${workspaceName} created successfully.`);
@@ -211,8 +219,8 @@ export class P4Provider implements IVCSProvider {
       ["-c", workspaceName, "revert", "-k", "//..."],
       { encoding: "utf-8" }
     );
-    if (revertResult.status !== 0 && revertResult.stderr) {
-      const msg = `[P4Provider] ${operation}: revert failed for ${workspaceName}: ${revertResult.stderr}`;
+    if (revertResult.status !== 0 || revertResult.error) {
+      const msg = `[P4Provider] ${operation}: revert failed for ${workspaceName}: ${revertResult.stderr || revertResult.error?.message || `exit ${revertResult.status}`}`;
       console.warn(msg);
       errors.push(msg);
     }
@@ -221,8 +229,8 @@ export class P4Provider implements IVCSProvider {
     const deleteResult = spawnSync("p4", ["client", "-d", "-f", workspaceName], {
       encoding: "utf-8",
     });
-    if (deleteResult.status !== 0 && deleteResult.stderr) {
-      const msg = `[P4Provider] ${operation}: client delete failed for ${workspaceName}: ${deleteResult.stderr}`;
+    if (deleteResult.status !== 0 || deleteResult.error) {
+      const msg = `[P4Provider] ${operation}: client delete failed for ${workspaceName}: ${deleteResult.stderr || deleteResult.error?.message || `exit ${deleteResult.status}`}`;
       console.warn(msg);
       errors.push(msg);
     }
