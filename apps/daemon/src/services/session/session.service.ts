@@ -1,6 +1,5 @@
-import { execSync } from "child_process";
 import fs from "fs/promises";
-import { createWriteStream, createReadStream, existsSync } from "fs";
+import { createWriteStream, createReadStream } from "fs";
 import path from "path";
 import crypto from "crypto";
 import readline from "readline";
@@ -10,6 +9,7 @@ import { fileURLToPath } from "url";
 
 import { SESSIONS_DIR } from "../../config/paths.js";
 import { eventBus } from "../../utils/event-bus.js";
+import { resolveNode, resolveClaude } from "../../utils/resolve-executable.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -46,8 +46,9 @@ import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
 
 import type { ActiveSession } from "./types.js";
-import { ensureWorktree } from "./worktree.js";
 import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./phase-config.js";
+import { createVCSProvider } from "./vcs/factory.js";
+import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveModel } from "./model-resolver.js";
@@ -62,61 +63,10 @@ import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 
 /**
  * Resolve the Claude CLI executable path, cross-platform.
- * On Windows, npm installs claude as a .cmd wrapper; we find the underlying
- * Node.js script and run it directly via node to avoid cmd.exe escaping issues.
+ * Delegates to the shared resolveClaude utility.
  */
 function resolveClaudeExecutable(nodeExecutable: string): { claudePath: string; claudePrependArgs: string[] } {
-  // Try Unix 'which' first (works on macOS, Linux, and Git Bash on Windows)
-  try {
-    const found = execSync("which claude", { encoding: "utf-8" }).trim();
-    if (found) return { claudePath: found, claudePrependArgs: [] };
-  } catch { /* continue */ }
-
-  if (process.platform === "win32") {
-    // Try Windows 'where' command to find claude on PATH
-    try {
-      const results = execSync("where claude", { encoding: "utf-8" })
-        .trim()
-        .split(/\r?\n/)
-        .map((p) => p.trim())
-        .filter(Boolean);
-
-      // Prefer .exe if available (native/standalone installer)
-      const exePath = results.find((p) => /\.exe$/i.test(p));
-      if (exePath && existsSync(exePath)) {
-        return { claudePath: exePath, claudePrependArgs: [] };
-      }
-
-      // .cmd found (npm global install) — find the underlying JS entry point
-      const cmdPath = results[0];
-      if (cmdPath && existsSync(cmdPath)) {
-        const npmBinDir = path.dirname(cmdPath);
-        const jsPath = path.join(npmBinDir, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
-        if (existsSync(jsPath)) {
-          return { claudePath: nodeExecutable, claudePrependArgs: [jsPath] };
-        }
-      }
-    } catch { /* where command failed */ }
-
-    // Fallback: check APPDATA/npm (common npm global install location)
-    const appData = process.env.APPDATA;
-    if (appData) {
-      const jsPath = path.join(appData, "npm", "node_modules", "@anthropic-ai", "claude-code", "cli.js");
-      if (existsSync(jsPath)) {
-        return { claudePath: nodeExecutable, claudePrependArgs: [jsPath] };
-      }
-    }
-
-    // Last resort — hope claude.exe is findable by the OS
-    return { claudePath: "claude", claudePrependArgs: [] };
-  }
-
-  // Unix fallback
-  const linuxFallback = path.join(process.env.HOME || "", ".local", "bin", "claude");
-  return {
-    claudePath: existsSync(linuxFallback) ? linuxFallback : "claude",
-    claudePrependArgs: [],
-  };
+  return resolveClaude(nodeExecutable);
 }
 
 export class SessionService {
@@ -354,6 +304,7 @@ export class SessionService {
     additionalDisallowedTools?: string[],
     model?: string,
     claudeResumeSessionId?: string,
+    additionalMcpServers?: Record<string, McpServerConfig>,
   ): string {
     // Save prompt for debugging (non-blocking)
     if (ticketId && phase) {
@@ -388,18 +339,7 @@ export class SessionService {
     const mcpProxyPath = path.join(__dirname, "..", "..", "mcp", "proxy.js");
 
     // Get full path to node (required when running under Electron where PATH may not include node)
-    let nodePath: string;
-    try {
-      nodePath = execSync("which node", { encoding: "utf-8" }).trim();
-    } catch {
-      // Fallback to common locations
-      const fallbacks = [
-        path.join(process.env.HOME || "", ".nvm", "versions", "node", "v22.14.0", "bin", "node"),
-        path.join(process.env.HOME || "", ".local", "bin", "node"),
-        "/usr/local/bin/node",
-      ];
-      nodePath = fallbacks.find((p) => existsSync(p)) || "node";
-    }
+    const nodePath = resolveNode();
 
     const mcpConfig = {
       mcpServers: {
@@ -412,6 +352,7 @@ export class SessionService {
             POTATO_BRAINSTORM_ID: brainstormId,
           },
         },
+        ...additionalMcpServers,
       },
     };
 
@@ -448,17 +389,23 @@ export class SessionService {
     const { claudePath, claudePrependArgs } = resolveClaudeExecutable(nodePath);
     console.log(`[spawnClaudeSession] Spawning ${agentType} at: ${claudePath}`);
 
+    const spawnProject = getProjectById(projectId);
+    const ptyEnv: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      POTATO_PROJECT_ID: projectId,
+      POTATO_TICKET_ID: ticketId,
+      POTATO_BRAINSTORM_ID: brainstormId,
+    };
+    if (spawnProject?.helixSwarmUrl) {
+      ptyEnv.HELIX_SWARM_URL = spawnProject.helixSwarmUrl;
+    }
+
     const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
       name: "xterm-256color",
       cols: 120,
       rows: 40,
       cwd: worktreePath,
-      env: {
-        ...process.env,
-        POTATO_PROJECT_ID: projectId,
-        POTATO_TICKET_ID: ticketId,
-        POTATO_BRAINSTORM_ID: brainstormId,
-      },
+      env: ptyEnv,
     });
 
     console.log(`[spawnClaudeSession] Claude PTY spawned, pid: ${proc.pid}`);
@@ -705,18 +652,7 @@ export class SessionService {
     const mcpProxyPath = path.join(__dirname, "..", "..", "mcp", "proxy.js");
 
     // Get full path to node (required when running under Electron where PATH may not include node)
-    let nodePath: string;
-    try {
-      nodePath = execSync("which node", { encoding: "utf-8" }).trim();
-    } catch {
-      // Fallback to common locations
-      const fallbacks = [
-        path.join(process.env.HOME || "", ".nvm", "versions", "node", "v22.14.0", "bin", "node"),
-        path.join(process.env.HOME || "", ".local", "bin", "node"),
-        "/usr/local/bin/node",
-      ];
-      nodePath = fallbacks.find((p) => existsSync(p)) || "node";
-    }
+    const nodePath = resolveNode();
 
     const mcpConfig = {
       mcpServers: {
@@ -902,12 +838,24 @@ export class SessionService {
     const images = await listTicketImages(projectId, ticketId);
 
     const project = getProjectById(projectId);
-    const branchPrefix = project?.branchPrefix || 'potato';
+    if (!project) throw new Error(`Project ${projectId} not found`);
 
-    const needsWorktree = await phaseRequiresIsolation(projectId, phase);
-    const worktreePath = needsWorktree
-      ? await ensureWorktree(projectPath, ticketId, branchPrefix)
-      : projectPath;
+    const provider = createVCSProvider(project);
+
+    const needsIsolation = await phaseRequiresIsolation(projectId, phase);
+    let worktreePath: string;
+    let workspaceLabel: string;
+    if (needsIsolation) {
+      const info = await provider.ensureWorkspace(ticketId);
+      worktreePath = info.workspacePath;
+      workspaceLabel = info.workspaceLabel;
+    } else {
+      worktreePath = projectPath;
+      workspaceLabel = ticketId;
+    }
+
+    const nodePath = resolveNode();
+    const additionalMcpServers = provider.getMcpServers(nodePath, projectId, ticketId);
 
     // Load agent definition
     const agentDefinition = await tryLoadAgentDefinition(projectId, agentWorker.source);
@@ -940,7 +888,7 @@ export class SessionService {
       ticketTitle: ticket.title,
       phase,
       worktreePath,
-      branchName: `${branchPrefix}/${ticketId}`,
+      branchName: workspaceLabel,
       startedAt: new Date().toISOString(),
       status: "running",
       agentType: agentWorker.source,
@@ -964,6 +912,8 @@ export class SessionService {
       0,
       agentWorker.disallowTools,
       resolvedModel ?? undefined,
+      undefined,
+      additionalMcpServers,
     );
   }
 
@@ -1030,11 +980,22 @@ export class SessionService {
       phase: ticket.phase,
     });
 
-    const branchPrefix = project.branchPrefix || "potato";
-    const needsWorktree = await phaseRequiresIsolation(projectId, ticket.phase);
-    const worktreePath = needsWorktree
-      ? await ensureWorktree(project.path, ticketId, branchPrefix)
-      : project.path;
+    const provider = createVCSProvider(project);
+
+    const needsIsolation = await phaseRequiresIsolation(projectId, ticket.phase);
+    let worktreePath: string;
+    let workspaceLabel: string;
+    if (needsIsolation) {
+      const info = await provider.ensureWorkspace(ticketId);
+      worktreePath = info.workspacePath;
+      workspaceLabel = info.workspaceLabel;
+    } else {
+      worktreePath = project.path;
+      workspaceLabel = ticketId;
+    }
+
+    const nodePath = resolveNode();
+    const additionalMcpServers = provider.getMcpServers(nodePath, projectId, ticketId);
 
     const meta: SessionMeta = {
       projectId,
@@ -1042,7 +1003,7 @@ export class SessionService {
       ticketTitle: ticket.title,
       phase: ticket.phase,
       worktreePath,
-      branchName: `${branchPrefix}/${ticketId}`,
+      branchName: workspaceLabel,
       startedAt: new Date().toISOString(),
       status: "running",
       agentType: "resume",
@@ -1068,6 +1029,7 @@ export class SessionService {
       undefined,
       undefined,
       claudeSessionId, // triggers --resume flag
+      additionalMcpServers,
     );
   }
 
