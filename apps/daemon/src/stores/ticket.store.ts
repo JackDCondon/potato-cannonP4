@@ -10,7 +10,7 @@ import {
 } from "./conversation.store.js";
 import { TASKS_DIR } from "../config/paths.js";
 import { ensureGlobalDir } from "./config.store.js";
-import { removeWorktreeAndBranch } from "../services/session/worktree.js";
+import { createVCSProvider } from "../services/session/vcs/factory.js";
 import { clearQuestion, clearResponse } from "./chat.store.js";
 import type {
   Ticket,
@@ -524,7 +524,13 @@ export async function archiveTicket(
     throw new Error(`Project ${projectId} not found`);
   }
 
-  const cleanup = await removeWorktreeAndBranch(project.path, ticketId, project.branchPrefix);
+  const provider = createVCSProvider(project);
+  const result = await provider.archiveWorkspace(ticketId);
+  const cleanup = {
+    worktreeRemoved: result.errors.length === 0,
+    branchRemoved: result.errors.length === 0,
+    errors: result.errors,
+  };
 
   return { ticket, cleanup };
 }
