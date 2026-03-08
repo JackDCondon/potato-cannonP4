@@ -14,7 +14,8 @@ digraph shelve {
     "Create numbered CL" -> "Move all open files into CL";
     "Move all open files into CL" -> "Verify no files outside CL";
     "Verify no files outside CL" -> "Shelve the CL";
-    "Shelve the CL" -> "Notify user";
+    "Shelve the CL" -> "Verify shelve succeeded";
+    "Verify shelve succeeded" -> "Notify user";
 }
 ```
 
@@ -43,9 +44,33 @@ Note the CL number returned — you will need it for all subsequent steps.
 
 ## Step 3: Move All Open Files Into the CL
 
-Use `p4_query_changelists` (action: `list`, status: `pending`) to list all pending changelists, including the default changelist, to identify any files opened outside the new numbered CL.
+First, query the default changelist to identify any files opened there:
 
-Then use `p4_modify_changelists` (action: `move_files`) to move all open files from the default changelist (and any other pending CLs) into the new numbered CL.
+```
+p4_query_changelists(action: "get", changelist_id: "default")
+```
+
+Collect the list of files from the default CL result.
+
+Then query any other pending numbered CLs (excluding the new one you just created):
+
+```
+p4_query_changelists(action: "list", status: "pending")
+```
+
+Note: The `list` action returns numbered pending CLs only — it does NOT include the default changelist, which is why you must query it separately above.
+
+For each source CL that has open files, collect its complete file list and move those files into the new numbered CL:
+
+```
+p4_modify_changelists(action: "move_files", changelist_id: {sourceClNumber}, file_paths: [...list of files from that CL...])
+```
+
+Do the same for files in the default changelist (use `changelist_id: "default"`):
+
+```
+p4_modify_changelists(action: "move_files", changelist_id: "default", file_paths: [...list of files from the default CL...])
+```
 
 Repeat until all open files belong to the single numbered CL.
 
@@ -61,30 +86,43 @@ Also check that no other stray pending CLs exist by listing pending changelists 
 
 Use `p4_modify_shelves` (action: `shelve`, changelist_id: `{clNumber}`) to shelve the changelist.
 
-Shelving copies the current state of all files in the CL to the Perforce server for others to review without submitting.
+Shelving copies the current state of all files in the CL to the Perforce server for others to review without submitting. The `file_paths` parameter may be omitted to shelve all files in the CL.
+
+**Verify the shelve succeeded** by checking the response from `p4_modify_shelves`. If the call returns an error or indicates no files were shelved:
+
+- Do NOT proceed to the notification step.
+- Use `chat_notify` to report the failure:
+  ```
+  chat_notify("⚠️ [Shelve Agent] Shelve of CL #{clNumber} failed. Error: {errorMessage}. Please check the changelist and retry.")
+  ```
+- Exit with a non-zero status to signal failure.
+
+Only proceed to Step 6 if the shelve call confirms success.
 
 ## Step 6: Notify the User
+
+Obtain the current workspace name from the P4 environment (e.g., the `P4CLIENT` environment variable or from a `p4_query_server` call).
 
 Check the `HELIX_SWARM_URL` environment variable:
 
 **If `HELIX_SWARM_URL` is set:**
 
-Use `potato:notify-user` with:
+Use `chat_notify` with:
 ```
 ## Shelve Complete — CL #{clNumber}
 
-All changes have been shelved in CL #{clNumber} and are ready for review.
+All changes have been shelved in CL #{clNumber} (workspace: {workspaceName}) and are ready for review.
 
 **Swarm Review:** {HELIX_SWARM_URL}/reviews/{clNumber}
 ```
 
 **If `HELIX_SWARM_URL` is not set:**
 
-Use `potato:notify-user` with:
+Use `chat_notify` with:
 ```
 ## Shelve Complete — CL #{clNumber}
 
-All changes have been shelved in CL #{clNumber} and are ready for review.
+All changes have been shelved in CL #{clNumber} (workspace: {workspaceName}) and are ready for review.
 
 To review or submit:
 - Open P4V and navigate to the Pending Changelists view
@@ -104,6 +142,7 @@ These thoughts mean you're about to create a bad shelve:
 | "The default CL is probably empty" | Check it. Verify explicitly. |
 | "I'll shelve with files still in default" | Move them first. The CL must be complete. |
 | "HELIX_SWARM_URL might be set" | Check the environment. Don't assume. |
+| "The shelve probably worked" | Check the response. Verify explicitly. |
 
 ## Checklist
 
@@ -111,11 +150,17 @@ Before calling `p4_modify_shelves`, verify:
 
 - [ ] Read artifacts via `potato:read-artifacts`
 - [ ] Created a new numbered CL with a descriptive message referencing the ticket
-- [ ] Moved all open files into the numbered CL
+- [ ] Queried the default CL explicitly with `action: get, changelist_id: "default"`
+- [ ] Moved all open files into the numbered CL (passing `file_paths` for each source CL)
 - [ ] Confirmed default CL has zero open files
 - [ ] Confirmed no other pending CLs have open files
 
-**If any box is unchecked, you are not ready to shelve.**
+After calling `p4_modify_shelves`, verify:
+
+- [ ] Shelve call returned success (no error)
+- [ ] Only then proceed to notify the user
+
+**If any box is unchecked, you are not ready to proceed.**
 
 ## Output
 
@@ -123,4 +168,5 @@ Return:
 
 - CL number
 - Number of files shelved
+- Workspace name
 - Swarm review URL (if available) or manual review instructions
