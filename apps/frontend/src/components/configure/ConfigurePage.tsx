@@ -49,10 +49,35 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
   const [branchPrefix, setBranchPrefix] = useState('potato')
   const [branchPrefixError, setBranchPrefixError] = useState<string | null>(null)
 
+  // Perforce fields
+  const [p4Stream, setP4Stream] = useState('')
+  const [p4StreamError, setP4StreamError] = useState<string | null>(null)
+  const [agentWorkspaceRoot, setAgentWorkspaceRoot] = useState('')
+  const [agentWorkspaceRootError, setAgentWorkspaceRootError] = useState<string | null>(null)
+  const [helixSwarmUrl, setHelixSwarmUrl] = useState('')
+  const [helixSwarmUrlError, setHelixSwarmUrlError] = useState<string | null>(null)
+
   // Validate branch prefix (git-safe characters only)
   const isValidBranchPrefix = (prefix: string): boolean => {
     if (!prefix) return true
     return /^[a-zA-Z0-9/_-]+$/.test(prefix)
+  }
+
+  // Validate P4 stream (must start with //)
+  const isValidP4Stream = (stream: string): boolean => {
+    if (!stream) return true
+    return stream.startsWith('//')
+  }
+
+  // Validate URL format (http/https)
+  const isValidUrl = (url: string): boolean => {
+    if (!url) return true
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    } catch {
+      return false
+    }
   }
 
   // Dialog states
@@ -73,6 +98,14 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
       setSelectedTemplate(project.template?.name || '')
       setBranchPrefix(project.branchPrefix || 'potato')
       setBranchPrefixError(null)
+      // P4 fields — pre-fill from project data; suggestedP4Stream populates stream if not yet set
+      const streamValue = project.p4Stream || project.suggestedP4Stream || ''
+      setP4Stream(streamValue)
+      setP4StreamError(null)
+      setAgentWorkspaceRoot(project.agentWorkspaceRoot || '')
+      setAgentWorkspaceRootError(null)
+      setHelixSwarmUrl(project.helixSwarmUrl || '')
+      setHelixSwarmUrlError(null)
     }
   }, [project])
 
@@ -114,6 +147,90 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
 
   // Save branch prefix on Enter
   const handleBranchPrefixKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur()
+    }
+  }, [])
+
+  // Handle P4 stream change with validation
+  const handleP4StreamChange = useCallback((value: string) => {
+    setP4Stream(value)
+    if (!isValidP4Stream(value)) {
+      setP4StreamError('P4 Stream must start with //')
+    } else {
+      setP4StreamError(null)
+    }
+    // Validate agent workspace root when stream changes
+    if (value && !agentWorkspaceRoot) {
+      setAgentWorkspaceRootError('Agent Workspace Root is required when P4 Stream is set')
+    } else {
+      setAgentWorkspaceRootError(null)
+    }
+  }, [agentWorkspaceRoot])
+
+  // Save P4 stream on blur
+  const handleP4StreamBlur = useCallback(() => {
+    if (!project) return
+    if (p4StreamError) return
+    const newStream = p4Stream.trim()
+    if (newStream !== (project.p4Stream || '')) {
+      updateProject.mutate({ id: projectId, updates: { p4Stream: newStream || undefined } })
+    }
+  }, [p4Stream, p4StreamError, project, projectId, updateProject])
+
+  const handleP4StreamKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur()
+    }
+  }, [])
+
+  // Handle agent workspace root change with validation
+  const handleAgentWorkspaceRootChange = useCallback((value: string) => {
+    setAgentWorkspaceRoot(value)
+    if (p4Stream && !value) {
+      setAgentWorkspaceRootError('Agent Workspace Root is required when P4 Stream is set')
+    } else {
+      setAgentWorkspaceRootError(null)
+    }
+  }, [p4Stream])
+
+  // Save agent workspace root on blur
+  const handleAgentWorkspaceRootBlur = useCallback(() => {
+    if (!project) return
+    if (agentWorkspaceRootError) return
+    const newRoot = agentWorkspaceRoot.trim()
+    if (newRoot !== (project.agentWorkspaceRoot || '')) {
+      updateProject.mutate({ id: projectId, updates: { agentWorkspaceRoot: newRoot || undefined } })
+    }
+  }, [agentWorkspaceRoot, agentWorkspaceRootError, project, projectId, updateProject])
+
+  const handleAgentWorkspaceRootKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur()
+    }
+  }, [])
+
+  // Handle Helix Swarm URL change with validation
+  const handleHelixSwarmUrlChange = useCallback((value: string) => {
+    setHelixSwarmUrl(value)
+    if (!isValidUrl(value)) {
+      setHelixSwarmUrlError('Helix Swarm URL must be a valid http or https URL')
+    } else {
+      setHelixSwarmUrlError(null)
+    }
+  }, [])
+
+  // Save Helix Swarm URL on blur
+  const handleHelixSwarmUrlBlur = useCallback(() => {
+    if (!project) return
+    if (helixSwarmUrlError) return
+    const newUrl = helixSwarmUrl.trim()
+    if (newUrl !== (project.helixSwarmUrl || '')) {
+      updateProject.mutate({ id: projectId, updates: { helixSwarmUrl: newUrl || undefined } })
+    }
+  }, [helixSwarmUrl, helixSwarmUrlError, project, projectId, updateProject])
+
+  const handleHelixSwarmUrlKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.currentTarget.blur()
     }
@@ -194,7 +311,8 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
           />
         </SettingsSection>
 
-        {/* Branch Prefix */}
+        {/* Branch Prefix — hidden when using Perforce */}
+        {!p4Stream && (
         <SettingsSection
           title="Branch Prefix"
           description="Custom prefix for git branches created by tickets. The ticket ID will be appended after a slash."
@@ -217,13 +335,14 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
             )}
           </div>
         </SettingsSection>
+        )}
 
         {/* Template */}
         <SettingsSection
           title="Template"
           description="The workflow template used for this project. Changing the template will reset the project phases."
         >
-          <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
+          <Select value={selectedTemplate || (p4Stream ? 'product-development-p4' : '')} onValueChange={handleTemplateChange}>
             <SelectTrigger className="max-w-md">
               <SelectValue placeholder="Select a template" />
             </SelectTrigger>
@@ -277,6 +396,72 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
             disabled={updateProject.isPending}
             projectColor={color}
           />
+        </SettingsSection>
+
+        {/* Perforce */}
+        <SettingsSection
+          title="Perforce"
+          description="Perforce (P4) VCS settings. Set the stream depot path to use Perforce-managed workspaces instead of Git branches."
+        >
+          <div className="space-y-4 max-w-md">
+            {/* P4 Stream */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">P4 Stream</label>
+              <Input
+                value={p4Stream}
+                onChange={(e) => handleP4StreamChange(e.target.value)}
+                onBlur={handleP4StreamBlur}
+                onKeyDown={handleP4StreamKeyDown}
+                placeholder="//depot/main"
+              />
+              {p4StreamError ? (
+                <p className="text-sm text-accent-red">{p4StreamError}</p>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  Perforce stream depot path (must start with //)
+                </p>
+              )}
+            </div>
+            {/* Agent Workspace Root */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">
+                Agent Workspace Root
+                {p4Stream && <span className="ml-1 text-accent-red">*</span>}
+              </label>
+              <Input
+                value={agentWorkspaceRoot}
+                onChange={(e) => handleAgentWorkspaceRootChange(e.target.value)}
+                onBlur={handleAgentWorkspaceRootBlur}
+                onKeyDown={handleAgentWorkspaceRootKeyDown}
+                placeholder="/home/agent/workspaces"
+              />
+              {agentWorkspaceRootError ? (
+                <p className="text-sm text-accent-red">{agentWorkspaceRootError}</p>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  Root directory for P4 agent workspaces{p4Stream ? ' (required)' : ' (required when P4 Stream is set)'}
+                </p>
+              )}
+            </div>
+            {/* Helix Swarm URL */}
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text-primary">Helix Swarm URL</label>
+              <Input
+                value={helixSwarmUrl}
+                onChange={(e) => handleHelixSwarmUrlChange(e.target.value)}
+                onBlur={handleHelixSwarmUrlBlur}
+                onKeyDown={handleHelixSwarmUrlKeyDown}
+                placeholder="https://swarm.example.com"
+              />
+              {helixSwarmUrlError ? (
+                <p className="text-sm text-accent-red">{helixSwarmUrlError}</p>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  Optional: Helix Swarm code review server URL
+                </p>
+              )}
+            </div>
+          </div>
         </SettingsSection>
 
         {/* Danger Zone */}

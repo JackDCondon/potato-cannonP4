@@ -14,4 +14,8 @@ export interface Project {
   swimlaneColors?: Record<string, string>
   branchPrefix?: string
   folderId?: string | null
+  p4Stream?: string
+  agentWorkspaceRoot?: string
+  helixSwarmUrl?: string
+  suggestedP4Stream?: string
 }
