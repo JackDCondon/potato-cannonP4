@@ -1,5 +1,7 @@
 // src/services/session/worker-executor.ts
 
+import fs from "fs";
+import { spawnSync } from "child_process";
 import type { TicketPhase } from "../../types/ticket.types.js";
 import type {
   Phase,
@@ -40,8 +42,9 @@ import {
   handleTaskWorkersComplete,
   buildTaskContext,
 } from "./loops/task-loop.js";
-import { getPhaseConfig, getNextEnabledPhase } from "./phase-config.js";
+import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./phase-config.js";
 import { updateTicket } from "../../stores/ticket.store.js";
+import { getProjectById } from "../../stores/project.store.js";
 import { readQuestion, clearQuestion } from "../../stores/chat.store.js";
 import { updateTaskStatus } from "../../stores/task.store.js";
 import { logToDaemon } from "./ticket-logger.js";
@@ -232,6 +235,53 @@ function getNestedCurrentWorker(
 }
 
 /**
+ * Validate P4 prerequisites before starting an isolation phase.
+ * Returns an error message string if validation fails, or null if all checks pass.
+ * Skips validation entirely for Git projects (no p4Stream set).
+ */
+async function validateP4Prerequisites(projectId: string): Promise<string | null> {
+  const project = await getProjectById(projectId);
+
+  // Git project — skip P4 validation
+  if (!project?.p4Stream) {
+    return null;
+  }
+
+  // Check 1: p4Stream non-empty
+  if (!project.p4Stream.trim()) {
+    return "P4 pre-build validation failed: project p4Stream is empty.";
+  }
+
+  // Check 2: agentWorkspaceRoot non-empty
+  if (!project.agentWorkspaceRoot || !project.agentWorkspaceRoot.trim()) {
+    return "P4 pre-build validation failed: project agentWorkspaceRoot is not set.";
+  }
+
+  // Check 3: agentWorkspaceRoot directory exists or is creatable
+  const workspaceRoot = project.agentWorkspaceRoot;
+  try {
+    fs.accessSync(workspaceRoot, fs.constants.F_OK);
+  } catch {
+    // Directory does not exist — try to create it
+    try {
+      fs.mkdirSync(workspaceRoot, { recursive: true });
+    } catch (mkdirErr) {
+      return `P4 pre-build validation failed: agentWorkspaceRoot "${workspaceRoot}" does not exist and could not be created: ${(mkdirErr as Error).message}`;
+    }
+  }
+
+  // Check 4: P4 CLI on PATH and server reachable
+  const p4Result = spawnSync("p4", ["info"], { encoding: "utf-8" });
+  if (p4Result.status !== 0) {
+    const stderr = p4Result.stderr?.trim() || "";
+    const detail = stderr || (p4Result.error ? p4Result.error.message : "non-zero exit code");
+    return `P4 pre-build validation failed: "p4 info" exited with error — ${detail}. Ensure the P4 CLI is on PATH and the Perforce server is reachable.`;
+  }
+
+  return null;
+}
+
+/**
  * Start execution of a phase
  */
 export async function startPhase(
@@ -250,6 +300,17 @@ export async function startPhase(
   // Clear any stale pending question from a previous suspended session
   // This prevents a new phase execution from being misidentified as suspended on exit
   await clearQuestion(projectId, ticketId);
+
+  // Run P4 pre-build validation for isolation phases
+  const needsIsolation = await phaseRequiresIsolation(projectId, phase);
+  if (needsIsolation) {
+    const validationError = await validateP4Prerequisites(projectId);
+    if (validationError) {
+      await logToDaemon(projectId, ticketId, `P4 pre-build validation failed: ${validationError}`);
+      await callbacks.onTicketBlocked(projectId, ticketId, validationError);
+      return null;
+    }
+  }
 
   // Validate phase
   validatePhaseWorkers(phaseConfig);
