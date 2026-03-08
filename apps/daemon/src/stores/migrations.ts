@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 7;
+const CURRENT_SCHEMA_VERSION = 8;
 
 /**
  * Run database migrations.
@@ -35,6 +35,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 7) {
     migrateV7(db);
+  }
+
+  if (version < 8) {
+    migrateV8(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -398,5 +402,23 @@ function migrateV7(db: Database.Database): void {
   const hasFolderId = columns.some((col) => col.name === 'folder_id');
   if (!hasFolderId) {
     db.exec(`ALTER TABLE projects ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`);
+  }
+}
+
+/**
+ * V8: Add Perforce project configuration columns to projects table
+ */
+function migrateV8(db: Database.Database): void {
+  const columns = db.pragma('table_info(projects)') as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has('p4_stream')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_stream TEXT`);
+  }
+  if (!columnNames.has('agent_workspace_root')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN agent_workspace_root TEXT`);
+  }
+  if (!columnNames.has('helix_swarm_url')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN helix_swarm_url TEXT`);
   }
 }

@@ -114,12 +114,13 @@ export async function getNextEnabledPhase(
 }
 
 /**
- * Check if a phase requires a worktree.
+ * Check if a phase requires VCS workspace isolation.
+ * Checks requiresIsolation first, falls back to deprecated requiresWorktree.
  */
-export async function phaseRequiresWorktree(
+export async function phaseRequiresIsolation(
   projectId: string,
   phaseName: string
 ): Promise<boolean> {
   const phase = await getPhaseConfig(projectId, phaseName);
-  return phase?.requiresWorktree || false;
+  return phase?.requiresIsolation ?? phase?.requiresWorktree ?? false;
 }

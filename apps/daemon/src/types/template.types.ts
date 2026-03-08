@@ -49,7 +49,9 @@ export interface Phase {
   description: string;
   workers: Worker[];
   transitions: Transitions;
+  /** @deprecated Use requiresIsolation instead */
   requiresWorktree?: boolean;
+  requiresIsolation?: boolean;
 }
 
 // Template types
@@ -58,6 +60,8 @@ export interface WorkflowTemplate {
   description: string;
   version: string; // Semver format "1.0.0"
   phases: Phase[];
+  /** Optional parent template name for agent prompt fallback lookup */
+  parentTemplate?: string;
 }
 
 export interface TemplateRegistryEntry {

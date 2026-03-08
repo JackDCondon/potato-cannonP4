@@ -47,7 +47,7 @@ import type { TaskContext } from "../../types/orchestration.types.js";
 
 import type { ActiveSession } from "./types.js";
 import { ensureWorktree } from "./worktree.js";
-import { getPhaseConfig, phaseRequiresWorktree, getNextEnabledPhase } from "./phase-config.js";
+import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./phase-config.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveModel } from "./model-resolver.js";
@@ -904,7 +904,7 @@ export class SessionService {
     const project = getProjectById(projectId);
     const branchPrefix = project?.branchPrefix || 'potato';
 
-    const needsWorktree = await phaseRequiresWorktree(projectId, phase);
+    const needsWorktree = await phaseRequiresIsolation(projectId, phase);
     const worktreePath = needsWorktree
       ? await ensureWorktree(projectPath, ticketId, branchPrefix)
       : projectPath;
@@ -1031,7 +1031,7 @@ export class SessionService {
     });
 
     const branchPrefix = project.branchPrefix || "potato";
-    const needsWorktree = await phaseRequiresWorktree(projectId, ticket.phase);
+    const needsWorktree = await phaseRequiresIsolation(projectId, ticket.phase);
     const worktreePath = needsWorktree
       ? await ensureWorktree(project.path, ticketId, branchPrefix)
       : project.path;

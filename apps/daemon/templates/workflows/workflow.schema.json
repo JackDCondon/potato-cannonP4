@@ -54,7 +54,12 @@
         },
         "requiresWorktree": {
           "type": "boolean",
-          "description": "Whether this phase requires a git worktree",
+          "description": "Whether this phase requires a git worktree (deprecated, use requiresIsolation)",
+          "default": false
+        },
+        "requiresIsolation": {
+          "type": "boolean",
+          "description": "Whether this phase requires VCS workspace isolation",
           "default": false
         }
       }
