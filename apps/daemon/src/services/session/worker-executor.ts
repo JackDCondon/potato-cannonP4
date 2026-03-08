@@ -239,8 +239,8 @@ function getNestedCurrentWorker(
  * Returns an error message string if validation fails, or null if all checks pass.
  * Skips validation entirely for Git projects (no p4Stream set).
  */
-async function validateP4Prerequisites(projectId: string): Promise<string | null> {
-  const project = await getProjectById(projectId);
+export function validateP4Prerequisites(projectId: string): string | null {
+  const project = getProjectById(projectId);
 
   // Git project — skip P4 validation
   if (!project?.p4Stream) {
@@ -304,9 +304,9 @@ export async function startPhase(
   // Run P4 pre-build validation for isolation phases
   const needsIsolation = await phaseRequiresIsolation(projectId, phase);
   if (needsIsolation) {
-    const validationError = await validateP4Prerequisites(projectId);
+    const validationError = validateP4Prerequisites(projectId);
     if (validationError) {
-      await logToDaemon(projectId, ticketId, `P4 pre-build validation failed: ${validationError}`);
+      await logToDaemon(projectId, ticketId, validationError);
       await callbacks.onTicketBlocked(projectId, ticketId, validationError);
       return null;
     }
