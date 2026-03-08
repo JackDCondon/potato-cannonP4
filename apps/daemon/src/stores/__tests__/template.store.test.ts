@@ -1,12 +1,15 @@
 import { describe, it, beforeEach, before, after } from "node:test";
 import assert from "node:assert";
 import fs from "fs";
+import fsPromises from "fs/promises";
 import path from "path";
 import os from "os";
 import Database from "better-sqlite3";
 
 import { runMigrations } from "../migrations.js";
 import { createTemplateStore, TemplateStore } from "../template.store.js";
+import { initDatabase, getDatabase } from "../db.js";
+import { createProjectStore } from "../project.store.js";
 
 describe("TemplateStore", () => {
   let db: Database.Database;
@@ -452,6 +455,160 @@ describe("getAgentPromptForProject override lookup chain", () => {
 
     // This confirms that hasProjectAgentOverride safely returns false when the project
     // or override file doesn't exist, allowing the fallback chain to continue
+  });
+});
+
+describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
+  // These tests exercise the level-4 parentTemplate fallback in getAgentPromptForProject.
+  // The function reads from the global DB (singleton) and from TEMPLATES_DIR on disk,
+  // so we set up real files in ~/.potato-cannon/templates/ and a real project row.
+
+  const homeDir = os.homedir();
+  const templatesDir = path.join(homeDir, ".potato-cannon", "templates");
+  const suffix = Date.now();
+  const childTemplateName = `test-child-${suffix}`;
+  const parentTemplateName = `test-parent-${suffix}`;
+  const noParentTemplateName = `test-noparent-${suffix}`;
+  const agentPath = "agents/spec.md";
+  const agentContent = "# Parent Agent Prompt";
+
+  let projectWithParent: { id: string };
+  let projectNoParent: { id: string };
+  let db: Database.Database;
+
+  before(async () => {
+    // Initialize global singleton DB (uses ~/.potato-cannon/potato.db)
+    initDatabase();
+    db = getDatabase();
+    const projectStore = createProjectStore(db);
+
+    // Create project that uses the child template (which has a parentTemplate)
+    projectWithParent = projectStore.createProject({
+      displayName: `Test Parent Fallback ${suffix}`,
+      path: "/tmp/test-parent-fallback",
+      templateName: childTemplateName,
+      templateVersion: "1.0.0",
+    });
+
+    // Create project that uses a template with no parentTemplate configured
+    projectNoParent = projectStore.createProject({
+      displayName: `Test No Parent ${suffix}`,
+      path: "/tmp/test-no-parent",
+      templateName: noParentTemplateName,
+      templateVersion: "1.0.0",
+    });
+
+    // Set up child template: workflow.json references parentTemplate
+    const childDir = path.join(templatesDir, childTemplateName, "agents");
+    fs.mkdirSync(childDir, { recursive: true });
+    const childWorkflow = {
+      name: childTemplateName,
+      version: "1.0.0",
+      description: "Child template for testing",
+      parentTemplate: parentTemplateName,
+      phases: [],
+    };
+    fs.writeFileSync(
+      path.join(templatesDir, childTemplateName, "workflow.json"),
+      JSON.stringify(childWorkflow, null, 2)
+    );
+    // child template does NOT have agents/spec.md — so level-3 (global) fails
+
+    // Set up parent template: has the agent file
+    const parentDir = path.join(templatesDir, parentTemplateName, "agents");
+    fs.mkdirSync(parentDir, { recursive: true });
+    fs.writeFileSync(path.join(parentDir, "spec.md"), agentContent);
+    // parent workflow.json (optional, for completeness)
+    const parentWorkflow = {
+      name: parentTemplateName,
+      version: "1.0.0",
+      description: "Parent template for testing",
+      phases: [],
+    };
+    fs.writeFileSync(
+      path.join(templatesDir, parentTemplateName, "workflow.json"),
+      JSON.stringify(parentWorkflow, null, 2)
+    );
+
+    // Set up no-parent template: workflow.json with no parentTemplate, no agent file
+    const noParentWorkflowDir = path.join(templatesDir, noParentTemplateName);
+    fs.mkdirSync(path.join(noParentWorkflowDir, "agents"), { recursive: true });
+    const noParentWorkflow = {
+      name: noParentTemplateName,
+      version: "1.0.0",
+      description: "Template with no parent",
+      phases: [],
+    };
+    fs.writeFileSync(
+      path.join(noParentWorkflowDir, "workflow.json"),
+      JSON.stringify(noParentWorkflow, null, 2)
+    );
+    // no agent file here either
+  });
+
+  after(async () => {
+    // Clean up projects from DB
+    if (db) {
+      db.prepare("DELETE FROM projects WHERE id = ?").run(projectWithParent.id);
+      db.prepare("DELETE FROM projects WHERE id = ?").run(projectNoParent.id);
+    }
+    // Clean up template directories
+    await fsPromises.rm(path.join(templatesDir, childTemplateName), { recursive: true, force: true }).catch(() => {});
+    await fsPromises.rm(path.join(templatesDir, parentTemplateName), { recursive: true, force: true }).catch(() => {});
+    await fsPromises.rm(path.join(templatesDir, noParentTemplateName), { recursive: true, force: true }).catch(() => {});
+  });
+
+  it("parent template hit — level-4 getAgentPrompt succeeds and returns the prompt", async () => {
+    const { getAgentPromptForProject } = await import("../template.store.js");
+
+    // The child template has no agents/spec.md, so level-3 fails.
+    // The child workflow.json has parentTemplate set, so level-4 tries the parent template.
+    // The parent template has agents/spec.md, so it should return the content.
+    const result = await getAgentPromptForProject(projectWithParent.id, agentPath);
+    assert.strictEqual(result, agentContent);
+  });
+
+  it("parent template miss — level-4 inner catch fires and throws chained error", async () => {
+    const { getAgentPromptForProject } = await import("../template.store.js");
+
+    // Remove the parent agent file to force the parent template lookup to fail
+    const parentAgentFile = path.join(templatesDir, parentTemplateName, "agents", "spec.md");
+    const originalContent = fs.readFileSync(parentAgentFile, "utf-8");
+    fs.unlinkSync(parentAgentFile);
+
+    try {
+      await assert.rejects(
+        async () => getAgentPromptForProject(projectWithParent.id, agentPath),
+        (err: Error) => {
+          assert.ok(err instanceof Error);
+          assert.ok(
+            err.message.includes("not found in template chain") &&
+            err.message.includes(childTemplateName) &&
+            err.message.includes(parentTemplateName),
+            `Expected chained error, got: ${err.message}`
+          );
+          return true;
+        }
+      );
+    } finally {
+      // Restore the file for any subsequent tests
+      fs.writeFileSync(parentAgentFile, originalContent);
+    }
+  });
+
+  it("no parentTemplate configured — throws Agent not found in template chain", async () => {
+    const { getAgentPromptForProject } = await import("../template.store.js");
+
+    // noParentTemplateName has no parentTemplate in workflow.json and no agent file.
+    // Level-3 (global) fails, workflow.parentTemplate is falsy, so throws generic error.
+    await assert.rejects(
+      async () => getAgentPromptForProject(projectNoParent.id, agentPath),
+      (err: Error) => {
+        assert.ok(err instanceof Error);
+        assert.strictEqual(err.message, `Agent ${agentPath} not found in template chain`);
+        return true;
+      }
+    );
   });
 });
 
