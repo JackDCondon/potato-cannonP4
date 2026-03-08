@@ -354,11 +354,9 @@ export function registerProjectRoutes(
       if (effectiveTemplate) {
         const catalogTemplate = await getTemplate(effectiveTemplate);
         if (catalogTemplate) {
-          const version = typeof catalogTemplate.version === "number"
-            ? `${catalogTemplate.version}.0.0`
-            : catalogTemplate.version;
-          updateProjectTemplate(id, effectiveTemplate, version);
-          // Copy template files to project if not already present
+          // Copy template files to project if not already present, then record version.
+          // Do NOT write DB version unconditionally — if files already exist, preserve
+          // the local version so upgrade-detection stays accurate.
           if (!(await hasProjectTemplate(id))) {
             try {
               const copied = await copyTemplateToProject(id, effectiveTemplate);

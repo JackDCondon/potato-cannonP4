@@ -191,7 +191,7 @@
     {
       "id": "Shelve",
       "name": "Shelve",
-      "description": "Shelve changes for review in Perforce",
+      "description": "Shelve changelist for review",
       "workers": [
         {
           "id": "shelve-agent",
