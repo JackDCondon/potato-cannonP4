@@ -711,12 +711,13 @@ export async function getTemplateWithFullPhasesForProject(
 }
 
 /**
- * Get agent prompt for a project, preferring override > local > global.
+ * Get agent prompt for a project, preferring override > local > global > parentTemplate.
  *
  * Lookup order:
  * 1. Project override: agents/{agentType}.override.md
  * 2. Project standard: agents/{agentType}.md
  * 3. Global catalog: templates/{templateName}/agents/{agentType}.md
+ * 4. Parent template: templates/{workflow.parentTemplate}/agents/{agentType}.md
  */
 export async function getAgentPromptForProject(
   projectId: string,
@@ -745,7 +746,23 @@ export async function getAgentPromptForProject(
   if (!project?.template) {
     throw new Error(`Project ${projectId} has no template assigned`);
   }
-  return getAgentPrompt(project.template.name, agentPath);
+  try {
+    return await getAgentPrompt(project.template.name, agentPath);
+  } catch {
+    // Fall through to parent template lookup
+  }
+
+  // 4. Fall back to parent template defined in workflow.parentTemplate
+  const workflow = await getWorkflow(project.template.name);
+  if (workflow?.parentTemplate) {
+    try {
+      return await getAgentPrompt(workflow.parentTemplate, agentPath);
+    } catch {
+      throw new Error(`Agent ${agentPath} not found in template chain for ${project.template.name} or its parent ${workflow.parentTemplate}`);
+    }
+  }
+
+  throw new Error(`Agent ${agentPath} not found in template chain`);
 }
 
 // ============================================================================
