@@ -525,11 +525,14 @@ export async function archiveTicket(
   }
 
   const provider = createVCSProvider(project);
-  const result = await provider.archiveWorkspace(ticketId);
+  const cleanupResult = await provider.archiveWorkspace(ticketId);
+  if (cleanupResult.errors.length > 0) {
+    console.warn(`[ticket] archiveWorkspace warnings for ${ticketId}:`, cleanupResult.errors);
+  }
   const cleanup = {
-    worktreeRemoved: result.errors.length === 0,
-    branchRemoved: result.errors.length === 0,
-    errors: result.errors,
+    worktreeRemoved: cleanupResult.errors.length === 0,
+    branchRemoved: false,
+    errors: cleanupResult.errors,
   };
 
   return { ticket, cleanup };
