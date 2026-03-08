@@ -88,8 +88,8 @@ export async function restartToPhase(
   if (project) {
     const provider = createVCSProvider(project);
     const resetResult = await provider.resetWorkspace(ticketId);
-    worktreeRemoved = resetResult.errors.length === 0; // true if P4 workspace reset without errors
-    branchRenamed = null; // P4 has no branch to rename; frontend must handle null gracefully
+    worktreeRemoved = resetResult.errors.length === 0; // true if workspace reset without errors
+    branchRenamed = resetResult.newBranchName ?? null; // populated for Git; null for P4
 
     if (resetResult.errors.length > 0) {
       console.warn(`[restart] Worktree cleanup warnings: ${resetResult.errors.join(", ")}`);

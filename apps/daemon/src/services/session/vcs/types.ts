@@ -19,8 +19,10 @@ export interface WorkspaceInfo {
  * Result from workspace cleanup operations (archive/reset).
  */
 export interface WorkspaceCleanupResult {
-  /** True if the workspace was removed without errors */
+  /** Non-empty if any errors occurred during cleanup */
   errors: string[];
+  /** The new branch name after renaming (Git only; null/undefined for P4 or archive operations) */
+  newBranchName?: string | null;
 }
 
 /**

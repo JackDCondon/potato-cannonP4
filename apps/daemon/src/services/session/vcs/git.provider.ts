@@ -66,7 +66,7 @@ export class GitProvider implements IVCSProvider {
       this.branchPrefix,
     );
 
-    return { errors: result.errors };
+    return { errors: result.errors, newBranchName: result.newBranchName };
   }
 
   /**
