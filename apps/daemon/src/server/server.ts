@@ -29,6 +29,7 @@ import {
   refreshProjects,
   getProjects,
 } from "./routes/index.js";
+import { registerSystemRoutes } from "./routes/system.routes.js";
 import {
   loadGlobalConfig,
   saveGlobalConfig,
@@ -613,6 +614,7 @@ export async function main(): Promise<void> {
   registerRalphRoutes(app);
   registerArtifactChatRoutes(app, sessionService, getProjects);
   registerFolderRoutes(app);
+  registerSystemRoutes(app);
 
   // SPA catch-all route - fallback to index.html for SPA routing
   if (frontendDist) {
