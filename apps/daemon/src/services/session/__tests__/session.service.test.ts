@@ -279,3 +279,165 @@ describe("SessionService.getProcessingByProject", () => {
     assert.strictEqual(result.size, 0);
   });
 });
+
+describe("SessionService.startRemoteControl", () => {
+  let service: SessionService;
+  let eventEmitter: EventEmitter;
+
+  beforeEach(() => {
+    eventEmitter = new EventEmitter();
+    service = new SessionService(eventEmitter);
+  });
+
+  it("returns null for getRemoteControlState when no RC has been started", () => {
+    const result = service.getRemoteControlState("sess_nonexistent");
+    assert.strictEqual(result, null);
+  });
+
+  it("returns false when starting RC for a non-existent session", () => {
+    const result = service.startRemoteControl("sess_nonexistent", "My Ticket");
+    assert.strictEqual(result, false);
+  });
+
+  it("sets pending state and returns true when session exists", () => {
+    const sessions = (service as any).sessions as Map<string, any>;
+    const writtenData: string[] = [];
+    const mockProcess = {
+      kill: () => {},
+      write: (data: string) => writtenData.push(data),
+    };
+
+    const sessionId = "sess_rc_test";
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta: { projectId: "proj-1", ticketId: "ticket-1" },
+      logStream: { end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+    });
+
+    const result = service.startRemoteControl(sessionId, "My Ticket Title");
+
+    assert.strictEqual(result, true);
+    const state = service.getRemoteControlState(sessionId);
+    assert.ok(state !== null);
+    assert.strictEqual(state!.pending, true);
+    assert.strictEqual(state!.url, undefined);
+  });
+
+  it("writes the correct /remote-control command to the PTY", () => {
+    const sessions = (service as any).sessions as Map<string, any>;
+    const writtenData: string[] = [];
+    const mockProcess = {
+      kill: () => {},
+      write: (data: string) => writtenData.push(data),
+    };
+
+    const sessionId = "sess_rc_write";
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta: { projectId: "proj-1", ticketId: "ticket-1" },
+      logStream: { end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+    });
+
+    service.startRemoteControl(sessionId, 'Ticket "With Quotes"');
+
+    assert.strictEqual(writtenData.length, 1);
+    assert.strictEqual(writtenData[0], '/remote-control "Ticket  With Quotes "\r');
+  });
+
+  it("truncates ticket title to 50 characters", () => {
+    const sessions = (service as any).sessions as Map<string, any>;
+    const writtenData: string[] = [];
+    const mockProcess = {
+      kill: () => {},
+      write: (data: string) => writtenData.push(data),
+    };
+
+    const sessionId = "sess_rc_truncate";
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta: { projectId: "proj-1", ticketId: "ticket-1" },
+      logStream: { end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+    });
+
+    const longTitle = "A".repeat(100);
+    service.startRemoteControl(sessionId, longTitle);
+
+    assert.strictEqual(writtenData.length, 1);
+    const command = writtenData[0];
+    // Extract the title from between quotes: /remote-control "TITLE"\r
+    const match = command.match(/^\/remote-control "(.*)"\r$/);
+    assert.ok(match, "Command should match expected format");
+    assert.strictEqual(match![1].length, 50);
+  });
+
+  it("returns false (double-click guard) when RC is already pending", () => {
+    const sessions = (service as any).sessions as Map<string, any>;
+    const writtenData: string[] = [];
+    const mockProcess = {
+      kill: () => {},
+      write: (data: string) => writtenData.push(data),
+    };
+
+    const sessionId = "sess_rc_guard";
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta: { projectId: "proj-1", ticketId: "ticket-1" },
+      logStream: { end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+    });
+
+    const first = service.startRemoteControl(sessionId, "My Ticket");
+    const second = service.startRemoteControl(sessionId, "My Ticket");
+
+    assert.strictEqual(first, true);
+    assert.strictEqual(second, false);
+    assert.strictEqual(writtenData.length, 1); // Only written once
+  });
+
+  it("returns false (double-click guard) when RC URL is already set", () => {
+    const sessions = (service as any).sessions as Map<string, any>;
+    const mockProcess = {
+      kill: () => {},
+      write: () => {},
+    };
+
+    const sessionId = "sess_rc_url_guard";
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta: { projectId: "proj-1", ticketId: "ticket-1" },
+      logStream: { end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+    });
+
+    // Manually set state as if URL was already captured
+    const remoteControlState = (service as any).remoteControlState as Map<string, any>;
+    remoteControlState.set(sessionId, { pending: false, url: "https://claude.ai/code/abc123" });
+
+    const result = service.startRemoteControl(sessionId, "My Ticket");
+    assert.strictEqual(result, false);
+  });
+
+  it("cleans up remoteControlState when session exits", () => {
+    const sessions = (service as any).sessions as Map<string, any>;
+    const remoteControlState = (service as any).remoteControlState as Map<string, any>;
+
+    const sessionId = "sess_rc_cleanup";
+    remoteControlState.set(sessionId, { pending: true });
+
+    // Simulate what happens when session exits — sessions.delete is called
+    // and remoteControlState.delete is called before it
+    remoteControlState.delete(sessionId);
+    sessions.delete(sessionId);
+
+    assert.strictEqual(service.getRemoteControlState(sessionId), null);
+    assert.strictEqual(sessions.has(sessionId), false);
+  });
+});

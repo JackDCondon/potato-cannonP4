@@ -8,4 +8,10 @@ export interface ActiveSession {
   logStream: WriteStream;
   exitPromise: Promise<void>;
   exitResolver: () => void;
+  forceKilled?: boolean;
+}
+
+export interface RemoteControlState {
+  pending: boolean;
+  url?: string;
 }

@@ -45,7 +45,7 @@ import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
 
-import type { ActiveSession } from "./types.js";
+import type { ActiveSession, RemoteControlState } from "./types.js";
 import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./phase-config.js";
 import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
@@ -64,6 +64,7 @@ import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
+  private remoteControlState: Map<string, RemoteControlState> = new Map();
   private eventEmitter: EventEmitter;
 
   constructor(eventEmitter: EventEmitter) {
@@ -424,6 +425,22 @@ export class SessionService {
     let claudeSessionIdCaptured = !!claudeResumeSessionId;
 
     proc.onData((data: string) => {
+      // Scan for remote-control URL in raw PTY output (BEFORE per-line loop)
+      if (this.remoteControlState.get(sessionId)?.pending) {
+        const stripped = data.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+        const match = stripped.match(/https:\/\/claude\.ai\/code\/[^\s]{1,150}/);
+        if (match) {
+          const url = match[0];
+          this.remoteControlState.set(sessionId, { pending: false, url });
+          eventBus.emit("session:remote-control-url", {
+            sessionId,
+            ticketId: meta.ticketId,
+            projectId: meta.projectId,
+            url,
+          });
+        }
+      }
+
       const lines = data.split("\n").filter(Boolean);
       for (const line of lines) {
         try {
@@ -488,10 +505,12 @@ export class SessionService {
       logStream.end();
 
       const session = this.sessions.get(sessionId);
+      const wasForceKilled = session?.forceKilled ?? false;
       if (session?.exitResolver) {
         session.exitResolver();
       }
 
+      this.remoteControlState.delete(sessionId);
       this.sessions.delete(sessionId);
 
       // End stored session in database (for ticket sessions tracked in SQLite)
@@ -499,8 +518,10 @@ export class SessionService {
 
       this.eventEmitter.emit("session:ended", { sessionId, ...endMeta });
 
-      // Handle agent completion via new executor
-      if (phase && ticketId) {
+      // Handle agent completion via new executor.
+      // Skip for force-killed sessions: terminateExistingSession already started a replacement,
+      // so running completion here would corrupt worker state with a stale ghost handler.
+      if (phase && ticketId && !wasForceKilled) {
         handleAgentCompletion(
           projectId,
           ticketId,
@@ -511,9 +532,7 @@ export class SessionService {
           getPendingVerdict(projectId, ticketId) ?? { approved: exitCode === 0 },
           this.getExecutorCallbacks()
         ).catch((err) =>
-          console.error(
-            `[spawnClaudeSession] Error in completion handler: ${err.message}`,
-          ),
+          console.error(`[spawnClaudeSession] Error in completion handler:`, err),
         );
       }
     });
@@ -524,10 +543,28 @@ export class SessionService {
   stopSession(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.process.kill("SIGTERM");
+      session.process.kill();
       return true;
     }
     return false;
+  }
+
+  startRemoteControl(sessionId: string, ticketTitle: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+
+    // Double-click guard
+    const existing = this.remoteControlState.get(sessionId);
+    if (existing?.pending || existing?.url) return false;
+
+    this.remoteControlState.set(sessionId, { pending: true });
+    const safeName = ticketTitle.replace(/["\n\r]/g, " ").slice(0, 50);
+    session.process.write(`/remote-control "${safeName}"\r`);
+    return true;
+  }
+
+  getRemoteControlState(sessionId: string): RemoteControlState | null {
+    return this.remoteControlState.get(sessionId) ?? null;
   }
 
   /**
@@ -555,8 +592,12 @@ export class SessionService {
     // Step 1: Cancel any pending waitForResponse
     cancelWaitForResponse(contextId);
 
-    // Step 2: Stop the PTY process if it's still running in memory
+    // Step 2: Stop the PTY process if it's still running in memory.
+    // Mark as forceKilled BEFORE killing so the PTY exit handler knows to skip handleAgentCompletion.
+    // Without this, the killed session's exit fires and races with the new session.
     if (this.sessions.has(activeSession.id)) {
+      const existing = this.sessions.get(activeSession.id);
+      if (existing) existing.forceKilled = true;
       this.stopSession(activeSession.id);
     }
 
