@@ -11,6 +11,7 @@ import { getTicket } from "../../stores/ticket.store.js";
 import { eventBus } from "../../utils/event-bus.js";
 import type { TaskStatus } from "../../types/task.types.js";
 import type { Task } from "../../types/task.types.js";
+import type { Complexity } from "@potato-cannon/shared";
 
 /**
  * Resolves a task ID parameter to a Task object.
@@ -36,7 +37,7 @@ export function registerTaskRoutes(app: Express): void {
       try {
         const projectId = decodeURIComponent(req.params.project);
         const ticketId = req.params.id;
-        const { description, body } = req.body as { description?: string; body?: string };
+        const { description, body, complexity } = req.body as { description?: string; body?: string; complexity?: Complexity };
 
         if (!description) {
           res.status(400).json({ error: "Missing description" });
@@ -50,7 +51,7 @@ export function registerTaskRoutes(app: Express): void {
           return;
         }
 
-        const task = createTaskStore(ticketId, ticket.phase, { description, body });
+        const task = createTaskStore(ticketId, ticket.phase, { description, body, complexity });
 
         // Emit SSE event for real-time updates
         eventBus.emit("ticket:task-updated", {

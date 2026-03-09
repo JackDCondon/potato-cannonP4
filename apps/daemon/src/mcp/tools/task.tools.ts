@@ -44,6 +44,11 @@ export const taskTools: ToolDefinition[] = [
           type: "string",
           description: "Full implementation details including code, commands, verification steps, and expected outputs. This is what the builder will execute.",
         },
+        complexity: {
+          type: "string",
+          enum: ["simple", "standard", "complex"],
+          description: "Task complexity: simple (<=1 non-test file, <=1 step), standard (2-3 files, routine — default), complex (4+ files, new patterns, security, integration)",
+        },
       },
       required: ["description"],
     },
@@ -100,13 +105,14 @@ async function createTask(
   ctx: McpContext,
   description: string,
   body?: string,
+  complexity?: string,
 ): Promise<unknown> {
   const response = await fetch(
     `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${ctx.ticketId}/tasks`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description, ...(body && { body }) }),
+      body: JSON.stringify({ description, ...(body && { body }), ...(complexity && { complexity }) }),
     },
   );
   if (!response.ok) {
@@ -200,7 +206,8 @@ export const taskHandlers: Record<
       throw new Error("Missing required field: description");
     }
     const body = typeof args.body === "string" ? args.body : undefined;
-    const task = await createTask(ctx, args.description, body);
+    const complexity = typeof args.complexity === "string" ? args.complexity : undefined;
+    const task = await createTask(ctx, args.description, body, complexity);
     return {
       content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
     };
