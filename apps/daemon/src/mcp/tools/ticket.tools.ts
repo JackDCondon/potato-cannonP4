@@ -85,6 +85,23 @@ export const ticketTools: ToolDefinition[] = [
       required: ["title"],
     },
   },
+  {
+    name: "set_ticket_complexity",
+    description:
+      "Set the complexity rating of the current ticket. Call after estimating complexity using the potato:estimate-complexity skill. Valid values: simple, standard, complex.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        complexity: {
+          type: "string",
+          enum: ["simple", "standard", "complex"],
+          description:
+            "Complexity rating: simple (<=1 file, <=1 step), standard (2-3 files, routine), complex (4+ files, new patterns, security, integration)",
+        },
+      },
+      required: ["complexity"],
+    },
+  },
 ];
 
 interface CommentEntry {
@@ -312,5 +329,21 @@ export const ticketHandlers: Record<
         },
       ],
     };
+  },
+
+  set_ticket_complexity: async (ctx, args) => {
+    const { complexity } = args as { complexity: string };
+    const response = await fetch(
+      `${ctx.daemonUrl}/api/projects/${encodeURIComponent(ctx.projectId)}/tickets/${ctx.ticketId}/complexity`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ complexity }),
+      },
+    );
+    if (!response.ok) {
+      return { content: [{ type: "text", text: `Error: ${response.statusText}` }] };
+    }
+    return { content: [{ type: "text", text: `Complexity set to: ${complexity}` }] };
   },
 };
