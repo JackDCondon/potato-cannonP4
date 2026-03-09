@@ -227,6 +227,7 @@ export function useSetTicketComplexity() {
     }) => api.setTicketComplexity(projectId, ticketId, complexity),
     onSuccess: (_, { projectId, ticketId }) => {
       queryClient.invalidateQueries({ queryKey: ['ticket', projectId, ticketId] })
+      queryClient.invalidateQueries({ queryKey: ['tickets', projectId] })
     },
   })
 }
