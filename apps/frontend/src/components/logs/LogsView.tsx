@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { api } from '@/api/client'
 import { Search, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useLogEntries } from '@/hooks/useSSE'
@@ -66,18 +67,19 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
 }
 
 export function LogsView() {
-  const [entries, setEntries] = useState<LogEntry[]>(() => [
-    {
-      level: 'info',
-      message: 'Dashboard started',
-      timestamp: new Date().toISOString()
-    }
-  ])
+  const [entries, setEntries] = useState<LogEntry[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [levelFilter, setLevelFilter] = useState<LogLevel | 'all'>('all')
   const [autoScroll, setAutoScroll] = useState(true)
 
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Fetch historical log entries on mount
+  useEffect(() => {
+    api.getSystemLogs(500).then((historical) => {
+      setEntries(historical)
+    }).catch(() => {})
+  }, [])
 
   // Subscribe to SSE log entries
   const handleLogEntry = useCallback((data: Record<string, unknown>) => {

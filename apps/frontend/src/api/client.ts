@@ -19,7 +19,8 @@ import type {
   ArtifactChatStartResponse,
   ArtifactChatPendingResponse,
   ArchiveResult,
-  WorkerTreeResponse
+  WorkerTreeResponse,
+  LogEntry
 } from '@potato-cannon/shared'
 
 const BASE_URL = ''
@@ -227,6 +228,11 @@ export const api = {
 
   stopSession: (sessionId: string) =>
     request<void>(`/api/sessions/${sessionId}/stop`, { method: 'POST' }),
+
+  // ============ System Logs ============
+
+  getSystemLogs: (lines?: number) =>
+    request<LogEntry[]>(`/api/system/logs${lines !== undefined ? `?lines=${lines}` : ''}`),
 
   // ============ Phases ============
 
