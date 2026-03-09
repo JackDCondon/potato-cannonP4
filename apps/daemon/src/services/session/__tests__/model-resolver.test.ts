@@ -96,5 +96,10 @@ describe("resolveModel", () => {
       const result = resolveModel("haiku", "complex");
       assert.strictEqual(result, "haiku");
     });
+    it("does not treat { id, simple } hybrid as complexity map", () => {
+      const result = resolveModel({ id: "claude-x", simple: "haiku" } as any, "standard");
+      // Should use the id-based path, not the complexity map path
+      assert.strictEqual(result, "claude-x");
+    });
   });
 });

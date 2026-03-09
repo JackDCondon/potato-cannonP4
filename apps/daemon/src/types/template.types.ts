@@ -40,6 +40,7 @@ export type ModelSpec = string | { id: string; provider?: string } | ComplexityM
 export function isComplexityModelMap(model: ModelSpec): model is ComplexityModelMap {
   return (
     typeof model === "object" &&
+    !("id" in model) &&
     ("simple" in model || "standard" in model || "complex" in model)
   );
 }
