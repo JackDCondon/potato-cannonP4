@@ -41,6 +41,7 @@ export interface TemplateAgent {
   role: 'primary' | 'adversarial' | 'validation'
   description?: string
   prompt?: string
+  model?: string | { simple?: string; standard?: string; complex?: string }
   context?: {
     artifacts?: string[]
   }

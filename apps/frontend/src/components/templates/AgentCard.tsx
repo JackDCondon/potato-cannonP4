@@ -22,6 +22,23 @@ interface AgentCardProps {
   onDelete: () => void
 }
 
+const MODEL_OPTIONS = ['haiku', 'sonnet', 'opus'] as const
+
+/**
+ * Normalize agent model field into a full complexity matrix.
+ * Accepts undefined, a string shorthand, or a partial matrix object.
+ */
+function getModelMatrix(model: TemplateAgent['model']): { simple: string; standard: string; complex: string } {
+  const defaults = { simple: 'haiku', standard: 'sonnet', complex: 'opus' }
+  if (!model) return defaults
+  if (typeof model === 'string') return { simple: model, standard: model, complex: model }
+  return {
+    simple: model.simple ?? defaults.simple,
+    standard: model.standard ?? defaults.standard,
+    complex: model.complex ?? defaults.complex,
+  }
+}
+
 /**
  * Get badge styling for agent role
  */
@@ -145,6 +162,37 @@ export function AgentCard({
               placeholder="What does this agent do?"
               className="h-8"
             />
+          </div>
+
+          {/* Model Routing */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Model Routing</label>
+            <div className="space-y-1.5">
+              {(['simple', 'standard', 'complex'] as const).map((level) => {
+                const matrix = getModelMatrix(agent.model)
+                return (
+                  <div key={level} className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-16 capitalize">{level}</span>
+                    <Select
+                      value={matrix[level]}
+                      onValueChange={(value) => {
+                        const next = { ...matrix, [level]: value }
+                        onChange({ ...agent, model: next })
+                      }}
+                    >
+                      <SelectTrigger className="h-7 flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MODEL_OPTIONS.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {/* Context Artifacts */}
