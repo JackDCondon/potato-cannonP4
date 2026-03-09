@@ -119,6 +119,26 @@
               },
               "required": ["id"],
               "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "description": "Complexity-based model map: specify different models for simple, standard, and complex tasks",
+              "properties": {
+                "simple": {
+                  "type": "string",
+                  "description": "Model to use for simple-complexity tasks (e.g., 'haiku')"
+                },
+                "standard": {
+                  "type": "string",
+                  "description": "Model to use for standard-complexity tasks (e.g., 'sonnet')"
+                },
+                "complex": {
+                  "type": "string",
+                  "description": "Model to use for complex-complexity tasks (e.g., 'opus')"
+                }
+              },
+              "additionalProperties": false,
+              "minProperties": 1
             }
           ],
           "description": "Optional model to use for this agent. If not specified, uses Claude Code's default."
