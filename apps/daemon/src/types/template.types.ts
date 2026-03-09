@@ -10,11 +10,39 @@ export interface BaseWorker {
 }
 
 /**
- * Model specification - either a string shortcut/ID or an object with provider info.
- * String format: "haiku", "sonnet", "opus" (shortcuts) or "claude-sonnet-4-20250514" (explicit ID)
- * Object format: { id: "claude-sonnet-4-20250514", provider: "anthropic" }
+ * Complexity-keyed model map. Each key maps a complexity level to a model spec string.
+ * At least one of the keys must be present. When a key is missing, resolveModel falls
+ * back to `standard`. Use this in workflow.json to route cheap work to cheaper models.
  */
-export type ModelSpec = string | { id: string; provider?: string };
+export interface ComplexityModelMap {
+  simple?: string;
+  standard?: string;
+  complex?: string;
+}
+
+/**
+ * Model specification — one of three forms:
+ *   1. String shortcut or explicit ID:  "haiku" | "claude-sonnet-4-20250514"
+ *   2. Object with id (+ optional provider): { id: "...", provider: "anthropic" }
+ *   3. Complexity map: { simple: "haiku", standard: "sonnet", complex: "opus" }
+ *
+ * The complexity map form (3) enables per-ticket cost optimisation; resolveModel
+ * selects the right entry at agent-spawn time using the ticket/task complexity level.
+ */
+export type ModelSpec = string | { id: string; provider?: string } | ComplexityModelMap;
+
+/**
+ * Type guard: returns true when `model` is a ComplexityModelMap.
+ *
+ * Uses a POSITIVE key check rather than checking for the absence of `id`, making
+ * it robust against future additions to the ModelSpec union.
+ */
+export function isComplexityModelMap(model: ModelSpec): model is ComplexityModelMap {
+  return (
+    typeof model === "object" &&
+    ("simple" in model || "standard" in model || "complex" in model)
+  );
+}
 
 export interface AgentWorker extends BaseWorker {
   type: "agent";

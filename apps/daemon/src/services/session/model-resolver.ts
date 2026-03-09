@@ -1,4 +1,6 @@
 import type { ModelSpec } from "../../types/template.types.js";
+import { isComplexityModelMap } from "../../types/template.types.js";
+import type { Complexity } from "@potato-cannon/shared";
 
 /**
  * Known model shortcuts that map to themselves (Claude CLI handles resolution)
@@ -7,15 +9,35 @@ const MODEL_SHORTCUTS = ["haiku", "sonnet", "opus"] as const;
 
 /**
  * Resolve a model specification to a CLI-ready string.
- * Returns null if no model specified (use Claude Code default).
- * Returns the model string if valid.
- * Logs warning and returns null for unrecognized models.
  *
- * @param model - The model specification from workflow config
- * @returns CLI-ready model string or null to use default
+ * Handles three ModelSpec forms:
+ *   1. String — shortcut ("haiku") or explicit Claude ID ("claude-sonnet-4-...")
+ *   2. Object — { id, provider? } explicit model object
+ *   3. ComplexityModelMap — { simple?, standard?, complex? } — selects the entry
+ *      matching `complexity`, falling back to `standard` when the param is null/
+ *      undefined or the matching key is absent.
+ *
+ * Returns null when the spec is absent or unrecognisable (caller uses CLI default).
+ *
+ * @param model      - The model specification from the workflow config, or undefined.
+ * @param complexity - The ticket/task complexity level used to select from a map.
+ * @returns CLI-ready model string, or null to use the Claude Code default.
  */
-export function resolveModel(model: ModelSpec | undefined): string | null {
+export function resolveModel(
+  model: ModelSpec | undefined,
+  complexity?: Complexity | null
+): string | null {
   if (!model) return null;
+
+  // ComplexityModelMap: { simple?, standard?, complex? }
+  if (isComplexityModelMap(model)) {
+    const level = complexity ?? "standard";
+    // Fall back to standard when the requested level is absent from the map.
+    const entry = model[level] ?? model.standard;
+    if (!entry) return null;
+    // Recurse with null complexity so the string branch handles the chosen entry.
+    return resolveModel(entry, null);
+  }
 
   // String format: shortcut or explicit ID
   if (typeof model === "string") {

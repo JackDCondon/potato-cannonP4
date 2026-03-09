@@ -74,4 +74,27 @@ describe("resolveModel", () => {
       assert.strictEqual(result, null);
     });
   });
+
+  describe("complexity map", () => {
+    it("resolves simple complexity from map", () => {
+      const result = resolveModel({ simple: "haiku", standard: "sonnet", complex: "opus" }, "simple");
+      assert.strictEqual(result, "haiku");
+    });
+    it("resolves standard complexity from map", () => {
+      const result = resolveModel({ simple: "haiku", standard: "sonnet", complex: "opus" }, "standard");
+      assert.strictEqual(result, "sonnet");
+    });
+    it("resolves complex complexity from map", () => {
+      const result = resolveModel({ simple: "haiku", standard: "sonnet", complex: "opus" }, "complex");
+      assert.strictEqual(result, "opus");
+    });
+    it("falls back to standard when complexity null", () => {
+      const result = resolveModel({ simple: "haiku", standard: "sonnet", complex: "opus" }, null);
+      assert.strictEqual(result, "sonnet");
+    });
+    it("string model spec ignores complexity param", () => {
+      const result = resolveModel("haiku", "complex");
+      assert.strictEqual(result, "haiku");
+    });
+  });
 });
