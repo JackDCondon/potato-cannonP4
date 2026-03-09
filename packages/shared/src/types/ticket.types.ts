@@ -13,7 +13,7 @@ export interface Ticket {
   archived?: boolean
   archivedAt?: string
   conversationId?: string
-  complexity?: Complexity
+  complexity: Complexity
 }
 
 export interface ArchiveResult {

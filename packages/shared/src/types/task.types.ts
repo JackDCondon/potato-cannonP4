@@ -22,5 +22,5 @@ export interface Task {
   body?: string
   createdAt: string
   updatedAt: string
-  complexity?: Complexity
+  complexity: Complexity
 }

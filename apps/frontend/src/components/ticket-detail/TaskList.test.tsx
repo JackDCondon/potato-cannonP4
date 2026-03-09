@@ -25,6 +25,7 @@ const makeTasks = (overrides: Partial<Task>[]): Task[] =>
     status: 'pending',
     attemptCount: 0,
     description: `Task ${i + 1}`,
+    complexity: 'standard',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...o,
