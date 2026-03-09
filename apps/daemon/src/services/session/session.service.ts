@@ -510,7 +510,14 @@ export class SessionService {
         session.exitResolver();
       }
 
-      this.remoteControlState.delete(sessionId);
+      if (this.remoteControlState.has(sessionId)) {
+        this.remoteControlState.delete(sessionId);
+        eventBus.emit("session:remote-control-cleared", {
+          sessionId,
+          ticketId: meta.ticketId,
+          projectId: meta.projectId,
+        });
+      }
       this.sessions.delete(sessionId);
 
       // End stored session in database (for ticket sessions tracked in SQLite)
@@ -543,7 +550,7 @@ export class SessionService {
   stopSession(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.process.kill("SIGTERM");
+      session.process.kill();
       return true;
     }
     return false;
