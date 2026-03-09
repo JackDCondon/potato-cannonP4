@@ -26,7 +26,7 @@ export function useAddProject() {
 export function useUpdateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string } }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string } }) =>
       api.updateProject(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })

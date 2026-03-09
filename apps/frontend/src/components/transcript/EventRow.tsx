@@ -7,63 +7,15 @@ import cpp from 'highlight.js/lib/languages/cpp'
 import bash from 'highlight.js/lib/languages/bash'
 import 'highlight.js/styles/github-dark.css'
 import { cn, timeAgo } from '@/lib/utils'
+import type { SessionLogEntry, SessionLogContentBlock } from '@potato-cannon/shared'
+
+export type { SessionLogEntry }
 
 // Register languages once at module load
 hljs.registerLanguage('json', json)
 hljs.registerLanguage('typescript', typescript)
 hljs.registerLanguage('cpp', cpp)
 hljs.registerLanguage('bash', bash)
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/** A single content block within an assistant message */
-interface ContentBlock {
-  type: 'text' | 'tool_use' | 'tool_result'
-  /** text block */
-  text?: string
-  /** tool_use block */
-  name?: string
-  id?: string
-  input?: Record<string, unknown>
-  /** tool_result block */
-  tool_use_id?: string
-  content?: string | unknown[]
-  is_error?: boolean
-}
-
-/** An assistant message carrying content blocks */
-interface ClaudeMessage {
-  content: ContentBlock[]
-}
-
-/**
- * The shape of entries returned by GET /api/sessions/:id.
- *
- * The session log stores Claude's native JSON streaming events (one per line)
- * with a `timestamp` field appended. Lines that fail JSON parsing are stored as
- * `{ type: "raw", content, timestamp }`.
- *
- * Supported event types:
- * - `session_start` / `session_end` — daemon lifecycle markers
- * - `system`  — Claude system events (e.g. task_started, task_progress)
- * - `assistant` — Claude's response turn; carries a `message` with content blocks
- * - `user`    — User turn; carries `message.content` with tool_result blocks
- * - `result`  — Final result summary from Claude
- * - `raw`     — Unparseable text line from PTY output
- */
-export interface SessionLogEntry {
-  type: string
-  timestamp: string
-  // session lifecycle
-  meta?: Record<string, unknown>
-  // raw fallback
-  content?: string
-  // system events
-  subtype?: string
-  description?: string
-  // assistant / user turns
-  message?: ClaudeMessage
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -93,14 +45,15 @@ function formatToolSummary(name: string, input: Record<string, unknown>): string
     input.file_path ??
     input.pattern ??
     Object.values(input)[0]
+  if (val == null) return name
   const valStr =
     typeof val === 'string'
       ? val.split(/[/\\]/).pop() ?? val
       : JSON.stringify(val)
-  return `${name} → ${truncate(String(valStr ?? ''), 60)}`
+  return `${name} → ${truncate(String(valStr), 60)}`
 }
 
-function blockContent(block: ContentBlock): string {
+function blockContent(block: SessionLogContentBlock): string {
   if (typeof block.content === 'string') return block.content
   if (Array.isArray(block.content)) return JSON.stringify(block.content, null, 2)
   return ''
@@ -113,9 +66,7 @@ interface CollapsibleRowProps {
   summary: string
   expandedContent: string
   isCode: boolean
-  open: boolean
-  setOpen: (v: boolean) => void
-  timestamp: string
+  timestamp?: string
   isError?: boolean
 }
 
@@ -124,12 +75,11 @@ function CollapsibleRow({
   summary,
   expandedContent,
   isCode,
-  open,
-  setOpen,
   timestamp,
   isError,
 }: CollapsibleRowProps) {
-  const rel = timeAgo(timestamp)
+  const [open, setOpen] = useState(false)
+  const rel = timestamp ? timeAgo(timestamp) : ''
   return (
     <div>
       <button
@@ -177,8 +127,6 @@ interface EventRowProps {
 }
 
 export function EventRow({ entry }: EventRowProps) {
-  const [open, setOpen] = useState(false)
-
   // ── Lifecycle markers — rendered elsewhere or suppressed ──────────────────
   if (entry.type === 'session_start' || entry.type === 'session_end') {
     return null
@@ -232,8 +180,6 @@ export function EventRow({ entry }: EventRowProps) {
             summary={truncate(block.text ?? '', 120)}
             expandedContent={block.text ?? ''}
             isCode={false}
-            open={open}
-            setOpen={setOpen}
             timestamp={entry.timestamp}
           />
         ))}
@@ -244,8 +190,6 @@ export function EventRow({ entry }: EventRowProps) {
             summary={formatToolSummary(block.name ?? '', block.input ?? {})}
             expandedContent={JSON.stringify(block.input, null, 2)}
             isCode
-            open={open}
-            setOpen={setOpen}
             timestamp={entry.timestamp}
           />
         ))}
@@ -275,8 +219,6 @@ export function EventRow({ entry }: EventRowProps) {
               summary={truncate(content, 100)}
               expandedContent={content}
               isCode
-              open={open}
-              setOpen={setOpen}
               timestamp={entry.timestamp}
               isError={isError}
             />
@@ -288,6 +230,7 @@ export function EventRow({ entry }: EventRowProps) {
 
   // ── Raw / unrecognised ───────────────────────────────────────────────────
   if (entry.type === 'raw') {
+    if (!entry.content) return null
     return (
       <div className="px-4 py-0.5 text-xs text-text-muted italic truncate">
         {entry.content}
