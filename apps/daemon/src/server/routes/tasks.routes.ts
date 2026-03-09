@@ -13,6 +13,8 @@ import type { TaskStatus } from "../../types/task.types.js";
 import type { Task } from "../../types/task.types.js";
 import type { Complexity } from "@potato-cannon/shared";
 
+const VALID_COMPLEXITIES = ['simple', 'standard', 'complex'] as const;
+
 /**
  * Resolves a task ID parameter to a Task object.
  * Supports both UUID format and legacy "task1", "task2" format.
@@ -41,6 +43,11 @@ export function registerTaskRoutes(app: Express): void {
 
         if (!description) {
           res.status(400).json({ error: "Missing description" });
+          return;
+        }
+
+        if (complexity !== undefined && !VALID_COMPLEXITIES.includes(complexity as any)) {
+          res.status(400).json({ error: `Invalid complexity: ${complexity}. Must be one of: ${VALID_COMPLEXITIES.join(', ')}` });
           return;
         }
 
