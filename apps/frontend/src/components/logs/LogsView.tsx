@@ -76,7 +76,7 @@ export function LogsView() {
 
   // Fetch historical log entries on mount
   useEffect(() => {
-    api.getSystemLogs(500).then((historical) => {
+    api.getSystemLogs(MAX_ENTRIES).then((historical) => {
       setEntries((live) => [...historical, ...live].slice(-MAX_ENTRIES))
     }).catch(() => {
       // Daemon may not have log file yet — start empty

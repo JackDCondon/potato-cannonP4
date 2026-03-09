@@ -40,12 +40,15 @@ export class Logger {
     };
   }
 
-  private format(level: string, args: unknown[]): string {
-    const timestamp = new Date().toISOString();
-    const message = args
+  private formatMessage(args: unknown[]): string {
+    return args
       .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
       .join(' ');
-    return `[${timestamp}] [${level}] ${message}\n`;
+  }
+
+  private format(level: string, args: unknown[]): string {
+    const timestamp = new Date().toISOString();
+    return `[${timestamp}] [${level}] ${this.formatMessage(args)}\n`;
   }
 
   private write(msg: string, level: 'INFO' | 'WARN' | 'ERROR', rawArgs: unknown[]): void {
@@ -55,12 +58,9 @@ export class Logger {
     }
     // Emit live log entry for frontend log viewer (best-effort, no throw)
     try {
-      const message = rawArgs
-        .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
-        .join(' ');
       eventBus.emit('log:entry', {
         level: level.toLowerCase(),
-        message,
+        message: this.formatMessage(rawArgs),
         timestamp: new Date().toISOString(),
       });
     } catch {

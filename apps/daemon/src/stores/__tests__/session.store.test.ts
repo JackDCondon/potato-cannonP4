@@ -345,8 +345,8 @@ describe("SessionStore", () => {
   });
 
   describe("endAllOpenSessions", () => {
-    it('endAllOpenSessions marks open sessions as ended', () => {
-      const ticket = ticketStore.createTicket(projectId, { title: 'T-stale' });
+    it("endAllOpenSessions marks open sessions as ended", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "T-stale" });
       sessionStore.createSession({ ticketId: ticket.id, projectId });
       assert.notEqual(sessionStore.getActiveSessionForTicket(ticket.id), null);
       const count = sessionStore.endAllOpenSessions();
