@@ -1,3 +1,5 @@
+import type { Complexity } from '@potato-cannon/shared';
+
 // Re-export shared types and constants
 export {
   DEFAULT_PHASES,
@@ -10,6 +12,7 @@ export type {
   ArchiveResult,
   HistorySessionRecord,
   TicketHistoryEntry,
+  Complexity,
 } from '@potato-cannon/shared';
 
 /**
@@ -28,6 +31,7 @@ export interface UpdateTicketInput {
   description?: string;
   phase?: TicketPhase;
   sessionId?: string;
+  complexity?: Complexity;
 }
 
 export type ArtifactType =

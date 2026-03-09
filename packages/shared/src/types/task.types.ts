@@ -1,3 +1,7 @@
+import type { Complexity } from './ticket.types.js'
+
+export type { Complexity } from './ticket.types.js'
+
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
 
 export interface TaskComment {
@@ -18,4 +22,5 @@ export interface Task {
   body?: string
   createdAt: string
   updatedAt: string
+  complexity?: Complexity
 }

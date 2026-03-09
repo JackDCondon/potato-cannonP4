@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 12;
 
 /**
  * Run database migrations.
@@ -43,6 +43,18 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 9) {
     migrateV9(db);
+  }
+
+  if (version < 10) {
+    migrateV10(db);
+  }
+
+  if (version < 11) {
+    migrateV11(db);
+  }
+
+  if (version < 12) {
+    migrateV12(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -436,5 +448,51 @@ function migrateV9(db: Database.Database): void {
 
   if (!columnNames.has('suggested_p4_stream')) {
     db.exec(`ALTER TABLE projects ADD COLUMN suggested_p4_stream TEXT`);
+  }
+}
+
+/**
+ * V11: Add p4_mcp_server_path column to projects table.
+ */
+function migrateV11(db: Database.Database): void {
+  const columns = db.pragma('table_info(projects)') as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has('p4_mcp_server_path')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_mcp_server_path TEXT`);
+  }
+}
+
+/**
+ * V12: Add complexity column to tickets and tasks tables.
+ * Default 'standard' ensures existing rows get a valid value without data migration.
+ */
+function migrateV12(db: Database.Database): void {
+  const ticketCols = new Set(
+    (db.prepare("PRAGMA table_info(tickets)").all() as { name: string }[]).map(r => r.name)
+  );
+  if (!ticketCols.has('complexity')) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN complexity TEXT NOT NULL DEFAULT 'standard' CHECK(complexity IN ('simple', 'standard', 'complex'))`);
+  }
+
+  const taskCols = new Set(
+    (db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]).map(r => r.name)
+  );
+  if (!taskCols.has('complexity')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT NOT NULL DEFAULT 'standard' CHECK(complexity IN ('simple', 'standard', 'complex'))`);
+  }
+}
+
+/**
+ * V10: Add vcs_type column to projects table.
+ * Backfills existing Perforce projects (those with p4_stream set).
+ */
+function migrateV10(db: Database.Database): void {
+  const columns = db.pragma('table_info(projects)') as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has('vcs_type')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN vcs_type TEXT NOT NULL DEFAULT 'git'`);
+    db.exec(`UPDATE projects SET vcs_type = 'perforce' WHERE p4_stream IS NOT NULL`);
   }
 }

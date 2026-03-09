@@ -1,3 +1,5 @@
+export type Complexity = 'simple' | 'standard' | 'complex'
+
 export interface Ticket {
   id: string
   title: string
@@ -11,6 +13,7 @@ export interface Ticket {
   archived?: boolean
   archivedAt?: string
   conversationId?: string
+  complexity?: Complexity
 }
 
 export interface ArchiveResult {

@@ -1,3 +1,5 @@
+import type { Complexity } from '@potato-cannon/shared';
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
 
 export interface TaskComment {
@@ -18,9 +20,11 @@ export interface Task {
   body?: string;
   createdAt: string;
   updatedAt: string;
+  complexity?: Complexity;
 }
 
 export interface CreateTaskInput {
   description: string;
   body?: string;
+  complexity?: Complexity;
 }
