@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { LOG_FILE } from '../config/paths.js';
+import { eventBus } from './event-bus.js';
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_FILES = 3;
@@ -22,19 +23,19 @@ export class Logger {
 
     console.log = (...args: unknown[]): void => {
       const msg = this.format('INFO', args);
-      this.write(msg);
+      this.write(msg, 'INFO', args);
       originalLog.apply(console, args);
     };
 
     console.warn = (...args: unknown[]): void => {
       const msg = this.format('WARN', args);
-      this.write(msg);
+      this.write(msg, 'WARN', args);
       originalWarn.apply(console, args);
     };
 
     console.error = (...args: unknown[]): void => {
       const msg = this.format('ERROR', args);
-      this.write(msg);
+      this.write(msg, 'ERROR', args);
       originalError.apply(console, args);
     };
   }
@@ -47,10 +48,23 @@ export class Logger {
     return `[${timestamp}] [${level}] ${message}\n`;
   }
 
-  private write(msg: string): void {
+  private write(msg: string, level: 'INFO' | 'WARN' | 'ERROR', rawArgs: unknown[]): void {
     if (this.stream) {
       this.stream.write(msg);
       this.checkRotation();
+    }
+    // Emit live log entry for frontend log viewer (best-effort, no throw)
+    try {
+      const message = rawArgs
+        .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+        .join(' ');
+      eventBus.emit('log:entry', {
+        level: level.toLowerCase(),
+        message,
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // ignore
     }
   }
 
