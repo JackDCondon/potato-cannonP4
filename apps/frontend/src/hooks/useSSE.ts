@@ -325,29 +325,51 @@ export function useRemoteControlSSE(
   ticketId: string | undefined,
   onUrl: (url: string) => void,
   onCleared: () => void,
+  onReconnected?: () => void,
 ) {
+  const onUrlRef = useRef(onUrl)
+  const onClearedRef = useRef(onCleared)
+  const onReconnectedRef = useRef(onReconnected)
+
+  // Keep refs updated on every render (safe — refs don't trigger effects)
+  useEffect(() => {
+    onUrlRef.current = onUrl
+  })
+  useEffect(() => {
+    onClearedRef.current = onCleared
+  })
+  useEffect(() => {
+    onReconnectedRef.current = onReconnected
+  })
+
   useEffect(() => {
     if (!ticketId) return
 
     const urlHandler = (e: CustomEvent<SSEEventData>) => {
       const data = e.detail as { ticketId?: string; url?: string }
       if (data.ticketId === ticketId && data.url) {
-        onUrl(data.url)
+        onUrlRef.current(data.url)
       }
     }
 
     const clearedHandler = (e: CustomEvent<SSEEventData>) => {
       const data = e.detail as { ticketId?: string }
       if (data.ticketId === ticketId) {
-        onCleared()
+        onClearedRef.current()
       }
+    }
+
+    const reconnectedHandler = () => {
+      onReconnectedRef.current?.()
     }
 
     window.addEventListener('sse:remote-control-url', urlHandler as EventListener)
     window.addEventListener('sse:remote-control-cleared', clearedHandler as EventListener)
+    window.addEventListener('sse:reconnected', reconnectedHandler)
     return () => {
       window.removeEventListener('sse:remote-control-url', urlHandler as EventListener)
       window.removeEventListener('sse:remote-control-cleared', clearedHandler as EventListener)
+      window.removeEventListener('sse:reconnected', reconnectedHandler)
     }
-  }, [ticketId, onUrl, onCleared])
+  }, [ticketId])  // Only ticketId in deps — callbacks stabilized via refs
 }
