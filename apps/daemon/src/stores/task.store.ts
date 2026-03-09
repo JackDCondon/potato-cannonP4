@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "crypto";
 import { getDatabase } from "./db.js";
+import type { Complexity } from "@potato-cannon/shared";
 import type {
   Task,
   TaskStatus,
@@ -21,6 +22,7 @@ interface TaskRow {
   attempt_count: number;
   description: string;
   body: string | null;
+  complexity: string;
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +48,7 @@ function rowToTask(row: TaskRow): Task {
     attemptCount: row.attempt_count,
     description: row.description,
     body: row.body || undefined,
+    complexity: row.complexity as Complexity,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -74,6 +77,7 @@ export class TaskStore {
   createTask(ticketId: string, phase: string, input: CreateTaskInput): Task {
     const id = randomUUID();
     const now = new Date().toISOString();
+    const complexity: Complexity = input.complexity ?? "standard";
 
     // Get next display number for this ticket
     const maxRow = this.db
@@ -85,8 +89,8 @@ export class TaskStore {
 
     this.db
       .prepare(
-        `INSERT INTO tasks (id, ticket_id, display_number, phase, status, attempt_count, description, body, created_at, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?)`
+        `INSERT INTO tasks (id, ticket_id, display_number, phase, status, attempt_count, description, body, complexity, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -95,6 +99,7 @@ export class TaskStore {
         phase,
         input.description,
         input.body || null,
+        complexity,
         now,
         now
       );
@@ -241,7 +246,7 @@ export class TaskStore {
   deleteTasksForPhases(ticketId: string, phases: string[]): number {
     if (phases.length === 0) return 0;
 
-    const placeholders = phases.map(() => '?').join(',');
+    const placeholders = phases.map(() => "?").join(",");
     const result = this.db
       .prepare(
         `DELETE FROM tasks WHERE ticket_id = ? AND phase IN (${placeholders})`

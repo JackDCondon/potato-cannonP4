@@ -21,6 +21,7 @@ import type {
   TicketHistoryEntry,
 } from "../types/index.js";
 import type { OrchestrationState } from "../types/orchestration.types.js";
+import type { Complexity } from "@potato-cannon/shared";
 
 import { TERMINAL_PHASES } from "../types/ticket.types.js";
 
@@ -46,6 +47,7 @@ interface TicketRow {
   title: string;
   description: string;
   phase: string;
+  complexity: string;
   created_at: string;
   updated_at: string;
   archived: number;
@@ -223,6 +225,11 @@ export class TicketStore {
       values.push(updates.description);
     }
 
+    if (updates.complexity !== undefined) {
+      fields.push("complexity = ?");
+      values.push(updates.complexity);
+    }
+
     if (updates.phase !== undefined && updates.phase !== existing.phase) {
       fields.push("phase = ?");
       values.push(updates.phase);
@@ -397,6 +404,7 @@ export class TicketStore {
       title: row.title,
       description: row.description,
       phase: row.phase as TicketPhase,
+      complexity: row.complexity as Complexity,
       project: row.project_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
