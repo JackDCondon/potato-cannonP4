@@ -33,8 +33,8 @@ export function RemoteControlButton({
         } else if (rc.pending) {
           setState('pending')
         } else {
-          // Only reset to idle if we haven't locally started a pending request
-          setState((prev) => (prev === 'active' ? 'idle' : prev))
+          setState('idle')
+          setUrl(null)
         }
       })
       .catch(() => {
@@ -43,9 +43,14 @@ export function RemoteControlButton({
   }
 
   useEffect(() => {
+    if (!hasActiveSession) {
+      setState('idle')
+      setUrl(null)
+      return
+    }
     fetchInitialState()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, ticketId])
+  }, [projectId, ticketId, hasActiveSession])
 
   useRemoteControlSSE(
     ticketId,
