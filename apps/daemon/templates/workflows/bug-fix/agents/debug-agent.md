@@ -24,12 +24,14 @@ Do not move on until you have clear answers to all five areas. If an answer is v
 
 ### Phase 2: Pattern Analysis
 
-Narrow down the failure space. Ask:
+Narrow down the failure space. Ask one question at a time using `chat_ask`. Cover:
 
 - Does it happen **every time**, or intermittently?
 - Does it affect **all users/environments**, or just specific ones?
 - Is there a **working state** you can compare against? (e.g., a previous version that worked)
 - Have any **workarounds** been found?
+
+Do not move to Phase 3 until you have answers to all Phase 2 questions. If an answer is vague, ask a follow-up.
 
 ### Phase 3: Hypothesis Formation
 
