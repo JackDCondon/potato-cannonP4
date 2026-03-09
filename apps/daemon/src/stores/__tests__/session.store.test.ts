@@ -344,6 +344,17 @@ describe("SessionStore", () => {
     });
   });
 
+  describe("endAllOpenSessions", () => {
+    it('endAllOpenSessions marks open sessions as ended', () => {
+      const ticket = ticketStore.createTicket(projectId, { title: 'T-stale' });
+      sessionStore.createSession({ ticketId: ticket.id, projectId });
+      assert.notEqual(sessionStore.getActiveSessionForTicket(ticket.id), null);
+      const count = sessionStore.endAllOpenSessions();
+      assert.ok(count >= 1);
+      assert.equal(sessionStore.getActiveSessionForTicket(ticket.id), null);
+    });
+  });
+
   describe("getLatestClaudeSessionIdForTicket", () => {
     it("should return null when no sessions exist for ticket", () => {
       const ticket = ticketStore.createTicket(projectId, { title: "Test Ticket" });

@@ -59,6 +59,7 @@ import {
   createStoredSession,
   getActiveSessionForTicket,
   getActiveSessionForBrainstorm,
+  endAllOpenSessions,
 } from "../stores/session.store.js";
 import { scanPendingResponses, clearQuestion, clearResponse, readQuestion, getPendingQuestionsByProject } from "../stores/chat.store.js";
 import { artifactChatStore } from "../stores/artifact-chat.store.js";
@@ -843,6 +844,12 @@ export async function main(): Promise<void> {
     }
 
     console.log("\nPotato Cannon Dashboard Ready!\n");
+
+    // Clear sessions from previous daemon run before recovery
+    const staleSessions = endAllOpenSessions();
+    if (staleSessions > 0) {
+      console.log(`[startup] Cleared ${staleSessions} stale session(s) from previous run`);
+    }
 
     // Recover interrupted sessions (mid-execution with worker-state.json)
     await recoverInterruptedSessions();

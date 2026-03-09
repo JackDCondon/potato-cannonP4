@@ -184,6 +184,13 @@ export class SessionStore {
     return row?.claude_session_id || null;
   }
 
+  endAllOpenSessions(): number {
+    const result = this.db
+      .prepare(`UPDATE sessions SET ended_at = ?, exit_code = -1 WHERE ended_at IS NULL`)
+      .run(new Date().toISOString());
+    return result.changes;
+  }
+
   /**
    * Delete all sessions for a ticket that occurred in or after the specified phases.
    * Also ends any active sessions for these phases.
@@ -280,4 +287,8 @@ export function deleteSessionsForPhases(
   phases: string[]
 ): number {
   return new SessionStore(getDatabase()).deleteSessionsForPhases(ticketId, phases);
+}
+
+export function endAllOpenSessions(): number {
+  return new SessionStore(getDatabase()).endAllOpenSessions();
 }
