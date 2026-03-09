@@ -67,6 +67,11 @@ function RootLayout() {
   }, [currentProject, setCurrentProjectId])
   const hasProjects = projects && projects.length > 0
 
+  // Skip app chrome for transcript routes (opens in new tab, no sidebar/header needed)
+  const location = useLocation()
+  const isTranscript = location.pathname.startsWith('/transcript/')
+  if (isTranscript) return <Outlet />
+
   return (
     <>
       {/* Title bar for Electron window dragging - outside SidebarProvider for correct positioning */}
