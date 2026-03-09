@@ -550,7 +550,7 @@ export class SessionService {
   stopSession(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.process.kill();
+      session.process.kill("SIGTERM");
       return true;
     }
     return false;
@@ -566,7 +566,15 @@ export class SessionService {
     if (session?.exitResolver) {
       session.exitResolver();
     }
-    this.remoteControlState.delete(sessionId);
+    if (this.remoteControlState.has(sessionId)) {
+      this.remoteControlState.delete(sessionId);
+      const meta = session?.meta as any;
+      eventBus.emit("session:remote-control-cleared", {
+        sessionId,
+        ticketId: meta?.ticketId ?? "",
+        projectId: meta?.projectId ?? "",
+      });
+    }
     this.sessions.delete(sessionId);
   }
 
