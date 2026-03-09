@@ -16,6 +16,8 @@ type SSEEventType =
   | 'session:started'
   | 'session:output'
   | 'session:ended'
+  | 'session:remote-control-url'
+  | 'session:remote-control-cleared'
   | 'brainstorm:created'
   | 'brainstorm:updated'
   | 'brainstorm:message'
@@ -51,6 +53,8 @@ export function useSSE() {
       eventSource.onopen = () => {
         console.log('SSE connected')
         reconnectDelayRef.current = 1000
+        // Notify RC components to re-fetch state (recovers from SSE dropout during RC startup)
+        window.dispatchEvent(new CustomEvent('sse:reconnected'))
       }
 
       eventSource.onerror = () => {
@@ -216,6 +220,26 @@ export function useSSE() {
       eventSource.addEventListener('ticket:task-updated', () => {
         queryClient.refetchQueries({ queryKey: ['tasks'] })
       })
+
+      // Remote control URL — forward to window event for useRemoteControlSSE subscribers
+      eventSource.addEventListener('session:remote-control-url', (e) => {
+        try {
+          const data = JSON.parse(e.data) as SSEEventData
+          window.dispatchEvent(new CustomEvent('sse:remote-control-url', { detail: data }))
+        } catch {
+          // Ignore parse errors
+        }
+      })
+
+      // Remote control cleared — forward to window event for useRemoteControlSSE subscribers
+      eventSource.addEventListener('session:remote-control-cleared', (e) => {
+        try {
+          const data = JSON.parse(e.data) as SSEEventData
+          window.dispatchEvent(new CustomEvent('sse:remote-control-cleared', { detail: data }))
+        } catch {
+          // Ignore parse errors
+        }
+      })
     }
 
     connect()
@@ -294,4 +318,36 @@ export function useTicketRestarted(callback: (data: SSEEventData) => void) {
     window.addEventListener('sse:ticket-restarted', handler as EventListener)
     return () => window.removeEventListener('sse:ticket-restarted', handler as EventListener)
   }, [callback])
+}
+
+// Hook for subscribing to remote control SSE events scoped to a specific ticket
+export function useRemoteControlSSE(
+  ticketId: string | undefined,
+  onUrl: (url: string) => void,
+  onCleared: () => void,
+) {
+  useEffect(() => {
+    if (!ticketId) return
+
+    const urlHandler = (e: CustomEvent<SSEEventData>) => {
+      const data = e.detail as { ticketId?: string; url?: string }
+      if (data.ticketId === ticketId && data.url) {
+        onUrl(data.url)
+      }
+    }
+
+    const clearedHandler = (e: CustomEvent<SSEEventData>) => {
+      const data = e.detail as { ticketId?: string }
+      if (data.ticketId === ticketId) {
+        onCleared()
+      }
+    }
+
+    window.addEventListener('sse:remote-control-url', urlHandler as EventListener)
+    window.addEventListener('sse:remote-control-cleared', clearedHandler as EventListener)
+    return () => {
+      window.removeEventListener('sse:remote-control-url', urlHandler as EventListener)
+      window.removeEventListener('sse:remote-control-cleared', clearedHandler as EventListener)
+    }
+  }, [ticketId, onUrl, onCleared])
 }
