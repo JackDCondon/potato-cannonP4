@@ -10,7 +10,7 @@ import { Linkify } from '@/components/ui/linkify'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
 import { TaskList } from './TaskList'
 import { RestartPhaseButton } from './RestartPhaseButton'
-import { RemoteControlButton } from './RemoteControlButton'
+import { ViewSessionButton } from './ViewSessionButton'
 import type { Artifact, TicketHistoryEntry } from '@potato-cannon/shared'
 import { useSessionOutput, useTicketMessage, useSessionEnded } from '@/hooks/useSSE'
 import { useAppStore } from '@/stores/appStore'
@@ -36,7 +36,7 @@ interface ChatMessage {
   }
 }
 
-export function ActivityTab({ projectId, ticketId, ticketTitle, currentPhase: propPhase, history, archived }: ActivityTabProps) {
+export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, currentPhase: propPhase, history, archived }: ActivityTabProps) {
   const [input, setInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
@@ -243,10 +243,9 @@ export function ActivityTab({ projectId, ticketId, ticketTitle, currentPhase: pr
             )}
       </div>
       <div className="flex items-center gap-2 px-4 pt-1 pb-2">
-        <RemoteControlButton
+        <ViewSessionButton
           projectId={projectId}
           ticketId={ticketId}
-          ticketTitle={ticketTitle ?? ticketId}
           hasActiveSession={hasActiveSession}
         />
       </div>

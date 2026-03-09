@@ -590,7 +590,8 @@ export class SessionService {
 
     this.remoteControlState.set(sessionId, { pending: true });
     const safeName = ticketTitle.replace(/["\n\r]/g, " ").slice(0, 50);
-    session.process.write(`/remote-control "${safeName}"\r`);
+    const command = `/remote-control "${safeName}"\r`;
+    session.process.write(command);
     return true;
   }
 
