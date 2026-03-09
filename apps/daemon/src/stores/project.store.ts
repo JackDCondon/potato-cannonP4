@@ -67,6 +67,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     branchPrefix: (row.branch_prefix as string) || 'potato',
     folderId: (row.folder_id as string) || null,
     p4Stream: (row.p4_stream as string) || undefined,
+    suggestedP4Stream: (row.suggested_p4_stream as string) || undefined,
     agentWorkspaceRoot: (row.agent_workspace_root as string) || undefined,
     helixSwarmUrl: (row.helix_swarm_url as string) || undefined,
   };
@@ -217,6 +218,10 @@ export class ProjectStore {
     if (updates.p4Stream !== undefined) {
       fields.push("p4_stream = ?");
       values.push(updates.p4Stream || null);
+    }
+    if (updates.suggestedP4Stream !== undefined) {
+      fields.push("suggested_p4_stream = ?");
+      values.push(updates.suggestedP4Stream || null);
     }
     if (updates.agentWorkspaceRoot !== undefined) {
       fields.push("agent_workspace_root = ?");

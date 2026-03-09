@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 8;
+const CURRENT_SCHEMA_VERSION = 9;
 
 /**
  * Run database migrations.
@@ -39,6 +39,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 8) {
     migrateV8(db);
+  }
+
+  if (version < 9) {
+    migrateV9(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -420,5 +424,17 @@ function migrateV8(db: Database.Database): void {
   }
   if (!columnNames.has('helix_swarm_url')) {
     db.exec(`ALTER TABLE projects ADD COLUMN helix_swarm_url TEXT`);
+  }
+}
+
+/**
+ * V9: Add suggested_p4_stream column to projects table (AI-detected P4 stream on registration)
+ */
+function migrateV9(db: Database.Database): void {
+  const columns = db.pragma('table_info(projects)') as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has('suggested_p4_stream')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN suggested_p4_stream TEXT`);
   }
 }

@@ -201,6 +201,7 @@ export function registerProjectRoutes(
         p4Stream: p.p4Stream,
         agentWorkspaceRoot: p.agentWorkspaceRoot,
         helixSwarmUrl: p.helixSwarmUrl,
+        suggestedP4Stream: p.suggestedP4Stream,
       }));
       res.json(list);
     } catch (error) {
@@ -280,11 +281,16 @@ export function registerProjectRoutes(
         }
       }
 
+      // Persist the detected stream suggestion so GET /api/projects can return it
+      if (suggestedP4Stream) {
+        updateProject(project.id, { suggestedP4Stream });
+      }
+
       await refreshProjects();
 
       // Return the full project object so frontend has id and slug
       const refreshedProject = getProjectById(project.id);
-      res.json({ ...refreshedProject, suggestedP4Stream });
+      res.json(refreshedProject);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }

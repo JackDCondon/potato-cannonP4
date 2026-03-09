@@ -27,6 +27,29 @@ import { useTemplateStatus } from '@/hooks/useTemplateStatus'
 import { ChangelogModal } from '@/components/ChangelogModal'
 import { api } from '@/api/client'
 
+// Validate branch prefix (git-safe characters only)
+function isValidBranchPrefix(prefix: string): boolean {
+  if (!prefix) return true
+  return /^[a-zA-Z0-9/_-]+$/.test(prefix)
+}
+
+// Validate P4 stream (must start with //)
+function isValidP4Stream(stream: string): boolean {
+  if (!stream) return true
+  return stream.startsWith('//')
+}
+
+// Validate URL format (http/https)
+function isValidUrl(url: string): boolean {
+  if (!url) return true
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 interface ConfigurePageProps {
   projectId: string
 }
@@ -56,29 +79,6 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
   const [agentWorkspaceRootError, setAgentWorkspaceRootError] = useState<string | null>(null)
   const [helixSwarmUrl, setHelixSwarmUrl] = useState('')
   const [helixSwarmUrlError, setHelixSwarmUrlError] = useState<string | null>(null)
-
-  // Validate branch prefix (git-safe characters only)
-  const isValidBranchPrefix = (prefix: string): boolean => {
-    if (!prefix) return true
-    return /^[a-zA-Z0-9/_-]+$/.test(prefix)
-  }
-
-  // Validate P4 stream (must start with //)
-  const isValidP4Stream = (stream: string): boolean => {
-    if (!stream) return true
-    return stream.startsWith('//')
-  }
-
-  // Validate URL format (http/https)
-  const isValidUrl = (url: string): boolean => {
-    if (!url) return true
-    try {
-      const parsed = new URL(url)
-      return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-    } catch {
-      return false
-    }
-  }
 
   // Dialog states
   const [showTemplateDialog, setShowTemplateDialog] = useState(false)
@@ -173,7 +173,7 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
     if (!project) return
     if (p4StreamError) return
     const newStream = p4Stream.trim()
-    if (newStream !== (project.p4Stream || '')) {
+    if (newStream !== (project.p4Stream || project.suggestedP4Stream || '')) {
       updateProject.mutate({ id: projectId, updates: { p4Stream: newStream || undefined } })
     }
   }, [p4Stream, p4StreamError, project, projectId, updateProject])
