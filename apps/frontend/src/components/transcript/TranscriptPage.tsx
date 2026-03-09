@@ -14,7 +14,7 @@ interface TranscriptPageProps {
 
 export function TranscriptPage({ sessionId }: TranscriptPageProps) {
   const [liveEntries, setLiveEntries] = useState<SessionLogEntry[]>([])
-  const [isEnded, setIsEnded] = useState(false)
+  const [isEndedBySSE, setIsEndedBySSE] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
   const [totalTokens, setTotalTokens] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -41,8 +41,18 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
 
   useSessionEnded(useCallback((raw) => {
     const data = raw as { sessionId: string }
-    if (data.sessionId === sessionId) setIsEnded(true)
+    if (data.sessionId === sessionId) setIsEndedBySSE(true)
   }, [sessionId]))
+
+  // Fix 3: Detect completed sessions from historical data (no SSE session:ended will arrive)
+  useEffect(() => {
+    if (historicalEntries.length > 0) {
+      const last = historicalEntries[historicalEntries.length - 1]
+      if (last.type === 'system' && (last.subtype === 'session_end' || last.subtype === 'task_complete')) {
+        setIsEndedBySSE(true)
+      }
+    }
+  }, [historicalEntries])
 
   // Auto-scroll fires on both historical load and live updates
   useEffect(() => {
@@ -60,13 +70,19 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
 
   const allEntries = [...historicalEntries, ...liveEntries]
 
+  // Fix 3: isEnded combines SSE signal and historical end detection
+  const isSessionHistorical = !isLoading && historicalEntries.length > 0 && liveEntries.length === 0
+  const isEnded = isEndedBySSE || isSessionHistorical
+
   const copyTranscript = () => {
     const text = allEntries
       .filter(e => e.type !== 'session_start')
       .map(e => {
         if (e.type === 'assistant' && e.message) {
           return e.message.content
-            .map(b => b.type === 'text' ? b.text : `[Tool: ${b.name}]`)
+            // Fix 1: b.text ?? '' prevents "undefined" in clipboard output
+            // Fix 2: b.name guard prevents "[Tool: undefined]"
+            .map(b => b.type === 'text' ? (b.text ?? '') : (b.name ? `[Tool: ${b.name}]` : '[Tool]'))
             .join('\n')
         }
         if (e.type === 'raw') return e.content
@@ -74,11 +90,14 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
       })
       .filter(Boolean)
       .join('\n\n')
-    navigator.clipboard.writeText(text)
+    // Fix 4: Handle clipboard promise rejection
+    navigator.clipboard.writeText(text ?? '').catch((err) => {
+      console.error('Failed to copy transcript:', err)
+    })
   }
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-950 text-text-primary">
+    <div className="relative flex flex-col h-screen bg-zinc-950 text-text-primary">
       <header className="flex items-center gap-3 px-4 py-3 border-b border-white/10 bg-zinc-950/80 backdrop-blur shrink-0">
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-semibold truncate">{ticketTitle}</h1>
