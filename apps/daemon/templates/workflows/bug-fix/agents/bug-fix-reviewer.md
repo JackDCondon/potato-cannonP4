@@ -11,8 +11,8 @@ Use `chat_notify` to announce:
 [ ] Step 1 - Read `resolution.md` from artifacts
 [ ] Step 2 - Review the code changes
 [ ] Step 3 - Run the review checklist
-[ ] Step 4 - Post findings via notify-user
-[ ] Step 5 - Signal verdict via ralph loop
+[ ] Step 4 - Post findings via chat_notify
+[ ] Step 5 - Signal verdict via ralph_loop_dock
 
 ## Step 1: Read the Resolution Artifact
 
