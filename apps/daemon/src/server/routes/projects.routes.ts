@@ -661,13 +661,15 @@ export function registerProjectRoutes(
           return;
         }
 
-        const ticket = await updateTicket(projectId, ticketId, { complexity: complexity as Complexity });
-        if (!ticket) {
-          res.status(404).json({ error: 'Ticket not found' });
-          return;
+        try {
+          const ticket = await updateTicket(projectId, ticketId, { complexity: complexity as Complexity });
+          res.json(ticket);
+        } catch (err: unknown) {
+          if (err instanceof Error && err.message.includes('not found')) {
+            return res.status(404).json({ error: 'Ticket not found' });
+          }
+          throw err; // re-throw unexpected errors
         }
-
-        res.json(ticket);
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }
