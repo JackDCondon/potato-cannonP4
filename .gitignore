@@ -33,5 +33,7 @@ apps/desktop/build/daemon/
 .potato/
 .claudetastic/
 
-# Plans (generated)
-docs/plans/
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
