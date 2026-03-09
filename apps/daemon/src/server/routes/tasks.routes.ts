@@ -117,7 +117,7 @@ export function registerTaskRoutes(app: Express): void {
           return;
         }
 
-        const validStatuses: TaskStatus[] = ["pending", "in_progress", "completed", "failed"];
+        const validStatuses: TaskStatus[] = ["pending", "in_progress", "completed", "failed", "cancelled"];
         if (!validStatuses.includes(status)) {
           res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
           return;

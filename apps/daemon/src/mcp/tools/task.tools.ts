@@ -6,6 +6,16 @@ import type {
 
 export const taskTools: ToolDefinition[] = [
   {
+    name: "list_tasks",
+    description:
+      "List all tasks for the current ticket. Returns tasks with their IDs, descriptions, statuses, and bodies. Use this to check what tasks already exist before creating new ones.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "get_task",
     description: "Get details of a specific task by its ID",
     inputSchema: {
@@ -39,7 +49,7 @@ export const taskTools: ToolDefinition[] = [
   },
   {
     name: "update_task_status",
-    description: "Update the status of a task. Valid statuses: pending, in_progress, completed, failed.",
+    description: "Update the status of a task. Valid statuses: pending, in_progress, completed, failed, cancelled.",
     inputSchema: {
       type: "object",
       properties: {
@@ -142,12 +152,32 @@ async function addCommentToTask(
   return response.json();
 }
 
-const VALID_TASK_STATUSES = ["pending", "in_progress", "completed", "failed"];
+async function listTasksForTicket(ctx: McpContext): Promise<unknown> {
+  const response = await fetch(
+    `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${ctx.ticketId}/tasks`,
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to list tasks: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+const VALID_TASK_STATUSES = ["pending", "in_progress", "completed", "failed", "cancelled"];
 
 export const taskHandlers: Record<
   string,
   (ctx: McpContext, args: Record<string, unknown>) => Promise<McpToolResult>
 > = {
+  list_tasks: async (ctx) => {
+    if (!ctx.ticketId) {
+      throw new Error("Missing context.ticketId - task tools require a ticket context");
+    }
+    const tasks = await listTasksForTicket(ctx);
+    return {
+      content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }],
+    };
+  },
+
   get_task: async (ctx, args) => {
     if (!ctx.ticketId) {
       throw new Error("Missing context.ticketId - task tools require a ticket context");

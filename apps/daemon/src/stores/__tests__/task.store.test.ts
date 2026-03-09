@@ -6,12 +6,13 @@ import os from "os";
 import Database from "better-sqlite3";
 
 import { runMigrations } from "../migrations.js";
-import { createProjectStore } from "../project.store.js";
+import { createProjectStore, ProjectStore } from "../project.store.js";
 import { createTicketStore, TicketStore } from "../ticket.store.js";
 import { createTaskStore, TaskStore } from "../task.store.js";
 
 describe("TaskStore", () => {
   let db: Database.Database;
+  let projectStore: ProjectStore;
   let taskStore: TaskStore;
   let ticketStore: TicketStore;
   let testDbPath: string;
@@ -24,7 +25,7 @@ describe("TaskStore", () => {
     db.pragma("journal_mode = WAL");
     runMigrations(db);
 
-    const projectStore = createProjectStore(db);
+    projectStore = createProjectStore(db);
     const project = projectStore.createProject({
       displayName: "Test Project",
       path: "/test/project",
@@ -233,6 +234,16 @@ describe("TaskStore", () => {
     it("should return null for non-existent task", () => {
       const result = taskStore.updateTaskStatus("non-existent", "in_progress");
       assert.strictEqual(result, null);
+    });
+
+    it("should accept cancelled status", () => {
+      const project = projectStore.createProject({ displayName: "CancelTest", path: "/tmp/cancel-test" });
+      const ticket = ticketStore.createTicket(project.id, { title: "T" });
+      const created = taskStore.createTask(ticket.id, "build", { description: "Task 1" });
+
+      const cancelled = taskStore.updateTaskStatus(created.id, "cancelled");
+      assert.strictEqual(cancelled?.status, "cancelled");
+      assert.strictEqual(cancelled?.attemptCount, 0);
     });
   });
 
