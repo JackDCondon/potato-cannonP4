@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { eventBus } from '../../utils/event-bus.js';
 import type { SessionService } from '../../services/session/index.js';
+import { getActiveSessionForTicket } from '../../stores/session.store.js';
 
 export function registerSessionRoutes(app: Express, sessionService: SessionService): void {
   // List sessions
@@ -56,5 +57,40 @@ export function registerSessionRoutes(app: Express, sessionService: SessionServi
     const sessionId = req.params.id;
     const stopped = sessionService.stopSession(sessionId);
     res.json({ ok: stopped });
+  });
+
+  // Get remote control state for a ticket
+  app.get('/api/tickets/:projectId/:ticketId/remote-control', (req: Request, res: Response) => {
+    const { ticketId } = req.params;
+
+    const activeSession = getActiveSessionForTicket(ticketId);
+    if (!activeSession) {
+      return res.json({ pending: false, url: null });
+    }
+
+    const state = sessionService.getRemoteControlState(activeSession.id);
+    res.json({
+      sessionId: activeSession.id,
+      pending: state?.pending ?? false,
+      url: state?.url ?? null,
+    });
+  });
+
+  // Start remote control for a ticket's active session
+  app.post('/api/tickets/:projectId/:ticketId/remote-control/start', async (req: Request, res: Response) => {
+    const { ticketId } = req.params;
+    const { ticketTitle } = req.body as { ticketTitle?: string };
+
+    const activeSession = getActiveSessionForTicket(ticketId);
+    if (!activeSession) {
+      return res.status(409).json({ error: 'No active session for this ticket' });
+    }
+
+    const started = sessionService.startRemoteControl(activeSession.id, ticketTitle ?? ticketId);
+    if (!started) {
+      return res.status(409).json({ error: 'Cannot start remote control — session not running or RC already active' });
+    }
+
+    res.json({ ok: true, sessionId: activeSession.id });
   });
 }
