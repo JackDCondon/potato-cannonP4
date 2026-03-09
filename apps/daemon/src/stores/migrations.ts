@@ -452,6 +452,20 @@ function migrateV9(db: Database.Database): void {
 }
 
 /**
+ * V10: Add vcs_type column to projects table.
+ * Backfills existing Perforce projects (those with p4_stream set).
+ */
+function migrateV10(db: Database.Database): void {
+  const columns = db.pragma('table_info(projects)') as { name: string }[];
+  const columnNames = new Set(columns.map((c) => c.name));
+
+  if (!columnNames.has('vcs_type')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN vcs_type TEXT NOT NULL DEFAULT 'git'`);
+    db.exec(`UPDATE projects SET vcs_type = 'perforce' WHERE p4_stream IS NOT NULL`);
+  }
+}
+
+/**
  * V11: Add p4_mcp_server_path column to projects table.
  */
 function migrateV11(db: Database.Database): void {
@@ -480,19 +494,5 @@ function migrateV12(db: Database.Database): void {
   );
   if (!taskCols.has('complexity')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT NOT NULL DEFAULT 'standard' CHECK(complexity IN ('simple', 'standard', 'complex'))`);
-  }
-}
-
-/**
- * V10: Add vcs_type column to projects table.
- * Backfills existing Perforce projects (those with p4_stream set).
- */
-function migrateV10(db: Database.Database): void {
-  const columns = db.pragma('table_info(projects)') as { name: string }[];
-  const columnNames = new Set(columns.map((c) => c.name));
-
-  if (!columnNames.has('vcs_type')) {
-    db.exec(`ALTER TABLE projects ADD COLUMN vcs_type TEXT NOT NULL DEFAULT 'git'`);
-    db.exec(`UPDATE projects SET vcs_type = 'perforce' WHERE p4_stream IS NOT NULL`);
   }
 }
