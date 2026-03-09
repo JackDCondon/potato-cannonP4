@@ -168,9 +168,9 @@ export function AgentCard({
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Model Routing</label>
             <div className="space-y-1.5">
-              {(['simple', 'standard', 'complex'] as const).map((level) => {
+              {(() => {
                 const matrix = getModelMatrix(agent.model)
-                return (
+                return (['simple', 'standard', 'complex'] as const).map((level) => (
                   <div key={level} className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground w-16 capitalize">{level}</span>
                     <Select
@@ -190,8 +190,8 @@ export function AgentCard({
                       </SelectContent>
                     </Select>
                   </div>
-                )
-              })}
+                ))
+              })()}
             </div>
           </div>
 
