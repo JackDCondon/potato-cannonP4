@@ -11,7 +11,7 @@ Use `potato:notify-user` to announce:
 [ ] Step 1 - Read `resolution.md` from artifacts
 [ ] Step 2 - Review the code changes
 [ ] Step 3 - Run the review checklist
-[ ] Step 4 - Add comment to task with findings
+[ ] Step 4 - Post findings via notify-user
 [ ] Step 5 - Signal verdict via ralph loop
 
 ## Step 1: Read the Resolution Artifact
@@ -22,7 +22,7 @@ If `resolution.md` does not exist: **reject immediately** with feedback: "resolu
 
 ## Step 2: Review Code Changes
 
-Look at what the builder changed. Focus on:
+Run `git diff HEAD~1` in the Bash tool to see what the builder modified in the last commit. Read any changed files that need closer inspection using the Read tool. Focus on:
 - Which files were modified
 - What logic changed
 - Whether tests were added
@@ -40,9 +40,9 @@ Look at what the builder changed. Focus on:
 | **Regression test** | Is the regression test from resolution.md's test strategy present? | At least one test that would catch this bug recurring |
 | **No new issues** | Do the changes introduce new bugs or security issues? | Clean diff with no side effects |
 
-## Step 4: Add Comment to Task
+## Step 4: Post Findings via notify-user
 
-Use `add-comment-to-task`:
+Use `potato:notify-user` to post the full findings summary.
 
 **If approved:**
 ```
