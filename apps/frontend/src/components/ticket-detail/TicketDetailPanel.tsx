@@ -253,6 +253,7 @@ export function TicketDetailPanel() {
                   <ActivityTab
                     projectId={currentProjectId!}
                     ticketId={ticket.id}
+                    ticketTitle={ticket.title}
                     currentPhase={ticket.phase}
                     history={ticket.history}
                     archived={ticket.archived}

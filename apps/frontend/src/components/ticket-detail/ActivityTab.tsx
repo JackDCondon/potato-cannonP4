@@ -10,12 +10,15 @@ import { Linkify } from '@/components/ui/linkify'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
 import { TaskList } from './TaskList'
 import { RestartPhaseButton } from './RestartPhaseButton'
+import { RemoteControlButton } from './RemoteControlButton'
 import type { Artifact, TicketHistoryEntry } from '@potato-cannon/shared'
 import { useSessionOutput, useTicketMessage, useSessionEnded } from '@/hooks/useSSE'
+import { useAppStore } from '@/stores/appStore'
 
 interface ActivityTabProps {
   projectId: string
   ticketId: string
+  ticketTitle?: string
   currentPhase?: string
   history?: TicketHistoryEntry[]
   archived?: boolean
@@ -33,13 +36,15 @@ interface ChatMessage {
   }
 }
 
-export function ActivityTab({ projectId, ticketId, currentPhase: propPhase, history, archived }: ActivityTabProps) {
+export function ActivityTab({ projectId, ticketId, ticketTitle, currentPhase: propPhase, history, archived }: ActivityTabProps) {
   const [input, setInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
   const [selectedArtifact, setSelectedArtifact] = useState<Artifact | null>(null)
   const [currentActivity, setCurrentActivity] = useState<string | null>(null)
   const [currentPhase, setCurrentPhase] = useState<string | null>(null)
+
+  const hasActiveSession = useAppStore((s) => s.isTicketProcessing(projectId, ticketId))
 
   const queryClient = useQueryClient()
 
@@ -236,6 +241,14 @@ export function ActivityTab({ projectId, ticketId, currentPhase: propPhase, hist
                 disabled={archived}
               />
             )}
+      </div>
+      <div className="flex items-center gap-2 px-4 pt-1 pb-2">
+        <RemoteControlButton
+          projectId={projectId}
+          ticketId={ticketId}
+          ticketTitle={ticketTitle ?? ticketId}
+          hasActiveSession={hasActiveSession}
+        />
       </div>
  
 
