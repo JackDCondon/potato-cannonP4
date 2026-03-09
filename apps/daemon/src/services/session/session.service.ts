@@ -961,8 +961,9 @@ export class SessionService {
       stage: 0,
     };
 
-    // Resolve model for this agent
-    const resolvedModel = resolveModel(agentWorker.model);
+    // Resolve model for this agent, using task complexity if available, else ticket complexity
+    const taskComplexity = taskContext?.complexity ?? ticket.complexity;
+    const resolvedModel = resolveModel(agentWorker.model, taskComplexity);
 
     return this.spawnClaudeSession(
       sessionId,

@@ -127,6 +127,7 @@ export function buildTaskContext(taskId: string): TaskContext {
       text: c.text,
       createdAt: c.createdAt,
     })),
+    complexity: task.complexity,
   };
 }
 

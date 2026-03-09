@@ -1,5 +1,6 @@
 // src/types/orchestration.types.ts
 
+import type { Complexity } from "@potato-cannon/shared";
 import type { Task } from "./task.types.js";
 
 /**
@@ -64,6 +65,7 @@ export interface TaskContext {
   description: string;
   body?: string;
   comments: Array<{ text: string; createdAt: string }>;
+  complexity?: Complexity;
 }
 
 // Type guards
