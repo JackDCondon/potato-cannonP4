@@ -61,13 +61,6 @@ import {
 import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 
-/**
- * Resolve the Claude CLI executable path, cross-platform.
- * Delegates to the shared resolveClaude utility.
- */
-function resolveClaudeExecutable(nodeExecutable: string): { claudePath: string; claudePrependArgs: string[] } {
-  return resolveClaude(nodeExecutable);
-}
 
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
@@ -386,7 +379,7 @@ export class SessionService {
     // Agent instructions are included in the prompt
     args.push("--print", prompt);
 
-    const { claudePath, claudePrependArgs } = resolveClaudeExecutable(nodePath);
+    const { claudePath, claudePrependArgs } = resolveClaude(nodePath);
     console.log(`[spawnClaudeSession] Spawning ${agentType} at: ${claudePath}`);
 
     const spawnProject = getProjectById(projectId);
@@ -707,7 +700,7 @@ export class SessionService {
     }
     args.push("--print", fullPrompt);
 
-    const { claudePath, claudePrependArgs } = resolveClaudeExecutable(nodePath);
+    const { claudePath, claudePrependArgs } = resolveClaude(nodePath);
 
     const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
       name: "xterm-256color",

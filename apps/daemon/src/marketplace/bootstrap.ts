@@ -19,13 +19,6 @@ interface CommandResult {
   stderr: string;
 }
 
-function getClaudePath(): { claudePath: string; claudePrependArgs: string[] } | null {
-  const nodePath = resolveNode();
-  const result = resolveClaude(nodePath);
-  // resolveClaude falls back to "claude" string when not found; treat that as found
-  return result;
-}
-
 function runClaudeCommand(claudePath: string, claudePrependArgs: string[], args: string[]): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(claudePath, [...claudePrependArgs, ...args], { stdio: 'pipe' });
@@ -98,13 +91,7 @@ export async function bootstrapMarketplace(): Promise<void> {
   console.log(`[marketplace] Marketplace copied to ${MARKETPLACE_DIR}`);
 
   // Step 2: Install plugin to Claude CLI (requires Claude CLI)
-  const claudeResolved = getClaudePath();
-  if (!claudeResolved) {
-    console.log('[marketplace] Claude CLI not found, skipping plugin installation');
-    console.log('[marketplace] Install Claude CLI and restart daemon to enable skills');
-    return;
-  }
-  const { claudePath, claudePrependArgs } = claudeResolved;
+  const { claudePath, claudePrependArgs } = resolveClaude(resolveNode());
 
   // Uninstall old marketplace (plugin first, then marketplace)
   const pluginId = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
