@@ -131,6 +131,12 @@ export const api = {
       method: 'PATCH'
     }),
 
+  setTicketComplexity: (projectId: string, ticketId: string, complexity: 'simple' | 'standard' | 'complex') =>
+    request<Ticket>(`/api/projects/${encodeURIComponent(projectId)}/tickets/${encodeURIComponent(ticketId)}/complexity`, {
+      method: 'PATCH',
+      body: JSON.stringify({ complexity }),
+    }),
+
   restoreTicket: (projectId: string, ticketId: string) =>
     request<Ticket>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/restore`, {
       method: 'PATCH'

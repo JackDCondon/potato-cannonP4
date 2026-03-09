@@ -217,6 +217,20 @@ export function useRestartTicket() {
   })
 }
 
+export function useSetTicketComplexity() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projectId, ticketId, complexity }: {
+      projectId: string;
+      ticketId: string;
+      complexity: 'simple' | 'standard' | 'complex'
+    }) => api.setTicketComplexity(projectId, ticketId, complexity),
+    onSuccess: (_, { projectId, ticketId }) => {
+      queryClient.invalidateQueries({ queryKey: ['ticket', projectId, ticketId] })
+    },
+  })
+}
+
 export function useArchivedTickets(projectId: string | null) {
   return useQuery({
     queryKey: ['archivedTickets', projectId],

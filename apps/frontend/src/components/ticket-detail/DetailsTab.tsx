@@ -18,7 +18,8 @@ import {
   useTicketArtifacts,
   useSessions,
   useSessionLog,
-  useProjects
+  useProjects,
+  useSetTicketComplexity
 } from '@/hooks/queries'
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { IconButton } from '@/components/ui/icon-button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -35,11 +43,12 @@ import {
 } from '@/components/ui/dialog'
 import { cn, formatDate, formatTime, timeAgo } from '@/lib/utils'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
-import type { Artifact, TicketHistoryEntry, SessionLogEntry } from '@potato-cannon/shared'
+import type { Artifact, TicketHistoryEntry, SessionLogEntry, Complexity } from '@potato-cannon/shared'
 
 interface DetailsTabProps {
   projectId: string
   ticketId: string
+  complexity: Complexity
   description?: string
   history?: TicketHistoryEntry[]
 }
@@ -129,7 +138,37 @@ function SessionTerminalBar({ sessionId, isRunning }: SessionTerminalBarProps) {
   )
 }
 
-export function DetailsTab({ projectId, ticketId, description, history }: DetailsTabProps) {
+const COMPLEXITY_STYLES: Record<Complexity, string> = {
+  simple: 'bg-muted text-muted-foreground',
+  standard: 'bg-blue-500/15 text-blue-400',
+  complex: 'bg-amber-500/15 text-amber-400',
+}
+
+function ComplexityBadge({
+  projectId,
+  ticketId,
+  complexity,
+}: {
+  projectId: string
+  ticketId: string
+  complexity: Complexity
+}) {
+  const { mutate } = useSetTicketComplexity()
+  return (
+    <Select value={complexity} onValueChange={(c) => mutate({ projectId, ticketId, complexity: c as Complexity })}>
+      <SelectTrigger className={cn('h-6 w-auto border-0 px-2 text-xs font-medium rounded-full', COMPLEXITY_STYLES[complexity])}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="simple">simple</SelectItem>
+        <SelectItem value="standard">standard</SelectItem>
+        <SelectItem value="complex">complex</SelectItem>
+      </SelectContent>
+    </Select>
+  )
+}
+
+export function DetailsTab({ projectId, ticketId, complexity, description, history }: DetailsTabProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedDescription, setEditedDescription] = useState(description ?? '')
   const [isExpanded, setIsExpanded] = useState(false)
@@ -271,6 +310,12 @@ export function DetailsTab({ projectId, ticketId, description, history }: Detail
 
   return (
     <div className="space-y-6">
+      {/* Complexity Badge */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-text-muted uppercase tracking-wide">Complexity</span>
+        <ComplexityBadge projectId={projectId} ticketId={ticketId} complexity={complexity} />
+      </div>
+
       {/* Description Section */}
       <div>
         <div className="flex items-center justify-between mb-2">

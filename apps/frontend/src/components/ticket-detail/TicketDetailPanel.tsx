@@ -265,6 +265,7 @@ export function TicketDetailPanel() {
                       <DetailsTab
                         projectId={currentProjectId!}
                         ticketId={ticket.id}
+                        complexity={ticket.complexity}
                         description={ticket.description}
                         history={ticket.history}
                       />
