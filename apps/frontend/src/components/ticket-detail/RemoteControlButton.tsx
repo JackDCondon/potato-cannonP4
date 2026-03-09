@@ -3,7 +3,6 @@ import { Monitor, Loader2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
 import { useRemoteControlSSE } from '@/hooks/useSSE'
-import { cn } from '@/lib/utils'
 
 interface RemoteControlButtonProps {
   projectId: string
@@ -85,9 +84,7 @@ export function RemoteControlButton({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={cn(
-            'text-sm text-accent hover:underline flex items-center gap-1',
-          )}
+          className="text-sm text-accent hover:underline flex items-center gap-1"
         >
           Open in Claude.ai
           <ExternalLink className="h-3 w-3" />

@@ -204,27 +204,6 @@ export class SessionService {
   }
 
   /**
-   * Get all currently processing tickets grouped by project.
-   * Used for the processing:sync heartbeat.
-   */
-  getProcessingTicketsByProject(): Map<string, string[]> {
-    const byProject = new Map<string, string[]>();
-
-    for (const [, session] of this.sessions) {
-      const { projectId, ticketId } = session.meta;
-      if (projectId && ticketId) {
-        const existing = byProject.get(projectId) || [];
-        if (!existing.includes(ticketId)) {
-          existing.push(ticketId);
-        }
-        byProject.set(projectId, existing);
-      }
-    }
-
-    return byProject;
-  }
-
-  /**
    * Get all currently processing sessions grouped by project.
    * Returns both ticket IDs and brainstorm IDs for each project.
    * Used for the processing:sync heartbeat.

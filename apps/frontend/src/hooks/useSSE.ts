@@ -334,11 +334,7 @@ export function useRemoteControlSSE(
   // Keep refs updated on every render (safe — refs don't trigger effects)
   useEffect(() => {
     onUrlRef.current = onUrl
-  })
-  useEffect(() => {
     onClearedRef.current = onCleared
-  })
-  useEffect(() => {
     onReconnectedRef.current = onReconnected
   })
 
