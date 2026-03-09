@@ -23,6 +23,8 @@ import type {
   LogEntry
 } from '@potato-cannon/shared'
 
+export type { SessionLogEntry } from '@potato-cannon/shared'
+
 const BASE_URL = ''
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
