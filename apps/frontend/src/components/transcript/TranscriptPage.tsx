@@ -44,7 +44,7 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
     if (data.sessionId === sessionId) setIsEndedBySSE(true)
   }, [sessionId]))
 
-  // Fix 3: Detect completed sessions from historical data (no SSE session:ended will arrive)
+  // Detect completed sessions from historical data (no SSE session:ended will arrive)
   useEffect(() => {
     if (historicalEntries.length > 0) {
       const last = historicalEntries[historicalEntries.length - 1]
@@ -70,7 +70,6 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
 
   const allEntries = [...historicalEntries, ...liveEntries]
 
-  // Fix 3: isEnded combines SSE signal and historical end detection
   const isSessionHistorical = !isLoading && historicalEntries.length > 0 && liveEntries.length === 0
   const isEnded = isEndedBySSE || isSessionHistorical
 
@@ -80,8 +79,6 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
       .map(e => {
         if (e.type === 'assistant' && e.message) {
           return e.message.content
-            // Fix 1: b.text ?? '' prevents "undefined" in clipboard output
-            // Fix 2: b.name guard prevents "[Tool: undefined]"
             .map(b => b.type === 'text' ? (b.text ?? '') : (b.name ? `[Tool: ${b.name}]` : '[Tool]'))
             .join('\n')
         }
@@ -90,7 +87,6 @@ export function TranscriptPage({ sessionId }: TranscriptPageProps) {
       })
       .filter(Boolean)
       .join('\n\n')
-    // Fix 4: Handle clipboard promise rejection
     navigator.clipboard.writeText(text ?? '').catch((err) => {
       console.error('Failed to copy transcript:', err)
     })

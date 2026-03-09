@@ -9,8 +9,6 @@ import 'highlight.js/styles/github-dark.css'
 import { cn, timeAgo } from '@/lib/utils'
 import type { SessionLogEntry, SessionLogContentBlock } from '@potato-cannon/shared'
 
-export type { SessionLogEntry }
-
 // Register languages once at module load
 hljs.registerLanguage('json', json)
 hljs.registerLanguage('typescript', typescript)
