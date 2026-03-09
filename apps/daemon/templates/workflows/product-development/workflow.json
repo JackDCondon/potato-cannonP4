@@ -2,7 +2,7 @@
   "$schema": "./workflow.schema.json",
   "name": "product-development",
   "description": "Standard product development workflow with refinement, architecture, and build phases",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "phases": [
     {
       "id": "Refinement",
@@ -129,6 +129,14 @@
           "description": "Creates build tickets from specification",
           "disallowTools": ["Skill(superpowers:*)"],
           "model": "sonnet"
+        },
+        {
+          "id": "task-review-agent",
+          "type": "agent",
+          "source": "agents/task-review.md",
+          "description": "Interactive task list review with user before build starts",
+          "disallowTools": ["Skill(superpowers:*)"],
+          "model": "haiku"
         },
         {
           "id": "build-task-loop",
