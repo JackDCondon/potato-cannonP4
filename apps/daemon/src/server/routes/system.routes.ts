@@ -23,7 +23,8 @@ export function registerSystemRoutes(app: Express): void {
    * Capped at 2000 lines. Returns empty array if log file does not exist yet.
    */
   app.get("/api/system/logs", async (req: Request, res: Response) => {
-    const limit = Math.min(parseInt(String(req.query.lines ?? "500"), 10) || 500, 2000);
+    const rawLines = parseInt(String(req.query.lines ?? "500"), 10);
+    const limit = Math.min(isNaN(rawLines) || rawLines < 1 ? 500 : rawLines, 2000);
 
     try {
       const raw = await fs.readFile(LOG_FILE, "utf-8");
@@ -31,9 +32,12 @@ export function registerSystemRoutes(app: Express): void {
       const tail = lines.slice(-limit);
       const entries = tail.map(parseLine);
       res.json({ entries });
-    } catch {
-      // Log file doesn't exist yet — return empty list
-      res.json({ entries: [] });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        res.json({ entries: [] });
+      } else {
+        res.status(500).json({ error: 'Failed to read log file' });
+      }
     }
   });
 }
