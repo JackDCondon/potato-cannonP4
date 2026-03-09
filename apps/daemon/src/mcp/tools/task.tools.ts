@@ -3,6 +3,7 @@ import type {
   McpContext,
   McpToolResult,
 } from "../../types/mcp.types.js";
+import type { Task } from "../../types/task.types.js";
 
 export const taskTools: ToolDefinition[] = [
   {
@@ -152,7 +153,7 @@ async function addCommentToTask(
   return response.json();
 }
 
-async function listTasksForTicket(ctx: McpContext): Promise<unknown> {
+async function listTasksForTicket(ctx: McpContext): Promise<Task[]> {
   const response = await fetch(
     `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${ctx.ticketId}/tasks`,
   );
