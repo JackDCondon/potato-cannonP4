@@ -332,6 +332,9 @@ export const ticketHandlers: Record<
   },
 
   set_ticket_complexity: async (ctx, args) => {
+    if (!ctx.ticketId) {
+      return { content: [{ type: 'text', text: 'Error: set_ticket_complexity requires a ticket context' }] };
+    }
     const { complexity } = args as { complexity: string };
     const response = await fetch(
       `${ctx.daemonUrl}/api/projects/${encodeURIComponent(ctx.projectId)}/tickets/${ctx.ticketId}/complexity`,
