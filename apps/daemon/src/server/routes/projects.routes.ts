@@ -39,6 +39,7 @@ import type { Project } from "../../types/config.types.js";
 import type { TicketPhase } from "../../types/ticket.types.js";
 import type { SessionService } from "../../services/session/index.js";
 import type { Worker } from "../../types/template.types.js";
+import type { Complexity } from "@potato-cannon/shared";
 
 let projects: Map<string, Project> = new Map();
 
@@ -645,6 +646,32 @@ export function registerProjectRoutes(
         res.status(500).json({ error: (error as Error).message });
       }
     },
+  );
+
+  // PATCH /api/projects/:projectId/tickets/:ticketId/complexity - Update ticket complexity
+  app.patch(
+    "/api/projects/:projectId/tickets/:ticketId/complexity",
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, ticketId } = req.params;
+        const { complexity } = req.body as { complexity: string };
+
+        if (!['simple', 'standard', 'complex'].includes(complexity)) {
+          res.status(400).json({ error: 'Invalid complexity value' });
+          return;
+        }
+
+        const ticket = await updateTicket(projectId, ticketId, { complexity: complexity as Complexity });
+        if (!ticket) {
+          res.status(404).json({ error: 'Ticket not found' });
+          return;
+        }
+
+        res.json(ticket);
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    }
   );
 
   // GET /api/projects/:id/phases - Get phases from project's template
