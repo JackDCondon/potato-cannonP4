@@ -1,0 +1,86 @@
+{
+  "$schema": "../workflow.schema.json",
+  "name": "bug-fix",
+  "description": "Fast-path workflow for diagnosing and fixing bugs: interactive diagnosis, targeted build, PR.",
+  "version": "1.0.0",
+  "parentTemplate": "product-development",
+  "phases": [
+    {
+      "id": "Solve Issue",
+      "name": "Solve Issue",
+      "description": "Interactive diagnostic session to identify root cause and produce a fix plan",
+      "workers": [
+        {
+          "id": "debug-agent",
+          "type": "agent",
+          "source": "agents/debug-agent.md",
+          "description": "Interactively diagnoses the bug and produces resolution.md",
+          "model": "opus"
+        }
+      ],
+      "transitions": {
+        "next": "Backlog"
+      }
+    },
+    {
+      "id": "Backlog",
+      "name": "Backlog",
+      "description": "Resolution confirmed, awaiting implementation",
+      "workers": [],
+      "transitions": {
+        "next": null,
+        "manual": true
+      }
+    },
+    {
+      "id": "Build",
+      "name": "Build",
+      "description": "Implement the fix from resolution.md with adversarial review",
+      "workers": [
+        {
+          "id": "build-ralph-loop",
+          "type": "ralphLoop",
+          "description": "Implements and reviews the fix against resolution.md",
+          "maxAttempts": 2,
+          "workers": [
+            {
+              "id": "builder-agent",
+              "type": "agent",
+              "source": "agents/builder.md",
+              "description": "Implements the fix from resolution.md",
+              "disallowTools": ["Skill(superpowers:*)"],
+              "model": "sonnet"
+            },
+            {
+              "id": "bug-fix-reviewer-agent",
+              "type": "agent",
+              "source": "agents/bug-fix-reviewer.md",
+              "description": "Verifies fix addresses root cause from resolution.md",
+              "model": "haiku"
+            }
+          ]
+        }
+      ],
+      "transitions": {
+        "next": "Pull Requests"
+      },
+      "requiresWorktree": true
+    },
+    {
+      "id": "Pull Requests",
+      "name": "Pull Requests",
+      "description": "Create pull request for the bug fix",
+      "workers": [
+        {
+          "id": "pr-agent",
+          "type": "agent",
+          "source": "agents/pr-agent.md",
+          "description": "Creates PR with fix summary and test evidence"
+        }
+      ],
+      "transitions": {
+        "next": null
+      }
+    }
+  ]
+}
