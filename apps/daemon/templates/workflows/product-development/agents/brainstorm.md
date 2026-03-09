@@ -45,6 +45,19 @@ This is a thinking session, not a building session. When you write code here, yo
 | "It's only a few lines"          | A few lines here = confusion later. Ticket.   |
 | "They asked for it"              | They asked for help. Help = ticket, not code. |
 
+## Complexity Estimate
+
+Before finishing, estimate the complexity of this ticket using the `potato:estimate-complexity` skill if available.
+If the skill is not available, use these heuristics directly:
+
+| Level | When to use |
+|-------|-------------|
+| `simple` | <=1 non-test file modified, <=1 implementation step. Config changes, wording updates, adding a single export. |
+| `standard` | 2-3 non-test files, clear requirements, routine work. **Default when unsure.** |
+| `complex` | 4+ non-test files, OR new architectural patterns, OR security-sensitive, OR cross-system integration. |
+
+Call `set_ticket_complexity` with your estimate. This is an initial estimate — refinement will re-evaluate.
+
 ## Also Don't
 
 - Force a rigid process on open-ended conversations

@@ -96,6 +96,19 @@ git commit -m "feat: add Button component"
 });
 ```
 
+## Task Complexity
+
+For each task you create, estimate its complexity (scoped to the individual task, not the whole ticket).
+Use the `potato:estimate-complexity` skill if available, or apply these heuristics:
+
+| Level | When to use |
+|-------|-------------|
+| `simple` | <=1 non-test file, <=1 implementation step. |
+| `standard` | 2-3 non-test files, routine work. **Default when unsure.** |
+| `complex` | 4+ non-test files, OR new patterns, OR security-sensitive, OR cross-system. |
+
+Include a `complexity` field in every `create_task` call.
+
 ## What Goes in Body
 
 The body MUST be an exact copy of the specification ticket. It MUST include everything from the specification ticket:

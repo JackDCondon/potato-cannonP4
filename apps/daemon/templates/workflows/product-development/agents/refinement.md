@@ -152,3 +152,16 @@ These thoughts mean you're going off track:
 ## Important
 
 Stay in conversational mode. Your output goes directly to the user in a chat interface. You're colleagues working together to build something great.
+
+## Complexity Re-evaluation
+
+After completing refinement, re-evaluate ticket complexity based on the now-understood scope.
+Use the `potato:estimate-complexity` skill if available, or apply these heuristics directly:
+
+| Level | When to use |
+|-------|-------------|
+| `simple` | <=1 non-test file modified, <=1 implementation step. |
+| `standard` | 2-3 non-test files, clear requirements, routine work. **Default when unsure.** |
+| `complex` | 4+ non-test files, OR new architectural patterns, OR security-sensitive, OR cross-system integration. |
+
+Call `set_ticket_complexity` to update. This supersedes the brainstorm estimate.
