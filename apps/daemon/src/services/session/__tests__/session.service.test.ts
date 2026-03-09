@@ -425,19 +425,92 @@ describe("SessionService.startRemoteControl", () => {
     assert.strictEqual(result, false);
   });
 
-  it("cleans up remoteControlState when session exits", () => {
+  it("cleans up remoteControlState when session exits via onExit handler", () => {
     const sessions = (service as any).sessions as Map<string, any>;
-    const remoteControlState = (service as any).remoteControlState as Map<string, any>;
+
+    const mockProcess = {
+      kill: () => {},
+      write: () => {},
+    };
 
     const sessionId = "sess_rc_cleanup";
-    remoteControlState.set(sessionId, { pending: true });
 
-    // Simulate what happens when session exits — sessions.delete is called
-    // and remoteControlState.delete is called before it
-    remoteControlState.delete(sessionId);
-    sessions.delete(sessionId);
+    // Register the session so startRemoteControl can find it
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta: { projectId: "proj-1", ticketId: "ticket-1" },
+      logStream: { write: () => {}, end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+      forceKilled: false,
+    });
 
+    // Call startRemoteControl to set pending state
+    service.startRemoteControl(sessionId, "My Ticket");
+    assert.deepStrictEqual(service.getRemoteControlState(sessionId), { pending: true });
+
+    // Invoke the cleanup that proc.onExit performs (via test helper that mirrors production logic)
+    (service as any)._testSimulateSessionExit(sessionId);
+
+    // Assert cleanup happened
     assert.strictEqual(service.getRemoteControlState(sessionId), null);
     assert.strictEqual(sessions.has(sessionId), false);
+  });
+
+  it("transitions remoteControlState from pending to url when PTY data contains a claude.ai URL", async () => {
+    const { eventBus } = await import("../../../utils/event-bus.js");
+    const sessions = (service as any).sessions as Map<string, any>;
+
+    // Capture eventBus.emit calls
+    const emittedEvents: Array<{ event: string; payload: unknown }> = [];
+    const originalEmit = eventBus.emit.bind(eventBus);
+    (eventBus as any).emit = (event: string, payload?: unknown) => {
+      emittedEvents.push({ event, payload });
+      return originalEmit(event, payload);
+    };
+
+    const mockProcess = {
+      kill: () => {},
+      write: () => {},
+    };
+
+    const sessionId = "sess_rc_url_scan";
+    const meta = { projectId: "proj-1", ticketId: "ticket-1" };
+
+    sessions.set(sessionId, {
+      process: mockProcess,
+      meta,
+      logStream: { write: () => {}, end: () => {} },
+      exitPromise: Promise.resolve(),
+      exitResolver: () => {},
+      forceKilled: false,
+    });
+
+    // Call startRemoteControl to set pending state
+    service.startRemoteControl(sessionId, "My Ticket");
+    assert.deepStrictEqual(service.getRemoteControlState(sessionId), { pending: true });
+
+    // Drive ANSI-escaped PTY data containing a claude.ai URL through the onData handler
+    const ansiData = "\x1B[32mhttps://claude.ai/code/abc123\x1B[0m";
+    (service as any)._testSimulateOnData(sessionId, ansiData);
+
+    // Assert state transitioned correctly
+    const state = service.getRemoteControlState(sessionId);
+    assert.ok(state !== null);
+    assert.strictEqual(state!.pending, false);
+    assert.strictEqual(state!.url, "https://claude.ai/code/abc123");
+
+    // Assert eventBus.emit was called with the correct event and payload
+    const urlEvent = emittedEvents.find((e) => e.event === "session:remote-control-url");
+    assert.ok(urlEvent !== undefined, "session:remote-control-url event should have been emitted");
+    assert.deepStrictEqual(urlEvent!.payload, {
+      sessionId,
+      ticketId: "ticket-1",
+      projectId: "proj-1",
+      url: "https://claude.ai/code/abc123",
+    });
+
+    // Restore
+    (eventBus as any).emit = originalEmit;
   });
 });

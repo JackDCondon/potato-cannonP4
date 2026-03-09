@@ -543,10 +543,47 @@ export class SessionService {
   stopSession(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.process.kill();
+      session.process.kill("SIGTERM");
       return true;
     }
     return false;
+  }
+
+  /**
+   * Internal helper for unit tests: simulate the cleanup that proc.onExit performs
+   * for a session registered in the sessions map (without spawning a real PTY).
+   * Not intended for production use.
+   */
+  _testSimulateSessionExit(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session?.exitResolver) {
+      session.exitResolver();
+    }
+    this.remoteControlState.delete(sessionId);
+    this.sessions.delete(sessionId);
+  }
+
+  /**
+   * Internal helper for unit tests: simulate the URL scanning that proc.onData performs
+   * for a pending remote-control session (without spawning a real PTY).
+   * Not intended for production use.
+   */
+  _testSimulateOnData(sessionId: string, data: string): void {
+    const meta = this.sessions.get(sessionId)?.meta ?? {};
+    if (this.remoteControlState.get(sessionId)?.pending) {
+      const stripped = data.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+      const match = stripped.match(/https:\/\/claude\.ai\/code\/[^\s]{1,150}/);
+      if (match) {
+        const url = match[0];
+        this.remoteControlState.set(sessionId, { pending: false, url });
+        eventBus.emit("session:remote-control-url", {
+          sessionId,
+          ticketId: (meta as any).ticketId,
+          projectId: (meta as any).projectId,
+          url,
+        });
+      }
+    }
   }
 
   startRemoteControl(sessionId: string, ticketTitle: string): boolean {
