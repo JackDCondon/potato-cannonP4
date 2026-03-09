@@ -40,3 +40,17 @@ apps/desktop/build/daemon/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+refinement-draft.md
+refinement.md
+specification-p4p1.md
+specification.md
+/temp
+architecture.md
+architecture-draft.md
+architecture-critique-2.md
+architecture-critique-1.md
+AGENTS.md
+.claude/agents/5.2.0code-reviewer.md.source-hash
+.claude/agents/5.2.0code-reviewer.md
+docs/PerforceTips.md
+.claude/settings.json
