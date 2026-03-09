@@ -20,7 +20,8 @@ import type {
   ArtifactChatPendingResponse,
   ArchiveResult,
   WorkerTreeResponse,
-  LogEntry
+  LogEntry,
+  Complexity
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
@@ -131,7 +132,7 @@ export const api = {
       method: 'PATCH'
     }),
 
-  setTicketComplexity: (projectId: string, ticketId: string, complexity: 'simple' | 'standard' | 'complex') =>
+  setTicketComplexity: (projectId: string, ticketId: string, complexity: Complexity) =>
     request<Ticket>(`/api/projects/${encodeURIComponent(projectId)}/tickets/${encodeURIComponent(ticketId)}/complexity`, {
       method: 'PATCH',
       body: JSON.stringify({ complexity }),

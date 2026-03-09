@@ -27,7 +27,7 @@ import {
   getProjectAgentPrompt,
   deleteProjectAgentOverride,
 } from "../../stores/project-template.store.js";
-import { listTickets, updateTicket } from "../../stores/ticket.store.js";
+import { listTickets, getTicket, updateTicket } from "../../stores/ticket.store.js";
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
 import {
   resolveTargetPhase,
@@ -661,15 +661,14 @@ export function registerProjectRoutes(
           return;
         }
 
-        try {
-          const ticket = await updateTicket(projectId, ticketId, { complexity: complexity as Complexity });
-          res.json(ticket);
-        } catch (err: unknown) {
-          if (err instanceof Error && err.message.includes('not found')) {
-            return res.status(404).json({ error: 'Ticket not found' });
-          }
-          throw err; // re-throw unexpected errors
+        const existing = await getTicket(projectId, ticketId);
+        if (!existing) {
+          res.status(404).json({ error: 'Ticket not found' });
+          return;
         }
+
+        const ticket = await updateTicket(projectId, ticketId, { complexity: complexity as Complexity });
+        res.json(ticket);
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }

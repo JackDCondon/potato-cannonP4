@@ -69,6 +69,7 @@ export function AgentCard({
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const roleBadge = getRoleBadge(agent.role)
+  const modelMatrix = getModelMatrix(agent.model)
 
   const handleLoadFromFile = async () => {
     if (!agent.type) {
@@ -168,30 +169,27 @@ export function AgentCard({
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Model Routing</label>
             <div className="space-y-1.5">
-              {(() => {
-                const matrix = getModelMatrix(agent.model)
-                return (['simple', 'standard', 'complex'] as const).map((level) => (
-                  <div key={level} className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground w-16 capitalize">{level}</span>
-                    <Select
-                      value={matrix[level]}
-                      onValueChange={(value) => {
-                        const next = { ...matrix, [level]: value }
-                        onChange({ ...agent, model: next })
-                      }}
-                    >
-                      <SelectTrigger className="h-7 flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MODEL_OPTIONS.map((opt) => (
-                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))
-              })()}
+              {(['simple', 'standard', 'complex'] as const).map((level) => (
+                <div key={level} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-16 capitalize">{level}</span>
+                  <Select
+                    value={modelMatrix[level]}
+                    onValueChange={(value) => {
+                      const next = { ...modelMatrix, [level]: value }
+                      onChange({ ...agent, model: next })
+                    }}
+                  >
+                    <SelectTrigger className="h-7 flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MODEL_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
             </div>
           </div>
 

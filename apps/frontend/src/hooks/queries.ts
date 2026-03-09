@@ -1,7 +1,7 @@
 // src/hooks/queries.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { Ticket, Template, TemplatePhase } from '@potato-cannon/shared'
+import type { Ticket, Template, TemplatePhase, Complexity } from '@potato-cannon/shared'
 
 // ============ Projects ============
 
@@ -223,7 +223,7 @@ export function useSetTicketComplexity() {
     mutationFn: ({ projectId, ticketId, complexity }: {
       projectId: string;
       ticketId: string;
-      complexity: 'simple' | 'standard' | 'complex'
+      complexity: Complexity
     }) => api.setTicketComplexity(projectId, ticketId, complexity),
     onSuccess: (_, { projectId, ticketId }) => {
       queryClient.invalidateQueries({ queryKey: ['ticket', projectId, ticketId] })
