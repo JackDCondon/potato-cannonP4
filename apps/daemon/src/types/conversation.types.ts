@@ -8,7 +8,7 @@ export interface Conversation {
 export interface ConversationMessage {
   id: string;
   conversationId: string;
-  type: "question" | "user" | "notification" | "artifact";
+  type: "question" | "user" | "notification" | "artifact" | "error";
   text: string;
   options?: string[];
   timestamp: string;

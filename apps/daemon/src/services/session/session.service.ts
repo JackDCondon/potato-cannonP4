@@ -1088,6 +1088,25 @@ export class SessionService {
     const ticket = await updateTicket(projectId, ticketId, { phase: "Blocked" });
     await logToDaemon(projectId, ticketId, `Ticket blocked: ${reason}`);
 
+    // Write error to conversation so it appears in Activity feed
+    try {
+      const { addMessage } = await import('../../stores/conversation.store.js');
+      const blockedTicket = getTicket(projectId, ticketId);
+      if (blockedTicket?.conversationId) {
+        addMessage(blockedTicket.conversationId, {
+          type: 'error',
+          text: reason,
+        });
+        eventBus.emit('ticket:message', {
+          projectId,
+          ticketId,
+          message: { type: 'error', text: reason },
+        });
+      }
+    } catch (err) {
+      console.error(`[handleTicketBlocked] Failed to write error message: ${(err as Error).message}`);
+    }
+
     // Emit SSE events so frontend updates
     eventBus.emit("ticket:updated", { projectId, ticket });
     eventBus.emit("ticket:moved", {

@@ -21,7 +21,7 @@ export interface TicketPendingResponse {
 }
 
 export interface TicketMessage {
-  type: 'question' | 'user' | 'notification' | 'artifact'
+  type: 'question' | 'user' | 'notification' | 'artifact' | 'error'
   text: string
   conversationId?: string
   options?: string[]
