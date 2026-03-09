@@ -61,7 +61,7 @@ export const api = {
       method: 'DELETE'
     }),
 
-  updateProject: (id: string, updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string }) =>
+  updateProject: (id: string, updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string }) =>
     request<Project>(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(updates)
@@ -228,6 +228,22 @@ export const api = {
 
   stopSession: (sessionId: string) =>
     request<void>(`/api/sessions/${sessionId}/stop`, { method: 'POST' }),
+
+  // ============ Remote Control ============
+
+  getRemoteControl: (projectId: string, ticketId: string) =>
+    request<{ sessionId?: string; pending: boolean; url: string | null }>(
+      `/api/tickets/${encodeURIComponent(projectId)}/${encodeURIComponent(ticketId)}/remote-control`
+    ),
+
+  startRemoteControl: (projectId: string, ticketId: string, ticketTitle: string) =>
+    request<{ ok: boolean; sessionId: string }>(
+      `/api/tickets/${encodeURIComponent(projectId)}/${encodeURIComponent(ticketId)}/remote-control/start`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ticketTitle }),
+      }
+    ),
 
   // ============ System Logs ============
 
