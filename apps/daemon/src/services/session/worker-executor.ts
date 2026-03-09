@@ -246,6 +246,9 @@ export function validateP4Prerequisites(projectId: string): string | null {
   if (!project?.p4Stream) {
     return null;
   }
+  if (!project.p4Stream.trim()) {
+    return "P4 pre-build validation failed: p4Stream is empty.";
+  }
 
   // Check 1: agentWorkspaceRoot non-empty
   if (!project.agentWorkspaceRoot || !project.agentWorkspaceRoot.trim()) {

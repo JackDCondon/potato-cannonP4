@@ -485,7 +485,7 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
     // Create project that uses the child template (which has a parentTemplate)
     projectWithParent = projectStore.createProject({
       displayName: `Test Parent Fallback ${suffix}`,
-      path: "/tmp/test-parent-fallback",
+      path: `/tmp/test-parent-fallback-${suffix}`,
       templateName: childTemplateName,
       templateVersion: "1.0.0",
     });
@@ -493,7 +493,7 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
     // Create project that uses a template with no parentTemplate configured
     projectNoParent = projectStore.createProject({
       displayName: `Test No Parent ${suffix}`,
-      path: "/tmp/test-no-parent",
+      path: `/tmp/test-no-parent-${suffix}`,
       templateName: noParentTemplateName,
       templateVersion: "1.0.0",
     });
