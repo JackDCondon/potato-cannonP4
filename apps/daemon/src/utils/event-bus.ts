@@ -16,7 +16,9 @@ type EventName =
   | "ticket:task-updated"
   | "log:entry"
   | "processing:sync"
-  | "folder:updated";
+  | "folder:updated"
+  | "session:remote-control-url"
+  | "session:remote-control-cleared";
 
 class EventBus extends EventEmitter {
   private clients: Set<Response> = new Set();
@@ -53,6 +55,8 @@ const forwardEvents: EventName[] = [
   "log:entry",
   "processing:sync",
   "folder:updated",
+  "session:remote-control-url",
+  "session:remote-control-cleared",
 ];
 
 for (const event of forwardEvents) {
