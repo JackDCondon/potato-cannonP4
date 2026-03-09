@@ -231,8 +231,9 @@ export const api = {
 
   // ============ System Logs ============
 
-  getSystemLogs: (lines?: number) =>
-    request<LogEntry[]>(`/api/system/logs${lines !== undefined ? `?lines=${lines}` : ''}`),
+  async getSystemLogs(lines = 500): Promise<LogEntry[]> {
+    return request<{ entries: LogEntry[] }>(`/api/system/logs?lines=${lines}`).then((d) => d.entries);
+  },
 
   // ============ Phases ============
 
