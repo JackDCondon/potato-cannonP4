@@ -253,6 +253,142 @@ describe("TicketDependencyStore", () => {
     });
   });
 
+  describe("deleteDependency", () => {
+    it("should delete an existing dependency and return true", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+
+      store.createDependency(ticketA, ticketB, "artifact-ready");
+
+      const deleted = store.deleteDependency(ticketA, ticketB);
+      assert.strictEqual(deleted, true);
+
+      // Verify it's gone from the database
+      const row = db
+        .prepare(
+          "SELECT * FROM ticket_dependencies WHERE ticket_id = ? AND depends_on = ?"
+        )
+        .get(ticketA, ticketB);
+      assert.strictEqual(row, undefined, "Row should no longer exist");
+    });
+
+    it("should return false when no matching dependency exists", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+
+      const deleted = store.deleteDependency(ticketA, ticketB);
+      assert.strictEqual(deleted, false);
+    });
+
+    it("should only delete the specified dependency, not others", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+      const ticketC = createTicket("Ticket C");
+
+      store.createDependency(ticketA, ticketB, "artifact-ready");
+      store.createDependency(ticketA, ticketC, "code-ready");
+
+      store.deleteDependency(ticketA, ticketB);
+
+      const remaining = db
+        .prepare("SELECT * FROM ticket_dependencies WHERE ticket_id = ?")
+        .all(ticketA);
+      assert.strictEqual(remaining.length, 1, "One dependency should remain");
+    });
+  });
+
+  describe("getDependenciesForTicket", () => {
+    it("should return all dependencies with ticket title and phase", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+      const ticketC = createTicket("Ticket C");
+
+      store.createDependency(ticketA, ticketB, "artifact-ready");
+      store.createDependency(ticketA, ticketC, "code-ready");
+
+      const deps = store.getDependenciesForTicket(ticketA);
+
+      assert.strictEqual(deps.length, 2);
+
+      const depB = deps.find((d) => d.ticketId === ticketB);
+      const depC = deps.find((d) => d.ticketId === ticketC);
+
+      assert.ok(depB, "Should include dependency on Ticket B");
+      assert.strictEqual(depB!.title, "Ticket B");
+      assert.strictEqual(depB!.tier, "artifact-ready");
+      assert.ok(depB!.currentPhase, "Should have a phase");
+
+      assert.ok(depC, "Should include dependency on Ticket C");
+      assert.strictEqual(depC!.title, "Ticket C");
+      assert.strictEqual(depC!.tier, "code-ready");
+    });
+
+    it("should return empty array when ticket has no dependencies", () => {
+      const ticketA = createTicket("Ticket A");
+
+      const deps = store.getDependenciesForTicket(ticketA);
+      assert.strictEqual(deps.length, 0);
+    });
+  });
+
+  describe("getDependentsOfTicket", () => {
+    it("should return all tickets that depend on the given ticket", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+      const ticketC = createTicket("Ticket C");
+
+      // B and C both depend on A
+      store.createDependency(ticketB, ticketA, "artifact-ready");
+      store.createDependency(ticketC, ticketA, "code-ready");
+
+      const dependents = store.getDependentsOfTicket(ticketA);
+
+      assert.strictEqual(dependents.length, 2);
+
+      const depB = dependents.find((d) => d.ticketId === ticketB);
+      const depC = dependents.find((d) => d.ticketId === ticketC);
+
+      assert.ok(depB, "Should include Ticket B as dependent");
+      assert.strictEqual(depB!.title, "Ticket B");
+      assert.strictEqual(depB!.tier, "artifact-ready");
+
+      assert.ok(depC, "Should include Ticket C as dependent");
+      assert.strictEqual(depC!.title, "Ticket C");
+      assert.strictEqual(depC!.tier, "code-ready");
+    });
+
+    it("should return empty array when no tickets depend on the given ticket", () => {
+      const ticketA = createTicket("Ticket A");
+
+      const dependents = store.getDependentsOfTicket(ticketA);
+      assert.strictEqual(dependents.length, 0);
+    });
+  });
+
+  describe("delete then verify lists updated", () => {
+    it("should remove dependency from getDependenciesForTicket after delete", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+
+      store.createDependency(ticketA, ticketB, "artifact-ready");
+      assert.strictEqual(store.getDependenciesForTicket(ticketA).length, 1);
+
+      store.deleteDependency(ticketA, ticketB);
+      assert.strictEqual(store.getDependenciesForTicket(ticketA).length, 0);
+    });
+
+    it("should remove dependency from getDependentsOfTicket after delete", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+
+      store.createDependency(ticketA, ticketB, "artifact-ready");
+      assert.strictEqual(store.getDependentsOfTicket(ticketB).length, 1);
+
+      store.deleteDependency(ticketA, ticketB);
+      assert.strictEqual(store.getDependentsOfTicket(ticketB).length, 0);
+    });
+  });
+
   describe("createDependency - ticket not found", () => {
     it("should reject when ticketId does not exist", () => {
       const ticketB = createTicket("Ticket B");

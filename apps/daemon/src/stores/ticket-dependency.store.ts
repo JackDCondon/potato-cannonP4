@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "crypto";
 import { getDatabase } from "./db.js";
-import type { TicketDependency, DependencyTier } from "@potato-cannon/shared";
+import type { TicketDependency, DependencyTier, BlockedByEntry } from "@potato-cannon/shared";
 
 // =============================================================================
 // Row Types
@@ -13,6 +13,14 @@ interface DependencyRow {
   depends_on: string;
   tier: string;
   created_at: string;
+}
+
+interface DependencyJoinedRow {
+  ticket_id: string;
+  depends_on: string;
+  tier: string;
+  title: string;
+  phase: string;
 }
 
 interface TicketWorkflowRow {
@@ -119,6 +127,75 @@ export class TicketDependencyStore {
   }
 
   // ---------------------------------------------------------------------------
+  // Delete Dependency
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Delete a dependency: ticketId no longer depends on dependsOnId.
+   * Returns true if a row was deleted, false if no matching row existed.
+   */
+  deleteDependency(ticketId: string, dependsOnId: string): boolean {
+    const result = this.db
+      .prepare(
+        "DELETE FROM ticket_dependencies WHERE ticket_id = ? AND depends_on = ?"
+      )
+      .run(ticketId, dependsOnId);
+    return result.changes > 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Dependencies For Ticket
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Get all tickets that `ticketId` depends on, joined with ticket title and phase.
+   */
+  getDependenciesForTicket(ticketId: string): BlockedByEntry[] {
+    const rows = this.db
+      .prepare(
+        `SELECT td.ticket_id, td.depends_on, td.tier, t.title, t.phase
+         FROM ticket_dependencies td
+         JOIN tickets t ON t.id = td.depends_on
+         WHERE td.ticket_id = ?`
+      )
+      .all(ticketId) as DependencyJoinedRow[];
+
+    return rows.map((row) => ({
+      ticketId: row.depends_on,
+      title: row.title,
+      currentPhase: row.phase,
+      tier: row.tier as DependencyTier,
+      satisfied: false, // Evaluation handled by iqk.10
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get Dependents Of Ticket
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Get all tickets that depend on `ticketId`, joined with ticket title and phase.
+   */
+  getDependentsOfTicket(ticketId: string): BlockedByEntry[] {
+    const rows = this.db
+      .prepare(
+        `SELECT td.ticket_id, td.depends_on, td.tier, t.title, t.phase
+         FROM ticket_dependencies td
+         JOIN tickets t ON t.id = td.ticket_id
+         WHERE td.depends_on = ?`
+      )
+      .all(ticketId) as DependencyJoinedRow[];
+
+    return rows.map((row) => ({
+      ticketId: row.ticket_id,
+      title: row.title,
+      currentPhase: row.phase,
+      tier: row.tier as DependencyTier,
+      satisfied: false, // Evaluation handled by iqk.10
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
   // Cycle Detection (BFS)
   // ---------------------------------------------------------------------------
 
@@ -177,5 +254,31 @@ export function ticketDependencyCreate(
     ticketId,
     dependsOn,
     tier
+  );
+}
+
+export function ticketDependencyDelete(
+  ticketId: string,
+  dependsOnId: string
+): boolean {
+  return new TicketDependencyStore(getDatabase()).deleteDependency(
+    ticketId,
+    dependsOnId
+  );
+}
+
+export function ticketDependencyGetForTicket(
+  ticketId: string
+): BlockedByEntry[] {
+  return new TicketDependencyStore(getDatabase()).getDependenciesForTicket(
+    ticketId
+  );
+}
+
+export function ticketDependencyGetDependents(
+  ticketId: string
+): BlockedByEntry[] {
+  return new TicketDependencyStore(getDatabase()).getDependentsOfTicket(
+    ticketId
   );
 }
