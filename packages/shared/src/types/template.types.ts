@@ -1,3 +1,5 @@
+import type { DependencyTier } from './ticket.types.js'
+
 export interface Template {
   name: string
   description?: string
@@ -20,6 +22,7 @@ export interface TemplatePhase {
   output?: {
     artifacts?: string[]
   }
+  unblocksTier?: DependencyTier | null
   workers?: TemplateWorker[]
   agents?: TemplateAgent[]
   ralphLoop?: RalphLoopConfig
