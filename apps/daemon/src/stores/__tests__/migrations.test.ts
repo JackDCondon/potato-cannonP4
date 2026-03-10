@@ -201,6 +201,50 @@ describe('V13 backfill — runBackfillV13', () => {
       .prepare("SELECT workflow_id FROM tickets WHERE id = 't-bf4'")
       .get() as { workflow_id: string };
     assert.equal(ticket.workflow_id, 'wf-existing', 'should not overwrite existing workflow_id');
+
+    // Exactly one project_workflows row must exist — no duplicate is_default=1 rows
+    const workflows = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf4'")
+      .all() as unknown[];
+    assert.equal(workflows.length, 1, 'should not create a duplicate workflow row');
+  });
+
+  it('uses pre-existing is_default=1 workflow (non-Default name) for backfill, does not create extra row', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)
+       VALUES ('proj-bf5', 'pbf5', 'Named Default Project', '/bf5', '2026-01-01', 'product-development')`
+    ).run();
+
+    // Pre-existing workflow with is_default=1 but a non-'Default' name
+    db.prepare(
+      `INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
+       VALUES ('wf-named', 'proj-bf5', 'My Workflow', 'product-development', 1, '2026-01-01', '2026-01-01')`
+    ).run();
+    db.prepare(
+      `INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-bf5', 1)`
+    ).run();
+    // Ticket with no workflow_id yet
+    db.prepare(
+      `INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at)
+       VALUES ('t-bf5', 'proj-bf5', 'Unlinked Ticket', 'Backlog', '2026-01-01', '2026-01-01')`
+    ).run();
+
+    runBackfillV13(db);
+
+    // Ticket should be assigned to the pre-existing default workflow (not a new 'Default' row)
+    const ticket = db
+      .prepare("SELECT workflow_id FROM tickets WHERE id = 't-bf5'")
+      .get() as { workflow_id: string };
+    assert.equal(ticket.workflow_id, 'wf-named', 'ticket should be linked to the pre-existing is_default=1 workflow');
+
+    // Exactly one project_workflows row must exist — no new 'Default' row should have been inserted
+    const workflows = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf5'")
+      .all() as unknown[];
+    assert.equal(workflows.length, 1, 'should not create a new Default row when is_default=1 already exists');
   });
 
   it('handles multiple projects independently', () => {

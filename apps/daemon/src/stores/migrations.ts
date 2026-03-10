@@ -553,14 +553,18 @@ export function runBackfillV13(db: Database.Database): void {
     return;
   }
 
+  const findDefaultWorkflow = db.prepare(
+    `SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1`
+  );
+
   const insertWorkflow = db.prepare(
-    `INSERT OR IGNORE INTO project_workflows
+    `INSERT INTO project_workflows
        (id, project_id, name, template_name, is_default, created_at, updated_at)
      VALUES (?, ?, ?, ?, 1, ?, ?)`
   );
 
-  const getDefaultWorkflow = db.prepare(
-    `SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1`
+  const getWorkflowByName = db.prepare(
+    `SELECT id FROM project_workflows WHERE project_id = ? AND name = ? LIMIT 1`
   );
 
   const backfillTickets = db.prepare(
@@ -573,18 +577,17 @@ export function runBackfillV13(db: Database.Database): void {
     for (const project of projects) {
       const templateName = project.template_name ?? 'product-development';
 
-      // Insert a default workflow only if the project has none yet
-      insertWorkflow.run(
-        randomUUID(),
-        project.id,
-        'Default',
-        templateName,
-        now,
-        now
-      );
+      // First, check if a default workflow already exists (keyed on is_default=1)
+      let row = findDefaultWorkflow.get(project.id) as { id: string } | undefined;
 
-      // Retrieve the default workflow id (handles both newly inserted and pre-existing)
-      const row = getDefaultWorkflow.get(project.id) as { id: string } | undefined;
+      if (!row) {
+        // No default workflow exists — insert a new 'Default' row
+        const newId = randomUUID();
+        insertWorkflow.run(newId, project.id, 'Default', templateName, now, now);
+        // Retrieve via name to confirm insertion (handles edge cases)
+        row = getWorkflowByName.get(project.id, 'Default') as { id: string } | undefined;
+      }
+
       if (!row) {
         continue;
       }
