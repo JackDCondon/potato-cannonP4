@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "crypto";
 import { getDatabase } from "./db.js";
-import type { TicketDependency, DependencyTier, BlockedByEntry } from "@potato-cannon/shared";
+import type { TicketDependency, DependencyTier, BlockedByEntry, TemplatePhase } from "@potato-cannon/shared";
 
 // =============================================================================
 // Row Types
@@ -196,6 +196,69 @@ export class TicketDependencyStore {
   }
 
   // ---------------------------------------------------------------------------
+  // Satisfaction Evaluation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Check if a dependency is satisfied based on the dependent ticket's current
+   * phase, the required tier, and the template phase ordering.
+   *
+   * For a given tier, finds the first phase in `templatePhases` with a matching
+   * `unblocksTier`, then checks if the dependent ticket's phase index is >= that
+   * phase's index.
+   *
+   * Fallback: if no phase has the tier marker and tier is `artifact-ready`,
+   * returns `true` (permissive) with a warning log. `code-ready` always has
+   * Done (synthetic), so a missing marker should not occur.
+   */
+  isSatisfied(
+    depTicketPhase: string,
+    tier: DependencyTier,
+    templatePhases: TemplatePhase[]
+  ): boolean {
+    const tierPhaseIndex = templatePhases.findIndex(
+      (p) => p.unblocksTier === tier
+    );
+
+    if (tierPhaseIndex === -1) {
+      if (tier === "artifact-ready") {
+        console.warn(
+          `[ticket-dependency] No phase with unblocksTier="${tier}" found in template; defaulting to satisfied (permissive fallback)`
+        );
+        return true;
+      }
+      // code-ready should always have Done phase with the marker
+      return false;
+    }
+
+    const depPhaseIndex = templatePhases.findIndex(
+      (p) => p.id === depTicketPhase
+    );
+
+    // If the dependent ticket's phase is not found in the template, not satisfied
+    if (depPhaseIndex === -1) {
+      return false;
+    }
+
+    return depPhaseIndex >= tierPhaseIndex;
+  }
+
+  /**
+   * Get all dependencies for a ticket with satisfaction evaluation.
+   * Calls getDependenciesForTicket, maps each through isSatisfied.
+   */
+  getDependenciesWithSatisfaction(
+    ticketId: string,
+    templatePhases: TemplatePhase[]
+  ): BlockedByEntry[] {
+    const deps = this.getDependenciesForTicket(ticketId);
+    return deps.map((dep) => ({
+      ...dep,
+      satisfied: this.isSatisfied(dep.currentPhase, dep.tier, templatePhases),
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
   // Cycle Detection (BFS)
   // ---------------------------------------------------------------------------
 
@@ -280,5 +343,15 @@ export function ticketDependencyGetDependents(
 ): BlockedByEntry[] {
   return new TicketDependencyStore(getDatabase()).getDependentsOfTicket(
     ticketId
+  );
+}
+
+export function ticketDependencyGetWithSatisfaction(
+  ticketId: string,
+  templatePhases: TemplatePhase[]
+): BlockedByEntry[] {
+  return new TicketDependencyStore(getDatabase()).getDependenciesWithSatisfaction(
+    ticketId,
+    templatePhases
   );
 }

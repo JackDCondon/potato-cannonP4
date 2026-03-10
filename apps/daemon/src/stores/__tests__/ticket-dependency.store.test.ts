@@ -5,6 +5,7 @@ import path from "path";
 import os from "os";
 import Database from "better-sqlite3";
 
+import type { TemplatePhase } from "@potato-cannon/shared";
 import { runMigrations } from "../migrations.js";
 import {
   createTicketDependencyStore,
@@ -408,6 +409,128 @@ describe("TicketDependencyStore", () => {
         (err: Error) => err.message.includes("not found"),
         "Should reject non-existent dependsOn"
       );
+    });
+  });
+
+  // ===========================================================================
+  // isSatisfied
+  // ===========================================================================
+
+  describe("isSatisfied", () => {
+    // Mimics the full phases array from getWorkflowWithFullPhases for product-development:
+    // Ideas, Refinement, Backlog, Architecture, Architecture Review, Specification (artifact-ready),
+    // Build, Build Review, Blocked, Done (code-ready)
+    const templatePhases: TemplatePhase[] = [
+      { id: "Ideas", name: "Ideas" },
+      { id: "Refinement", name: "Refinement" },
+      { id: "Backlog", name: "Backlog" },
+      { id: "Architecture", name: "Architecture" },
+      { id: "Architecture Review", name: "Architecture Review" },
+      { id: "Specification", name: "Specification", unblocksTier: "artifact-ready" },
+      { id: "Build", name: "Build" },
+      { id: "Build Review", name: "Build Review" },
+      { id: "Blocked", name: "Blocked" },
+      { id: "Done", name: "Done", unblocksTier: "code-ready" },
+    ];
+
+    it("should return true when ticket at Specification satisfies artifact-ready", () => {
+      const result = store.isSatisfied("Specification", "artifact-ready", templatePhases);
+      assert.strictEqual(result, true);
+    });
+
+    it("should return true when ticket past the required phase (Build satisfies artifact-ready)", () => {
+      const result = store.isSatisfied("Build", "artifact-ready", templatePhases);
+      assert.strictEqual(result, true);
+    });
+
+    it("should return false when ticket before the required phase (Architecture does not satisfy artifact-ready)", () => {
+      const result = store.isSatisfied("Architecture", "artifact-ready", templatePhases);
+      assert.strictEqual(result, false);
+    });
+
+    it("should return false when ticket at Build does NOT satisfy code-ready", () => {
+      const result = store.isSatisfied("Build", "code-ready", templatePhases);
+      assert.strictEqual(result, false);
+    });
+
+    it("should return true when ticket at Done satisfies code-ready", () => {
+      const result = store.isSatisfied("Done", "code-ready", templatePhases);
+      assert.strictEqual(result, true);
+    });
+
+    it("should return true (permissive fallback) when no phase has artifact-ready marker", () => {
+      const phasesNoMarker: TemplatePhase[] = [
+        { id: "Ideas", name: "Ideas" },
+        { id: "Build", name: "Build" },
+        { id: "Done", name: "Done", unblocksTier: "code-ready" },
+      ];
+
+      const result = store.isSatisfied("Ideas", "artifact-ready", phasesNoMarker);
+      assert.strictEqual(result, true, "Should default to satisfied when no artifact-ready marker");
+    });
+
+    it("should return false when depTicketPhase is not found in template phases", () => {
+      const result = store.isSatisfied("NonexistentPhase", "artifact-ready", templatePhases);
+      assert.strictEqual(result, false);
+    });
+
+    it("should return false for code-ready when no phase has code-ready marker", () => {
+      const phasesNoCodeReady: TemplatePhase[] = [
+        { id: "Ideas", name: "Ideas" },
+        { id: "Build", name: "Build" },
+        { id: "Done", name: "Done" },
+      ];
+
+      const result = store.isSatisfied("Done", "code-ready", phasesNoCodeReady);
+      assert.strictEqual(result, false);
+    });
+  });
+
+  // ===========================================================================
+  // getDependenciesWithSatisfaction
+  // ===========================================================================
+
+  describe("getDependenciesWithSatisfaction", () => {
+    const templatePhases: TemplatePhase[] = [
+      { id: "Ideas", name: "Ideas" },
+      { id: "Refinement", name: "Refinement" },
+      { id: "Specification", name: "Specification", unblocksTier: "artifact-ready" },
+      { id: "Build", name: "Build" },
+      { id: "Done", name: "Done", unblocksTier: "code-ready" },
+    ];
+
+    it("should return dependencies with correct satisfaction status", () => {
+      const ticketA = createTicket("Ticket A");
+      const ticketB = createTicket("Ticket B");
+      const ticketC = createTicket("Ticket C");
+
+      // A depends on B (artifact-ready) and C (code-ready)
+      store.createDependency(ticketA, ticketB, "artifact-ready");
+      store.createDependency(ticketA, ticketC, "code-ready");
+
+      // Move B to Specification (satisfies artifact-ready), C stays at Ideas (does not satisfy code-ready)
+      const ticketStore = createTicketStore(db);
+      ticketStore.updateTicket(projectId, ticketB, { phase: "Specification" });
+
+      const deps = store.getDependenciesWithSatisfaction(ticketA, templatePhases);
+
+      assert.strictEqual(deps.length, 2);
+
+      const depB = deps.find((d) => d.ticketId === ticketB);
+      const depC = deps.find((d) => d.ticketId === ticketC);
+
+      assert.ok(depB);
+      assert.strictEqual(depB!.satisfied, true, "Ticket B at Specification should satisfy artifact-ready");
+
+      assert.ok(depC);
+      assert.strictEqual(depC!.satisfied, false, "Ticket C at Ideas should not satisfy code-ready");
+    });
+
+    it("should return empty array when ticket has no dependencies", () => {
+      const ticketA = createTicket("Ticket A");
+
+      const deps = store.getDependenciesWithSatisfaction(ticketA, templatePhases);
+      assert.strictEqual(deps.length, 0);
     });
   });
 });
