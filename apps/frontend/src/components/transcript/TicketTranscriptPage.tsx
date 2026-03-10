@@ -223,6 +223,18 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
           }
         })}
       </div>
+
+      {!autoScroll && (
+        <button
+          onClick={() => {
+            setAutoScroll(true)
+            scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+          }}
+          className="fixed bottom-4 right-4 bg-zinc-700 hover:bg-zinc-600 text-white text-xs px-3 py-1.5 rounded-full"
+        >
+          ↓ Jump to bottom
+        </button>
+      )}
     </div>
   )
 }
