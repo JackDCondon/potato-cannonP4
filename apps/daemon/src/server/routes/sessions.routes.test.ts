@@ -9,7 +9,6 @@ import { runMigrations } from "../../stores/migrations.js";
 import { createSessionStore } from "../../stores/session.store.js";
 import { createProjectStore } from "../../stores/project.store.js";
 import { createTicketStore } from "../../stores/ticket.store.js";
-import { getSessionsByTicket } from "../../stores/session.store.js";
 
 describe("GET /api/projects/:projectId/tickets/:ticketId/sessions — store-level integration", () => {
   let db: Database.Database;

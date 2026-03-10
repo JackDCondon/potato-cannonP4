@@ -16,13 +16,17 @@ export function registerSessionRoutes(app: Express, sessionService: SessionServi
 
   // Get all sessions for a ticket, ordered by startedAt ascending
   app.get('/api/projects/:projectId/tickets/:ticketId/sessions', (req: Request, res: Response) => {
-    const { ticketId } = req.params;
-    const sessions = getSessionsByTicket(ticketId);
-    const result = sessions.map(s => ({
-      ...s,
-      status: !s.endedAt ? 'running' : (s.exitCode === 0 || s.exitCode == null) ? 'completed' : 'failed',
-    }));
-    res.json(result);
+    try {
+      const { ticketId } = req.params;
+      const sessions = getSessionsByTicket(ticketId);
+      const result = sessions.map(s => ({
+        ...s,
+        status: !s.endedAt ? 'running' : (s.exitCode === 0 || s.exitCode == null) ? 'completed' : 'failed',
+      }));
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
   });
 
   // Get session log
