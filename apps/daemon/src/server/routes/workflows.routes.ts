@@ -25,13 +25,13 @@ export function registerWorkflowRoutes(app: Express): void {
     (req: Request, res: Response) => {
       try {
         const { projectId } = req.params;
-        const { displayName, templateName } = req.body as {
-          displayName?: string;
+        const { name, templateName } = req.body as {
+          name?: string;
           templateName?: string;
         };
 
-        if (!displayName || !displayName.trim()) {
-          res.status(400).json({ error: "displayName is required" });
+        if (!name || !name.trim()) {
+          res.status(400).json({ error: "name is required" });
           return;
         }
 
@@ -43,7 +43,7 @@ export function registerWorkflowRoutes(app: Express): void {
         const store = getProjectWorkflowStore();
         const workflow = store.createWorkflow({
           projectId,
-          name: displayName.trim(),
+          name: name.trim(),
           templateName: templateName.trim(),
         });
 
@@ -60,8 +60,8 @@ export function registerWorkflowRoutes(app: Express): void {
     (req: Request, res: Response) => {
       try {
         const { workflowId } = req.params;
-        const { displayName, templateName, isDefault } = req.body as {
-          displayName?: string;
+        const { name, templateName, isDefault } = req.body as {
+          name?: string;
           templateName?: string;
           isDefault?: boolean;
         };
@@ -76,12 +76,12 @@ export function registerWorkflowRoutes(app: Express): void {
 
         const updates: { name?: string; templateName?: string; isDefault?: boolean } = {};
 
-        if (displayName !== undefined) {
-          if (!displayName.trim()) {
-            res.status(400).json({ error: "displayName cannot be empty" });
+        if (name !== undefined) {
+          if (!name.trim()) {
+            res.status(400).json({ error: "name cannot be empty" });
             return;
           }
-          updates.name = displayName.trim();
+          updates.name = name.trim();
         }
 
         if (templateName !== undefined) {
