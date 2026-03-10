@@ -908,7 +908,7 @@ export class SessionService {
 
     const provider = createVCSProvider(project);
 
-    const needsIsolation = await phaseRequiresIsolation(projectId, phase);
+    const needsIsolation = await phaseRequiresIsolation(projectId, phase, ticket.workflowId);
     let worktreePath: string;
     let workspaceLabel: string;
     if (needsIsolation) {
@@ -1049,7 +1049,7 @@ export class SessionService {
 
     const provider = createVCSProvider(project);
 
-    const needsIsolation = await phaseRequiresIsolation(projectId, ticket.phase);
+    const needsIsolation = await phaseRequiresIsolation(projectId, ticket.phase, ticket.workflowId);
     let worktreePath: string;
     let workspaceLabel: string;
     if (needsIsolation) {
@@ -1120,7 +1120,11 @@ export class SessionService {
     completedPhase: TicketPhase,
     projectPath: string
   ): Promise<void> {
-    const nextPhase = await getNextEnabledPhase(projectId, completedPhase);
+    // Get the ticket's workflowId so phase resolution uses the correct template
+    const currentTicket = getTicket(projectId, ticketId);
+    const workflowId = currentTicket?.workflowId;
+
+    const nextPhase = await getNextEnabledPhase(projectId, completedPhase, workflowId);
     if (!nextPhase) {
       console.log(`[handlePhaseTransition] No next phase after ${completedPhase}`);
       return;
@@ -1139,7 +1143,7 @@ export class SessionService {
     });
 
     // Check if next phase has workers
-    const phaseConfig = await getPhaseConfig(projectId, nextPhase);
+    const phaseConfig = await getPhaseConfig(projectId, nextPhase, workflowId);
     if (phaseConfig?.workers && phaseConfig.workers.length > 0) {
       await startPhase(projectId, ticketId, nextPhase, projectPath, this.getExecutorCallbacks());
     }

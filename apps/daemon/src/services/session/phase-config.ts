@@ -1,47 +1,76 @@
 import type { Phase } from '../../types/template.types.js';
 import { getProjectById, updateProjectTemplate } from '../../stores/project.store.js';
-import { getTemplateWithFullPhasesForProject } from '../../stores/template.store.js';
+import { getTemplateWithFullPhasesForProject, getWorkflowWithFullPhases } from '../../stores/template.store.js';
 import { hasProjectTemplate, copyTemplateToProject } from '../../stores/project-template.store.js';
+import { projectWorkflowGet } from '../../stores/project-workflow.store.js';
+
+/**
+ * Resolve the full-phases template to use for a given project + optional workflowId.
+ *
+ * - If workflowId is provided and found: use the global catalog template for that workflow's
+ *   templateName (non-default workflows read directly from the global catalog).
+ * - Otherwise: use the per-project template copy (default behaviour, supports overrides).
+ */
+async function resolveTemplate(
+  projectId: string,
+  workflowId?: string,
+): Promise<{ phases: Phase[] } | null> {
+  if (workflowId) {
+    const workflow = projectWorkflowGet(workflowId);
+    if (workflow) {
+      // Non-default workflow: read directly from global catalog
+      return getWorkflowWithFullPhases(workflow.templateName);
+    }
+    // workflowId not found — fall through to default project template
+  }
+
+  return getTemplateWithFullPhasesForProject(projectId);
+}
 
 /**
  * Check if a phase is disabled for a project.
  */
 export async function isPhaseDisabled(
   projectId: string,
-  phaseName: string
+  phaseName: string,
+  _workflowId?: string,
 ): Promise<boolean> {
   const project = await getProjectById(projectId);
   return project?.disabledPhases?.includes(phaseName) ?? false;
 }
 
 /**
- * Get phase configuration from project's template.
- * Throws if project has no template assigned.
+ * Get phase configuration from project's template (or the workflow's template if workflowId given).
+ * Throws if project has no template assigned (and no valid workflowId override is found).
  */
 export async function getPhaseConfig(
   projectId: string,
-  phaseName: string
+  phaseName: string,
+  workflowId?: string,
 ): Promise<Phase | null> {
   const project = await getProjectById(projectId);
   if (!project?.template) {
     throw new Error(`Project ${projectId} has no template assigned`);
   }
 
-  // Auto-migrate: copy template if project doesn't have local copy
-  if (!(await hasProjectTemplate(projectId))) {
-    try {
-      const copied = await copyTemplateToProject(projectId, project.template.name);
-      await updateProjectTemplate(projectId, project.template.name, copied.version);
-      console.log(`[phase-config] Migrated template for project ${projectId}`);
-    } catch (error) {
-      console.error(`[phase-config] Failed to migrate template: ${(error as Error).message}`);
-      // Continue with global template as fallback
+  // For the default (no workflowId) path, auto-migrate: copy template if project lacks local copy.
+  // Non-default workflows use the global catalog directly so no migration is needed.
+  if (!workflowId || !projectWorkflowGet(workflowId)) {
+    if (!(await hasProjectTemplate(projectId))) {
+      try {
+        const copied = await copyTemplateToProject(projectId, project.template.name);
+        await updateProjectTemplate(projectId, project.template.name, copied.version);
+        console.log(`[phase-config] Migrated template for project ${projectId}`);
+      } catch (error) {
+        console.error(`[phase-config] Failed to migrate template: ${(error as Error).message}`);
+        // Continue with global template as fallback
+      }
     }
   }
 
-  const template = await getTemplateWithFullPhasesForProject(projectId);
+  const template = await resolveTemplate(projectId, workflowId);
   if (!template) {
-    throw new Error(`Template ${project.template.name} not found`);
+    throw new Error(`Template not found for project ${projectId}`);
   }
 
   return template.phases.find(p => p.id === phaseName || p.name === phaseName) || null;
@@ -52,9 +81,10 @@ export async function getPhaseConfig(
  */
 export async function getNextPhase(
   projectId: string,
-  currentPhaseName: string
+  currentPhaseName: string,
+  workflowId?: string,
 ): Promise<string | null> {
-  const phase = await getPhaseConfig(projectId, currentPhaseName);
+  const phase = await getPhaseConfig(projectId, currentPhaseName, workflowId);
   return phase?.transitions?.next || null;
 }
 
@@ -66,14 +96,15 @@ export async function getNextPhase(
  */
 export async function resolveTargetPhase(
   projectId: string,
-  requestedPhase: string
+  requestedPhase: string,
+  workflowId?: string,
 ): Promise<string> {
   const project = await getProjectById(projectId);
   if (!project?.template) {
     return requestedPhase; // No template, can't resolve
   }
 
-  const template = await getTemplateWithFullPhasesForProject(projectId);
+  const template = await resolveTemplate(projectId, workflowId);
   if (!template) {
     return requestedPhase;
   }
@@ -104,13 +135,14 @@ export async function resolveTargetPhase(
  */
 export async function getNextEnabledPhase(
   projectId: string,
-  currentPhaseName: string
+  currentPhaseName: string,
+  workflowId?: string,
 ): Promise<string | null> {
-  const nextPhase = await getNextPhase(projectId, currentPhaseName);
+  const nextPhase = await getNextPhase(projectId, currentPhaseName, workflowId);
   if (!nextPhase) {
     return null;
   }
-  return resolveTargetPhase(projectId, nextPhase);
+  return resolveTargetPhase(projectId, nextPhase, workflowId);
 }
 
 /**
@@ -119,8 +151,9 @@ export async function getNextEnabledPhase(
  */
 export async function phaseRequiresIsolation(
   projectId: string,
-  phaseName: string
+  phaseName: string,
+  workflowId?: string,
 ): Promise<boolean> {
-  const phase = await getPhaseConfig(projectId, phaseName);
+  const phase = await getPhaseConfig(projectId, phaseName, workflowId);
   return phase?.requiresIsolation ?? phase?.requiresWorktree ?? false;
 }
