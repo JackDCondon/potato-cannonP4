@@ -53,10 +53,36 @@ export async function loadAgentDefinition(
     prompt = promptContent.slice(frontmatterMatch[0].length);
   }
 
+  // Load shared preamble if available and prepend to agent prompt
+  const sharedContent = await loadSharedPreamble(projectId);
+  if (sharedContent) {
+    prompt = `${sharedContent}\n\n---\n\n${prompt}`;
+  }
+
   return {
     description,
     prompt,
   };
+}
+
+/**
+ * Load the shared preamble content (agents/shared.md) for a project.
+ * Returns the content with frontmatter stripped, or null if not found.
+ */
+async function loadSharedPreamble(
+  projectId: string,
+): Promise<string | null> {
+  try {
+    const sharedRaw = await getAgentPromptForProject(projectId, "agents/shared.md");
+    // Strip frontmatter from shared content independently
+    const fmMatch = sharedRaw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+    if (fmMatch) {
+      return sharedRaw.slice(fmMatch[0].length);
+    }
+    return sharedRaw;
+  } catch {
+    return null;
+  }
 }
 
 /**
