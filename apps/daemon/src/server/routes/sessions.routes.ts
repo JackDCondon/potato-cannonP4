@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import { eventBus } from '../../utils/event-bus.js';
 import type { SessionService } from '../../services/session/index.js';
-import { getActiveSessionForTicket } from '../../stores/session.store.js';
+import { getActiveSessionForTicket, getSessionsByTicket } from '../../stores/session.store.js';
 
 export function registerSessionRoutes(app: Express, sessionService: SessionService): void {
   // List sessions
@@ -12,6 +12,17 @@ export function registerSessionRoutes(app: Express, sessionService: SessionServi
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
+  });
+
+  // Get all sessions for a ticket, ordered by startedAt ascending
+  app.get('/api/projects/:projectId/tickets/:ticketId/sessions', (req: Request, res: Response) => {
+    const { ticketId } = req.params;
+    const sessions = getSessionsByTicket(ticketId);
+    const result = sessions.map(s => ({
+      ...s,
+      status: !s.endedAt ? 'running' : (s.exitCode === 0 || s.exitCode == null) ? 'completed' : 'failed',
+    }));
+    res.json(result);
   });
 
   // Get session log
@@ -41,13 +52,20 @@ export function registerSessionRoutes(app: Express, sessionService: SessionServi
 
     const handler = (data: { sessionId: string; event: unknown }) => {
       if (data.sessionId === sessionId) {
-        res.write(`data: ${JSON.stringify(data.event)}\n\n`);
+        try {
+          res.write(`data: ${JSON.stringify(data.event)}\n\n`);
+        } catch {
+          eventBus.off('session:output', handler);
+        }
       }
     };
 
     eventBus.on('session:output', handler);
 
     res.on('close', () => {
+      eventBus.off('session:output', handler);
+    });
+    res.on('error', () => {
       eventBus.off('session:output', handler);
     });
   });
