@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProjectMenuItem } from './ProjectMenuItem'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -212,15 +212,21 @@ describe('ProjectMenuItem', () => {
     const { container } = renderWithProviders(
       <ProjectMenuItem
         project={mockProject}
-        isActive={true}
+        isActive={false}
         hasActiveSessions={false}
         hasPendingQuestions={false}
         currentWorkflowId="wf-1"
       />
     )
 
-    const activeSubButton = container.querySelector('[data-active="true"]')
+    // The parent SidebarMenuButton must NOT be active (isActive={false} above).
+    // Only the matching workflow's SidebarMenuSubButton should have data-active="true".
+    const activeSubButton = container.querySelector('[data-slot="sidebar-menu-sub-button"][data-active="true"]')
     expect(activeSubButton).toBeTruthy()
+
+    // Verify only the matched sub-item is active, not the parent button
+    const parentButton = container.querySelector('[data-slot="sidebar-menu-button"]')
+    expect(parentButton?.getAttribute('data-active')).not.toBe('true')
   })
 
   it('shows chevron toggle for multi-workflow projects', () => {
@@ -237,5 +243,30 @@ describe('ProjectMenuItem', () => {
     // ChevronRight renders an SVG
     const svg = container.querySelector('svg')
     expect(svg).toBeTruthy()
+  })
+
+  it('collapses workflow sub-items when the toggle button is clicked', () => {
+    mockUseWorkflows.mockReturnValue({ data: [mockWorkflow, mockWorkflow2] })
+    const { container } = renderWithProviders(
+      <ProjectMenuItem
+        project={mockProject}
+        isActive={false}
+        hasActiveSessions={false}
+        hasPendingQuestions={false}
+      />
+    )
+
+    // Sub-items are expanded by default — at least one sub-button should be visible
+    const subButtonsBefore = container.querySelectorAll('[data-slot="sidebar-menu-sub-button"]')
+    expect(subButtonsBefore.length).toBe(2)
+
+    // Click the parent SidebarMenuButton to collapse
+    const parentButton = container.querySelector('[data-slot="sidebar-menu-button"]')
+    expect(parentButton).toBeTruthy()
+    fireEvent.click(parentButton!)
+
+    // Sub-items should no longer be in the DOM after collapsing
+    const subButtonsAfter = container.querySelectorAll('[data-slot="sidebar-menu-sub-button"]')
+    expect(subButtonsAfter.length).toBe(0)
   })
 })
