@@ -2,7 +2,6 @@ import { useState, useCallback, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
-import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,6 +13,12 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+
+/** Extract workflowId from /projects/:slug/workflows/:workflowId/board paths */
+function getCurrentWorkflowId(): string | undefined {
+  const match = window.location.pathname.match(/\/workflows\/([^/]+)\/board/)
+  return match?.[1]
+}
 
 export function AddTicketModal() {
   const queryClient = useQueryClient()
@@ -44,7 +49,22 @@ export function AddTicketModal() {
     setError(null)
 
     try {
-      await api.createTicket(currentProjectId, title.trim(), description.trim() || undefined)
+      const workflowId = getCurrentWorkflowId()
+      const body: Record<string, string> = { title: title.trim() }
+      const trimmedDesc = description.trim()
+      if (trimmedDesc) body.description = trimmedDesc
+      if (workflowId) body.workflowId = workflowId
+
+      const res = await fetch(`/api/tickets/${encodeURIComponent(currentProjectId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(err.message || err.error || 'Request failed')
+      }
+
       queryClient.invalidateQueries({ queryKey: ['tickets', currentProjectId] })
       handleClose()
     } catch (err) {

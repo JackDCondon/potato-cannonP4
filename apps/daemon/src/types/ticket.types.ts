@@ -24,6 +24,7 @@ export type TicketPhase = string;
 export interface CreateTicketInput {
   title: string;
   description?: string;
+  workflowId?: string;
 }
 
 export interface UpdateTicketInput {

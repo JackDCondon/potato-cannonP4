@@ -76,12 +76,13 @@ function isManualCheckpoint(
 
 interface BoardProps {
   projectId: string
+  workflowId?: string
 }
 
-export function Board({ projectId }: BoardProps) {
+export function Board({ projectId, workflowId }: BoardProps) {
   // Queries
   const { data: projects } = useProjects()
-  const { data: tickets, isLoading: ticketsLoading, error: ticketsError } = useTickets(projectId)
+  const { data: tickets, isLoading: ticketsLoading, error: ticketsError } = useTickets(projectId, workflowId)
   const { data: phases } = useProjectPhases(projectId)
 
   // Get current project to access template name

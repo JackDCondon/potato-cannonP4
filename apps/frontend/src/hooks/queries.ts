@@ -105,10 +105,21 @@ export function useDeleteFolder() {
 
 // ============ Tickets ============
 
-export function useTickets(projectId: string | null) {
+export function useTickets(projectId: string | null, workflowId?: string | null) {
   return useQuery({
-    queryKey: ['tickets', projectId],
-    queryFn: () => api.getTickets(projectId!),
+    queryKey: ['tickets', projectId, workflowId ?? null],
+    queryFn: async () => {
+      let url = `/api/tickets/${encodeURIComponent(projectId!)}`
+      if (workflowId) {
+        url += `?workflowId=${encodeURIComponent(workflowId)}`
+      }
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(err.message || err.error || 'Request failed')
+      }
+      return res.json() as Promise<Ticket[]>
+    },
     enabled: !!projectId
   })
 }

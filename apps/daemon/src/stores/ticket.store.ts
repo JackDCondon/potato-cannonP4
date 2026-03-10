@@ -32,6 +32,7 @@ import { TERMINAL_PHASES } from "../types/ticket.types.js";
 export interface ListTicketsOptions {
   phase?: TicketPhase | null;
   archived?: boolean;
+  workflowId?: string | null;
 }
 
 // Re-export ArchiveResult for consumers of this store
@@ -135,7 +136,7 @@ export class TicketStore {
   // ---------------------------------------------------------------------------
 
   listTickets(projectId: string, options: ListTicketsOptions = {}): Ticket[] {
-    const { phase = null, archived = false } = options;
+    const { phase = null, archived = false, workflowId = null } = options;
 
     let sql = "SELECT * FROM tickets WHERE project_id = ?";
     const params: unknown[] = [projectId];
@@ -149,6 +150,11 @@ export class TicketStore {
     if (phase) {
       sql += " AND phase = ?";
       params.push(phase);
+    }
+
+    if (workflowId !== null) {
+      sql += " AND (workflow_id = ? OR ? IS NULL)";
+      params.push(workflowId, workflowId);
     }
 
     sql += " ORDER BY updated_at DESC";
@@ -181,16 +187,23 @@ export class TicketStore {
     const initialPhase = "Ideas";
     const description = input.description || "";
 
+    // Resolve workflowId: use provided value or fall back to project's default workflow
+    const resolvedWorkflowId: string | null = input.workflowId ??
+      (this.db
+        .prepare("SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1")
+        .get(projectId) as { id: string } | undefined)?.id ??
+      null;
+
     // Create associated conversation
     const conversation = this.conversationStore.createConversation(projectId);
 
-    // Insert ticket with conversation_id and description
+    // Insert ticket with conversation_id, description, and workflow_id
     this.db
       .prepare(
-        `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived, conversation_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`
+        `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived, conversation_id, workflow_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
       )
-      .run(id, projectId, input.title, description, initialPhase, now, now, conversation.id);
+      .run(id, projectId, input.title, description, initialPhase, now, now, conversation.id, resolvedWorkflowId);
 
     // Insert initial history entry
     const historyId = randomUUID();

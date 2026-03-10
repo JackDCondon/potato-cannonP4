@@ -18,8 +18,5 @@ function WorkflowBoardPage() {
     return null // Loading or project not found
   }
 
-  // TODO(42p.9): Pass workflowId to Board once Board supports workflow-scoped filtering
-  void workflowId
-
-  return <Board projectId={project.id} />
+  return <Board projectId={project.id} workflowId={workflowId} />
 }

@@ -45,6 +45,7 @@ export function registerTicketRoutes(
       const projectId = decodeURIComponent(req.params.project);
       const phase = (req.query.phase as TicketPhase) || null;
       const archivedParam = req.query.archived as string | undefined;
+      const workflowId = (req.query.workflowId as string) || null;
 
       // Parse archived parameter: "true" = only archived, "false" or absent = non-archived
       let archived: boolean | undefined;
@@ -55,7 +56,7 @@ export function registerTicketRoutes(
       }
       // If archivedParam is undefined, archived stays undefined (default = false in store)
 
-      const tickets = await listTickets(projectId, { phase, archived });
+      const tickets = await listTickets(projectId, { phase, archived, workflowId });
       res.json(tickets);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -66,9 +67,10 @@ export function registerTicketRoutes(
   app.post("/api/tickets/:project", async (req: Request, res: Response) => {
     try {
       const projectId = decodeURIComponent(req.params.project);
-      const { title, description } = req.body as {
+      const { title, description, workflowId } = req.body as {
         title?: string;
         description?: string;
+        workflowId?: string;
       };
 
       if (!title) {
@@ -76,7 +78,7 @@ export function registerTicketRoutes(
         return;
       }
 
-      const ticket = await createTicket(projectId, { title, description });
+      const ticket = await createTicket(projectId, { title, description, workflowId });
       eventBus.emit("ticket:created", { projectId, ticket });
       res.json(ticket);
     } catch (error) {
