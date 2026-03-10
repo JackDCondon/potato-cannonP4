@@ -14,3 +14,4 @@ export { registerRalphRoutes, getPendingVerdict, getVerdictKey } from "./ralph.r
 export { registerArtifactChatRoutes } from './artifact-chat.routes.js';
 export { registerFolderRoutes } from "./folders.routes.js";
 export { registerWorkflowRoutes } from "./workflows.routes.js";
+export { registerDependencyRoutes } from "./dependencies.routes.js";
