@@ -5,7 +5,7 @@
  * The shared mutable "state" objects let each test control behavior.
  */
 
-import { describe, it, mock, before } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 
 // ── Shared mutable state ──────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ const defaultPhases: PhaseEntry[] = [
 
 const nonDefaultPhases: PhaseEntry[] = [
   { id: "Ideas", name: "Ideas", workers: [], transitions: { next: "Build" } },
-  { id: "Build", name: "Build", workers: [{ type: "agent", source: "agents/build.md" }], transitions: { next: "Done" } },
+  { id: "Build", name: "Build", workers: [{ type: "agent", source: "agents/build.md" }], transitions: { next: "Done" }, requiresIsolation: true },
   { id: "Done", name: "Done", workers: [], transitions: { next: null } },
 ];
 
@@ -109,6 +109,8 @@ const {
   getPhaseConfig,
   isPhaseDisabled,
   resolveTargetPhase,
+  phaseRequiresIsolation,
+  getNextEnabledPhase,
 } = await import("../phase-config.js");
 
 // ── Helper to reset state to defaults ────────────────────────────────────────
@@ -218,6 +220,76 @@ describe("resolveTargetPhase", () => {
     resetState();
     // wf-custom → custom-workflow → phases: Ideas, Build, Done
     const result = await resolveTargetPhase("proj-1", "Build", "wf-custom");
+    assert.strictEqual(result, "Build");
+  });
+});
+
+describe("phaseRequiresIsolation", () => {
+  it("returns false when phase has no requiresIsolation flag", async () => {
+    resetState();
+    // Refinement in default template has no requiresIsolation
+    const result = await phaseRequiresIsolation("proj-1", "Refinement");
+    assert.strictEqual(result, false);
+  });
+
+  it("returns true when phase has requiresIsolation: true in non-default workflow", async () => {
+    resetState();
+    // wf-custom → custom-workflow → Build has requiresIsolation: true
+    const result = await phaseRequiresIsolation("proj-1", "Build", "wf-custom");
+    assert.strictEqual(result, true);
+  });
+
+  it("returns false for a phase without requiresIsolation in non-default workflow", async () => {
+    resetState();
+    // wf-custom → custom-workflow → Ideas has no requiresIsolation
+    const result = await phaseRequiresIsolation("proj-1", "Ideas", "wf-custom");
+    assert.strictEqual(result, false);
+  });
+
+  it("does not throw when project has no template and a valid workflowId is provided", async () => {
+    resetState();
+    projectState.template = null;
+    // wf-custom is a valid workflow — should resolve via global catalog without needing project.template
+    const result = await phaseRequiresIsolation("proj-1", "Build", "wf-custom");
+    assert.strictEqual(result, true);
+  });
+});
+
+describe("getNextEnabledPhase", () => {
+  it("returns next phase in default workflow", async () => {
+    resetState();
+    // Ideas → Refinement in default template
+    const result = await getNextEnabledPhase("proj-1", "Ideas");
+    assert.strictEqual(result, "Refinement");
+  });
+
+  it("skips disabled phases in default workflow", async () => {
+    resetState();
+    projectState.disabledPhases = ["Refinement"];
+    // Ideas → Refinement (disabled) → Done
+    const result = await getNextEnabledPhase("proj-1", "Ideas");
+    assert.strictEqual(result, "Done");
+  });
+
+  it("returns next phase in non-default workflow when workflowId provided", async () => {
+    resetState();
+    // wf-custom → custom-workflow → Ideas transitions.next = Build
+    const result = await getNextEnabledPhase("proj-1", "Ideas", "wf-custom");
+    assert.strictEqual(result, "Build");
+  });
+
+  it("returns null when there is no next phase", async () => {
+    resetState();
+    // Done has transitions.next = null in default template
+    const result = await getNextEnabledPhase("proj-1", "Done");
+    assert.strictEqual(result, null);
+  });
+
+  it("does not throw for non-default workflow when project has no template", async () => {
+    resetState();
+    projectState.template = null;
+    // wf-custom resolves via global catalog — should not need project.template
+    const result = await getNextEnabledPhase("proj-1", "Ideas", "wf-custom");
     assert.strictEqual(result, "Build");
   });
 });

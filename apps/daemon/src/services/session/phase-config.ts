@@ -49,13 +49,13 @@ export async function getPhaseConfig(
   workflowId?: string,
 ): Promise<Phase | null> {
   const project = await getProjectById(projectId);
-  if (!project?.template) {
-    throw new Error(`Project ${projectId} has no template assigned`);
-  }
 
   // For the default (no workflowId) path, auto-migrate: copy template if project lacks local copy.
   // Non-default workflows use the global catalog directly so no migration is needed.
   if (!workflowId || !projectWorkflowGet(workflowId)) {
+    if (!project?.template) {
+      throw new Error(`Project ${projectId} has no template assigned`);
+    }
     if (!(await hasProjectTemplate(projectId))) {
       try {
         const copied = await copyTemplateToProject(projectId, project.template.name);

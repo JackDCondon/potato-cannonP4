@@ -54,6 +54,7 @@ interface TicketRow {
   archived_at: string | null;
   conversation_id: string | null;
   worker_state: string | null;
+  workflow_id: string | null;
 }
 
 interface HistoryRow {
@@ -412,6 +413,7 @@ export class TicketStore {
       archived: row.archived === 1,
       archivedAt: row.archived_at || undefined,
       conversationId: row.conversation_id || undefined,
+      workflowId: row.workflow_id || undefined,
     };
   }
 
