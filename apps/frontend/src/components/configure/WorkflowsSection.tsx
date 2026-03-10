@@ -11,8 +11,7 @@ import {
 } from '@/components/ui/select'
 import { SettingsSection } from './SettingsSection'
 import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useTemplates } from '@/hooks/queries'
-import type { Project } from '@potato-cannon/shared'
-import type { ProjectWorkflow } from '@potato-cannon/shared'
+import type { Project, ProjectWorkflow } from '@potato-cannon/shared'
 
 interface WorkflowRowProps {
   workflow: ProjectWorkflow

@@ -36,18 +36,8 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import type { Ticket, TemplatePhase } from '@potato-cannon/shared'
+import { phaseHasAutomation } from './board-utils'
 
-/**
- * Checks if a phase has automation configured (agents, ralphLoop, or ticketLoop)
- */
-function phaseHasAutomation(phaseConfig: TemplatePhase | undefined): boolean {
-  if (!phaseConfig) return false
-  return !!(
-    (phaseConfig.agents && phaseConfig.agents.length > 0) ||
-    phaseConfig.ralphLoop ||
-    phaseConfig.ticketLoop
-  )
-}
 
 /**
  * Checks if a phase is a manual checkpoint (eligible for toggle).

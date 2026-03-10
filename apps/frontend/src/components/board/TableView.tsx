@@ -26,6 +26,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import type { TemplatePhase } from '@potato-cannon/shared'
+import { phaseHasAutomation } from './board-utils'
 
 type SortColumn = 'id' | 'title' | 'phase' | 'updated'
 type SortDirection = 'asc' | 'desc'
@@ -35,17 +36,6 @@ interface SortConfig {
   direction: SortDirection
 }
 
-/**
- * Checks if a phase has automation configured (agents, ralphLoop, or ticketLoop)
- */
-function phaseHasAutomation(phaseConfig: TemplatePhase | undefined): boolean {
-  if (!phaseConfig) return false
-  return !!(
-    (phaseConfig.agents && phaseConfig.agents.length > 0) ||
-    phaseConfig.ralphLoop ||
-    phaseConfig.ticketLoop
-  )
-}
 
 interface SortableHeaderProps {
   column: SortColumn

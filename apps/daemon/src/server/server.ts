@@ -186,32 +186,6 @@ async function recoverOrphanedSessions(): Promise<void> {
 }
 
 /**
- * Reconcile ticket history with session log files.
- * Finds tickets that claim to have active sessions but the session actually ended.
- * This handles cases where the ticket JSON wasn't updated when a session ended
- * (e.g., due to file corruption or race conditions).
- */
-async function reconcileTicketSessions(): Promise<void> {
-  const projects = getProjects();
-  let reconciled = 0;
-
-  for (const [projectId] of projects) {
-    let tickets;
-    try {
-      tickets = await listTickets(projectId);
-    } catch {
-      continue;
-    }
-
-    // Sessions are now tracked in the sessions table - legacy reconciliation not needed
-  }
-
-  if (reconciled > 0) {
-    console.log(`[recovery] Reconciled ${reconciled} stale session(s)`);
-  }
-}
-
-/**
  * Resume sessions for tickets/brainstorms that have pending responses but no active session.
  * This handles the case where the daemon was restarted while waiting for a user response.
  */
@@ -462,7 +436,6 @@ export async function main(): Promise<void> {
   await migrateProjectTemplates();
   await bootstrapMarketplace();
   await recoverOrphanedSessions();
-  await reconcileTicketSessions();
   artifactChatStore.clearAll();
   artifactChatStore.startCleanupTimer();
 
