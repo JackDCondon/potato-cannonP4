@@ -26,6 +26,7 @@ import {
   registerRalphRoutes,
   registerArtifactChatRoutes,
   registerFolderRoutes,
+  registerWorkflowRoutes,
   refreshProjects,
   getProjects,
 } from "./routes/index.js";
@@ -615,6 +616,7 @@ export async function main(): Promise<void> {
   registerRalphRoutes(app);
   registerArtifactChatRoutes(app, sessionService, getProjects);
   registerFolderRoutes(app);
+  registerWorkflowRoutes(app);
   registerSystemRoutes(app);
 
   // SPA catch-all route - fallback to index.html for SPA routing
