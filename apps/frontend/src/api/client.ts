@@ -113,10 +113,10 @@ export const api = {
   getTicket: (projectId: string, ticketId: string) =>
     request<Ticket>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}`),
 
-  createTicket: (projectId: string, title: string, description?: string) =>
+  createTicket: (projectId: string, title: string, description?: string, workflowId?: string) =>
     request<Ticket>(`/api/tickets/${encodeURIComponent(projectId)}`, {
       method: 'POST',
-      body: JSON.stringify({ title, description })
+      body: JSON.stringify({ title, description, ...(workflowId ? { workflowId } : {}) })
     }),
 
   updateTicket: (projectId: string, ticketId: string, updates: Partial<Ticket>) =>

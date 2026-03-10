@@ -101,16 +101,17 @@ function getRowBackgroundStyle(
 
 interface TableViewProps {
   projectId: string
+  workflowId?: string
 }
 
-export function TableView({ projectId }: TableViewProps) {
+export function TableView({ projectId, workflowId }: TableViewProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
   const isTicketProcessingFn = useAppStore((s) => s.isTicketProcessing)
   const isTicketPendingFn = useAppStore((s) => s.isTicketPending)
 
   // Queries
   const { data: projects } = useProjects()
-  const { data: tickets } = useTickets(projectId)
+  const { data: tickets } = useTickets(projectId, workflowId)
   const { data: phases } = useProjectPhases(projectId)
 
   // Get current project to access template name

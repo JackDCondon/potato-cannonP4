@@ -138,12 +138,14 @@ export function useCreateTicket() {
     mutationFn: ({
       projectId,
       title,
-      description
+      description,
+      workflowId
     }: {
       projectId: string
       title: string
       description?: string
-    }) => api.createTicket(projectId, title, description),
+      workflowId?: string
+    }) => api.createTicket(projectId, title, description, workflowId),
     onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: ['tickets', projectId] })
     }

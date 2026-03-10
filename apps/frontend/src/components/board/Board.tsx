@@ -285,7 +285,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
           <div className="hidden sm:block shrink-0 h-full overflow-y-auto border-r border-border p-4 pr-2">
             <BrainstormColumn projectId={projectId} />
           </div>
-          <TableView projectId={projectId} />
+          <TableView projectId={projectId} workflowId={workflowId} />
         </div>
       ) : (
         <div className="flex-1 min-h-0 h-full">
