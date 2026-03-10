@@ -25,7 +25,9 @@ import type {
   Complexity,
   ProjectWorkflow,
   CreateWorkflowInput,
-  UpdateWorkflowInput
+  UpdateWorkflowInput,
+  DependencyTier,
+  TicketDependency
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
@@ -501,6 +503,23 @@ export const api = {
   deleteWorkflow: (projectId: string, workflowId: string) =>
     request<void>(
       `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}`,
+      { method: 'DELETE' }
+    ),
+
+  // ============ Ticket Dependencies ============
+
+  getTicketDependencies: (ticketId: string) =>
+    request<TicketDependency[]>(`/api/tickets/${encodeURIComponent(ticketId)}/dependencies`),
+
+  addTicketDependency: (ticketId: string, dependsOn: string, tier: DependencyTier) =>
+    request<TicketDependency>(`/api/tickets/${encodeURIComponent(ticketId)}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify({ dependsOn, tier })
+    }),
+
+  removeTicketDependency: (ticketId: string, dependsOn: string) =>
+    request<void>(
+      `/api/tickets/${encodeURIComponent(ticketId)}/dependencies?dependsOn=${encodeURIComponent(dependsOn)}`,
       { method: 'DELETE' }
     ),
 }
