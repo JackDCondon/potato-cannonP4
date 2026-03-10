@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 13;
+const CURRENT_SCHEMA_VERSION = 14;
 
 /**
  * Run database migrations.
@@ -60,6 +60,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 13) {
     migrateV13(db);
+  }
+
+  if (version < 14) {
+    migrateV14(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -597,4 +601,32 @@ export function runBackfillV13(db: Database.Database): void {
   });
 
   backfill();
+}
+
+/**
+ * V14: Add ticket_dependencies table and workflow_id to brainstorms.
+ * Enables same-board dependency tracking between tickets and scoping brainstorms to workflows.
+ */
+function migrateV14(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ticket_dependencies (
+      id          TEXT PRIMARY KEY,
+      ticket_id   TEXT NOT NULL,
+      depends_on  TEXT NOT NULL,
+      tier        TEXT NOT NULL CHECK(tier IN ('artifact-ready', 'code-ready')),
+      created_at  TEXT NOT NULL,
+      FOREIGN KEY (ticket_id)  REFERENCES tickets(id) ON DELETE CASCADE,
+      FOREIGN KEY (depends_on) REFERENCES tickets(id) ON DELETE CASCADE,
+      UNIQUE(ticket_id, depends_on),
+      CHECK(ticket_id != depends_on)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ticket_dependencies_depends_on
+      ON ticket_dependencies(depends_on);
+  `)
+
+  // Add workflow_id to brainstorms (idempotent)
+  const columns = db.pragma('table_info(brainstorms)') as { name: string }[]
+  if (!columns.some(c => c.name === 'workflow_id')) {
+    db.exec(`ALTER TABLE brainstorms ADD COLUMN workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL`)
+  }
 }
