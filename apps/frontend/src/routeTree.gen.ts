@@ -13,8 +13,6 @@ import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
-import { Route as TranscriptPendingRouteImport } from './routes/transcript/pending'
-import { Route as TranscriptSessionIdRouteImport } from './routes/transcript/$sessionId'
 import { Route as TemplatesNameRouteImport } from './routes/templates/$name'
 import { Route as TranscriptTicketTicketIdRouteImport } from './routes/transcript/ticket.$ticketId'
 import { Route as ProjectsProjectIdConfigureRouteImport } from './routes/projects/$projectId/configure'
@@ -39,16 +37,6 @@ const IndexRoute = IndexRouteImport.update({
 const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
   id: '/templates/',
   path: '/templates/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TranscriptPendingRoute = TranscriptPendingRouteImport.update({
-  id: '/transcript/pending',
-  path: '/transcript/pending',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TranscriptSessionIdRoute = TranscriptSessionIdRouteImport.update({
-  id: '/transcript/$sessionId',
-  path: '/transcript/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TemplatesNameRoute = TemplatesNameRouteImport.update({
@@ -85,8 +73,6 @@ export interface FileRoutesByFullPath {
   '/logs': typeof LogsRoute
   '/sessions': typeof SessionsRoute
   '/templates/$name': typeof TemplatesNameRoute
-  '/transcript/$sessionId': typeof TranscriptSessionIdRoute
-  '/transcript/pending': typeof TranscriptPendingRoute
   '/templates/': typeof TemplatesIndexRoute
   '/projects/$projectId/board': typeof ProjectsProjectIdBoardRoute
   '/projects/$projectId/configure': typeof ProjectsProjectIdConfigureRoute
@@ -98,8 +84,6 @@ export interface FileRoutesByTo {
   '/logs': typeof LogsRoute
   '/sessions': typeof SessionsRoute
   '/templates/$name': typeof TemplatesNameRoute
-  '/transcript/$sessionId': typeof TranscriptSessionIdRoute
-  '/transcript/pending': typeof TranscriptPendingRoute
   '/templates': typeof TemplatesIndexRoute
   '/projects/$projectId/board': typeof ProjectsProjectIdBoardRoute
   '/projects/$projectId/configure': typeof ProjectsProjectIdConfigureRoute
@@ -112,8 +96,6 @@ export interface FileRoutesById {
   '/logs': typeof LogsRoute
   '/sessions': typeof SessionsRoute
   '/templates/$name': typeof TemplatesNameRoute
-  '/transcript/$sessionId': typeof TranscriptSessionIdRoute
-  '/transcript/pending': typeof TranscriptPendingRoute
   '/templates/': typeof TemplatesIndexRoute
   '/projects/$projectId/board': typeof ProjectsProjectIdBoardRoute
   '/projects/$projectId/configure': typeof ProjectsProjectIdConfigureRoute
@@ -127,8 +109,6 @@ export interface FileRouteTypes {
     | '/logs'
     | '/sessions'
     | '/templates/$name'
-    | '/transcript/$sessionId'
-    | '/transcript/pending'
     | '/templates/'
     | '/projects/$projectId/board'
     | '/projects/$projectId/configure'
@@ -140,8 +120,6 @@ export interface FileRouteTypes {
     | '/logs'
     | '/sessions'
     | '/templates/$name'
-    | '/transcript/$sessionId'
-    | '/transcript/pending'
     | '/templates'
     | '/projects/$projectId/board'
     | '/projects/$projectId/configure'
@@ -153,8 +131,6 @@ export interface FileRouteTypes {
     | '/logs'
     | '/sessions'
     | '/templates/$name'
-    | '/transcript/$sessionId'
-    | '/transcript/pending'
     | '/templates/'
     | '/projects/$projectId/board'
     | '/projects/$projectId/configure'
@@ -167,8 +143,6 @@ export interface RootRouteChildren {
   LogsRoute: typeof LogsRoute
   SessionsRoute: typeof SessionsRoute
   TemplatesNameRoute: typeof TemplatesNameRoute
-  TranscriptSessionIdRoute: typeof TranscriptSessionIdRoute
-  TranscriptPendingRoute: typeof TranscriptPendingRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
   ProjectsProjectIdBoardRoute: typeof ProjectsProjectIdBoardRoute
   ProjectsProjectIdConfigureRoute: typeof ProjectsProjectIdConfigureRoute
@@ -204,20 +178,6 @@ declare module '@tanstack/react-router' {
       path: '/templates'
       fullPath: '/templates/'
       preLoaderRoute: typeof TemplatesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/transcript/pending': {
-      id: '/transcript/pending'
-      path: '/transcript/pending'
-      fullPath: '/transcript/pending'
-      preLoaderRoute: typeof TranscriptPendingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/transcript/$sessionId': {
-      id: '/transcript/$sessionId'
-      path: '/transcript/$sessionId'
-      fullPath: '/transcript/$sessionId'
-      preLoaderRoute: typeof TranscriptSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/templates/$name': {
@@ -263,8 +223,6 @@ const rootRouteChildren: RootRouteChildren = {
   LogsRoute: LogsRoute,
   SessionsRoute: SessionsRoute,
   TemplatesNameRoute: TemplatesNameRoute,
-  TranscriptSessionIdRoute: TranscriptSessionIdRoute,
-  TranscriptPendingRoute: TranscriptPendingRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
   ProjectsProjectIdBoardRoute: ProjectsProjectIdBoardRoute,
   ProjectsProjectIdConfigureRoute: ProjectsProjectIdConfigureRoute,
