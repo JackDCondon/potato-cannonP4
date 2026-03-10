@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
 const CURRENT_SCHEMA_VERSION = 13;
@@ -529,4 +530,68 @@ function migrateV13(db: Database.Database): void {
   if (!ticketCols.has('workflow_id')) {
     db.exec(`ALTER TABLE tickets ADD COLUMN workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL`);
   }
+
+  runBackfillV13(db);
+}
+
+/**
+ * Backfill V13: create a default project_workflow row for every existing project
+ * that does not already have one, then set workflow_id on all tickets that still
+ * have it as NULL.
+ *
+ * Idempotent — uses INSERT OR IGNORE and only updates tickets with NULL workflow_id.
+ * Falls back to 'product-development' when a project has no template_name set.
+ *
+ * Exported for testability.
+ */
+export function runBackfillV13(db: Database.Database): void {
+  const projects = db
+    .prepare('SELECT id, template_name FROM projects')
+    .all() as Array<{ id: string; template_name: string | null }>;
+
+  if (projects.length === 0) {
+    return;
+  }
+
+  const insertWorkflow = db.prepare(
+    `INSERT OR IGNORE INTO project_workflows
+       (id, project_id, name, template_name, is_default, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 1, ?, ?)`
+  );
+
+  const getDefaultWorkflow = db.prepare(
+    `SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1`
+  );
+
+  const backfillTickets = db.prepare(
+    `UPDATE tickets SET workflow_id = ? WHERE project_id = ? AND workflow_id IS NULL`
+  );
+
+  const backfill = db.transaction(() => {
+    const now = new Date().toISOString();
+
+    for (const project of projects) {
+      const templateName = project.template_name ?? 'product-development';
+
+      // Insert a default workflow only if the project has none yet
+      insertWorkflow.run(
+        randomUUID(),
+        project.id,
+        'Default',
+        templateName,
+        now,
+        now
+      );
+
+      // Retrieve the default workflow id (handles both newly inserted and pre-existing)
+      const row = getDefaultWorkflow.get(project.id) as { id: string } | undefined;
+      if (!row) {
+        continue;
+      }
+
+      backfillTickets.run(row.id, project.id);
+    }
+  });
+
+  backfill();
 }

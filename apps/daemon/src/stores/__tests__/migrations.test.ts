@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { runMigrations } from '../migrations.js';
+import { runMigrations, runBackfillV13 } from '../migrations.js';
 import assert from 'node:assert/strict';
 import { describe, it, before } from 'node:test';
 
@@ -85,5 +85,151 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
   it('schema version is 13', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
     assert.equal(version, 13);
+  });
+});
+
+describe('V13 backfill — runBackfillV13', () => {
+  it('backfills default workflow for a project with template_name and backfills ticket workflow_id', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    // Insert a project with a template_name
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)
+       VALUES ('proj-bf1', 'pbf1', 'Backfill Project', '/bf1', '2026-01-01', 'product-development')`
+    ).run();
+
+    // Insert tickets for that project (no workflow_id yet)
+    db.prepare(
+      `INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-bf1', 1)`
+    ).run();
+    db.prepare(
+      `INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at)
+       VALUES ('t-bf1', 'proj-bf1', 'Ticket 1', 'Backlog', '2026-01-01', '2026-01-01')`
+    ).run();
+    db.prepare(
+      `INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at)
+       VALUES ('t-bf2', 'proj-bf1', 'Ticket 2', 'Backlog', '2026-01-01', '2026-01-01')`
+    ).run();
+
+    runBackfillV13(db);
+
+    // Assert: project_workflow row created with is_default=1
+    const workflow = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf1' AND is_default = 1")
+      .get() as { id: string; template_name: string; is_default: number; name: string } | undefined;
+    assert.ok(workflow, 'default workflow should be created for the project');
+    assert.equal(workflow.is_default, 1, 'workflow should be marked as default');
+    assert.equal(workflow.template_name, 'product-development', 'workflow should use project template_name');
+
+    // Assert: both tickets have workflow_id backfilled
+    const t1 = db
+      .prepare("SELECT workflow_id FROM tickets WHERE id = 't-bf1'")
+      .get() as { workflow_id: string | null };
+    assert.equal(t1.workflow_id, workflow.id, 'ticket 1 should have workflow_id set');
+
+    const t2 = db
+      .prepare("SELECT workflow_id FROM tickets WHERE id = 't-bf2'")
+      .get() as { workflow_id: string | null };
+    assert.equal(t2.workflow_id, workflow.id, 'ticket 2 should have workflow_id set');
+  });
+
+  it('uses product-development as fallback when project has no template_name', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    // Insert a project WITHOUT template_name
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at)
+       VALUES ('proj-bf2', 'pbf2', 'No Template Project', '/bf2', '2026-01-01')`
+    ).run();
+
+    runBackfillV13(db);
+
+    const workflow = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf2'")
+      .get() as { template_name: string; is_default: number } | undefined;
+    assert.ok(workflow, 'default workflow should be created even without template_name');
+    assert.equal(workflow.template_name, 'product-development', 'should fall back to product-development');
+    assert.equal(workflow.is_default, 1, 'should be default');
+  });
+
+  it('is idempotent — running twice does not create duplicate workflows', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)
+       VALUES ('proj-bf3', 'pbf3', 'Idempotent Project', '/bf3', '2026-01-01', 'product-development')`
+    ).run();
+
+    runBackfillV13(db);
+    runBackfillV13(db);
+
+    const workflows = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf3'")
+      .all() as unknown[];
+    assert.equal(workflows.length, 1, 'should not create duplicate workflow rows');
+  });
+
+  it('does not overwrite existing workflow_id on tickets that already have one', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)
+       VALUES ('proj-bf4', 'pbf4', 'Existing WF Project', '/bf4', '2026-01-01', 'product-development')`
+    ).run();
+
+    // Create an existing workflow and assign it to a ticket before backfill
+    db.prepare(
+      `INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
+       VALUES ('wf-existing', 'proj-bf4', 'Existing Workflow', 'product-development', 1, '2026-01-01', '2026-01-01')`
+    ).run();
+    db.prepare(
+      `INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-bf4', 1)`
+    ).run();
+    db.prepare(
+      `INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id)
+       VALUES ('t-bf4', 'proj-bf4', 'Already linked', 'Backlog', '2026-01-01', '2026-01-01', 'wf-existing')`
+    ).run();
+
+    runBackfillV13(db);
+
+    // Ticket should still have the original workflow_id
+    const ticket = db
+      .prepare("SELECT workflow_id FROM tickets WHERE id = 't-bf4'")
+      .get() as { workflow_id: string };
+    assert.equal(ticket.workflow_id, 'wf-existing', 'should not overwrite existing workflow_id');
+  });
+
+  it('handles multiple projects independently', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)
+       VALUES ('proj-m1', 'pm1', 'Multi Project 1', '/m1', '2026-01-01', 'product-development')`
+    ).run();
+    db.prepare(
+      `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)
+       VALUES ('proj-m2', 'pm2', 'Multi Project 2', '/m2', '2026-01-01', 'custom-template')`
+    ).run();
+
+    runBackfillV13(db);
+
+    const wf1 = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-m1'")
+      .get() as { template_name: string; is_default: number } | undefined;
+    const wf2 = db
+      .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-m2'")
+      .get() as { template_name: string; is_default: number } | undefined;
+
+    assert.ok(wf1, 'project 1 should have a workflow');
+    assert.ok(wf2, 'project 2 should have a workflow');
+    assert.equal(wf1.template_name, 'product-development');
+    assert.equal(wf2.template_name, 'custom-template');
+    assert.equal(wf1.is_default, 1);
+    assert.equal(wf2.is_default, 1);
   });
 });
