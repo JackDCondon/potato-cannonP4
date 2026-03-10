@@ -14,6 +14,7 @@ export interface Ticket {
   archivedAt?: string
   conversationId?: string
   complexity: Complexity
+  workflowId?: string
 }
 
 export interface ArchiveResult {
