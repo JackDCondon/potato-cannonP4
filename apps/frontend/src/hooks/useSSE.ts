@@ -100,9 +100,15 @@ export function useSSE() {
       })
 
       // Session events - invalidate sessions and tickets queries
-      eventSource.addEventListener('session:started', () => {
+      eventSource.addEventListener('session:started', (e) => {
         queryClient.refetchQueries({ queryKey: ['sessions'] })
         queryClient.refetchQueries({ queryKey: ['tickets'] })
+        try {
+          const data = JSON.parse(e.data) as SSEEventData
+          window.dispatchEvent(new CustomEvent('sse:session-started', { detail: data }))
+        } catch {
+          // Ignore parse errors — backend may not emit a payload
+        }
       })
 
       eventSource.addEventListener('session:ended', (e) => {
@@ -306,6 +312,15 @@ export function useSessionEnded(callback: (data: SSEEventData) => void) {
     }
     window.addEventListener('sse:session-ended', handler as EventListener)
     return () => window.removeEventListener('sse:session-ended', handler as EventListener)
+  }, [callback])
+}
+
+// Hook for subscribing to session started events
+export function useSessionStarted(callback: (data: { sessionId: string; ticketId?: string }) => void) {
+  useEffect(() => {
+    const handler = (e: Event) => callback((e as CustomEvent).detail)
+    window.addEventListener('sse:session-started', handler)
+    return () => window.removeEventListener('sse:session-started', handler)
   }, [callback])
 }
 
