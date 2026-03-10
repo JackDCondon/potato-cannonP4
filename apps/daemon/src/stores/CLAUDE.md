@@ -28,7 +28,7 @@ The database uses WAL (Write-Ahead Logging) mode for better concurrency. Multipl
 
 Migrations use SQLite's `user_version` pragma. Each migration checks the version and applies changes if needed.
 
-**Current schema version:** 6
+**Current schema version:** 13
 
 **Adding a new migration:**
 
@@ -53,6 +53,7 @@ if (version < 6) {
 | V4 | Backfill conversation_id for existing tickets |
 | V5 | Tasks, provider channels, ralph feedback, artifacts, templates, config |
 | V6 | Add `branch_prefix` column to projects table (default: 'potato') |
+| V13 | Add `project_workflows` table + `workflow_id` FK on tickets; backfill default workflow per project |
 
 ## Tables
 
@@ -82,6 +83,12 @@ if (version < 6) {
 | `artifact_versions` | Version history for artifacts |
 | `templates` | Template registry (workflow files on disk) |
 | `config` | Key-value configuration store |
+
+### V13 Tables
+
+| Table | Description |
+|-------|-------------|
+| `project_workflows` | Named workflow boards per project, each referencing a template |
 
 ## Directory Structure
 
@@ -540,6 +547,95 @@ readTicketLogs(projectId: string, ticketId: string): Promise<string>
 ```
 
 **Location:** Logs stored at `~/.potato-cannon/projects/{projectId}/tickets/{ticketId}/logs/daemon.log`
+
+### project-workflow.store.ts
+
+Named workflow boards per project backed by SQLite. Enables multiple independent kanban boards per project, each referencing its own workflow template.
+
+**Table:** `project_workflows`
+
+**Schema:**
+```sql
+CREATE TABLE project_workflows (
+  id            TEXT PRIMARY KEY,
+  project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  template_name TEXT NOT NULL,
+  is_default    INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  UNIQUE(project_id, name)
+);
+```
+
+**Indexes:**
+- `idx_project_workflows_project` — on `project_id` for fast per-project listing
+- `idx_project_workflows_default` — partial index on `(project_id, is_default) WHERE is_default = 1` for fast default lookup
+
+**Relationship to `projects`:** Each `project_workflows` row belongs to one project via `project_id`. Deleting a project cascades to delete all its workflows.
+
+**Relationship to `tickets`:** The `tickets` table has a nullable `workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL` column added in V13. Deleting a workflow sets `workflow_id` to NULL on its tickets (rather than blocking deletion).
+
+**Single-default enforcement:** Only one workflow per project may have `is_default = 1`. `createWorkflow` and `updateWorkflow` both clear the existing default for the project before setting a new one, using a SQLite transaction.
+
+```typescript
+// Class-based store (DI / testing)
+new ProjectWorkflowStore(db: Database.Database)
+
+// Factory functions
+createProjectWorkflowStore(db: Database.Database): ProjectWorkflowStore
+getProjectWorkflowStore(): ProjectWorkflowStore
+
+// Instance methods
+createWorkflow(input: CreateWorkflowInput): ProjectWorkflow
+getWorkflow(id: string): ProjectWorkflow | null
+getDefaultWorkflow(projectId: string): ProjectWorkflow | null
+listWorkflows(projectId: string): ProjectWorkflow[]
+updateWorkflow(id: string, updates: UpdateWorkflowInput): ProjectWorkflow | null
+deleteWorkflow(id: string): boolean
+
+// Singleton convenience functions
+projectWorkflowCreate(input: CreateWorkflowInput): ProjectWorkflow
+projectWorkflowGet(id: string): ProjectWorkflow | null
+projectWorkflowList(projectId: string): ProjectWorkflow[]
+projectWorkflowUpdate(id: string, updates: UpdateWorkflowInput): ProjectWorkflow | null
+projectWorkflowDelete(id: string): boolean
+projectWorkflowGetDefault(projectId: string): ProjectWorkflow | null
+```
+
+**Method details:**
+
+- `createWorkflow(input)` — Inserts a new workflow. If `input.isDefault` is true, clears all existing `is_default = 1` rows for the project first (in a single transaction). `isDefault` defaults to `false`.
+- `getWorkflow(id)` — Returns the workflow or `null` if not found.
+- `getDefaultWorkflow(projectId)` — Returns the workflow with `is_default = 1` for the project, or `null` if none is set.
+- `listWorkflows(projectId)` — Returns all workflows for the project ordered alphabetically by `name`.
+- `updateWorkflow(id, updates)` — Partial update. If `updates.isDefault === true`, clears other defaults first (in a transaction). Returns `null` if the workflow does not exist. Returns existing record unchanged if `updates` is empty.
+- `deleteWorkflow(id)` — Deletes the workflow row. Returns `true` if deleted, `false` if not found. Associated tickets have their `workflow_id` set to NULL by the FK cascade.
+
+**Input types:**
+```typescript
+interface CreateWorkflowInput {
+  projectId: string;
+  name: string;
+  templateName: string;
+  isDefault?: boolean;   // defaults to false
+}
+
+interface UpdateWorkflowInput {
+  name?: string;
+  templateName?: string;
+  isDefault?: boolean;
+}
+```
+
+**V13 Migration and Backfill:**
+
+V13 creates the `project_workflows` table and adds the `workflow_id` column to `tickets`. After schema changes, `runBackfillV13()` runs automatically (and is also exported for testing):
+
+1. For each existing project that has no `is_default = 1` workflow, a new workflow named `"Default"` is created using the project's `template_name` (falling back to `'product-development'` if unset).
+2. All tickets with `workflow_id IS NULL` for each project are updated to reference their project's default workflow.
+
+The backfill is **idempotent**: it uses `INSERT OR IGNORE` semantics (checking for an existing default before inserting) and only updates tickets with `NULL` workflow_id. Re-running the migration on an already-migrated database is safe.
 
 ## Conventions
 
