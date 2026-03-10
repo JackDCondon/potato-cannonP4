@@ -21,7 +21,10 @@ import type {
   ArchiveResult,
   WorkerTreeResponse,
   LogEntry,
-  Complexity
+  Complexity,
+  ProjectWorkflow,
+  CreateWorkflowInput,
+  UpdateWorkflowInput
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
@@ -468,6 +471,32 @@ export const api = {
   deleteAgentOverride: (projectId: string, agentType: string) =>
     request<{ ok: true }>(
       `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override`,
+      { method: 'DELETE' }
+    ),
+
+  // ============ Workflows ============
+
+  getWorkflows: (projectId: string) =>
+    request<ProjectWorkflow[]>(`/api/projects/${encodeURIComponent(projectId)}/workflows`),
+
+  createWorkflow: (input: CreateWorkflowInput) =>
+    request<ProjectWorkflow>(`/api/projects/${encodeURIComponent(input.projectId)}/workflows`, {
+      method: 'POST',
+      body: JSON.stringify(input)
+    }),
+
+  updateWorkflow: (projectId: string, workflowId: string, updates: UpdateWorkflowInput) =>
+    request<ProjectWorkflow>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(updates)
+      }
+    ),
+
+  deleteWorkflow: (projectId: string, workflowId: string) =>
+    request<void>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}`,
       { method: 'DELETE' }
     ),
 }

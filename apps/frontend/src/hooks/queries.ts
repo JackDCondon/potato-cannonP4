@@ -1,7 +1,7 @@
 // src/hooks/queries.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { Ticket, Template, TemplatePhase, Complexity } from '@potato-cannon/shared'
+import type { Ticket, Template, TemplatePhase, Complexity, CreateWorkflowInput } from '@potato-cannon/shared'
 
 // ============ Projects ============
 
@@ -460,6 +460,37 @@ export function useDeleteAgentOverride() {
     onSuccess: (_, { projectId }) => {
       // Invalidate all phase workers queries for this project to refresh hasOverride
       queryClient.invalidateQueries({ queryKey: ['phaseWorkers', projectId] })
+    }
+  })
+}
+
+// ============ Workflows ============
+
+export function useWorkflows(projectId: string | null) {
+  return useQuery({
+    queryKey: ['workflows', projectId],
+    queryFn: () => api.getWorkflows(projectId!),
+    enabled: !!projectId
+  })
+}
+
+export function useCreateWorkflow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateWorkflowInput) => api.createWorkflow(input),
+    onSuccess: (_, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: ['workflows', projectId] })
+    }
+  })
+}
+
+export function useDeleteWorkflow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projectId, workflowId }: { projectId: string; workflowId: string }) =>
+      api.deleteWorkflow(projectId, workflowId),
+    onSuccess: (_, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: ['workflows', projectId] })
     }
   })
 }
