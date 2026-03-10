@@ -354,14 +354,6 @@ export function useTemplate(name: string | null) {
   })
 }
 
-export function useTemplateFull(name: string | null) {
-  return useQuery({
-    queryKey: ['template-full', name],
-    queryFn: () => api.getTemplateFull(name!),
-    enabled: !!name
-  })
-}
-
 export function useCreateTemplate() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -447,10 +439,10 @@ export function useProjectTemplateStatus(projectId: string | null) {
 
 // ============ Phase Workers ============
 
-export function usePhaseWorkers(projectId: string | null, phase: string | null, workflowId?: string | null) {
+export function usePhaseWorkers(projectId: string | null, phase: string | null) {
   return useQuery({
-    queryKey: ['phaseWorkers', projectId, phase, workflowId ?? null],
-    queryFn: () => api.getPhaseWorkers(projectId!, phase!, workflowId ?? undefined),
+    queryKey: ['phaseWorkers', projectId, phase],
+    queryFn: () => api.getPhaseWorkers(projectId!, phase!),
     enabled: !!projectId && !!phase
   })
 }

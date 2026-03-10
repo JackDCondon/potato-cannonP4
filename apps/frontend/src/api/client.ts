@@ -446,16 +446,16 @@ export const api = {
 
   // ============ Phase Workers ============
 
-  getPhaseWorkers: (projectId: string, phase: string, workflowId?: string) =>
+  getPhaseWorkers: (projectId: string, phase: string) =>
     request<WorkerTreeResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phase)}/workers${workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''}`
+      `/api/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phase)}/workers`
     ),
 
   // ============ Agent Overrides ============
 
-  getAgentDefault: (projectId: string, agentType: string, workflowId?: string) =>
+  getAgentDefault: (projectId: string, agentType: string) =>
     request<{ content: string }>(
-      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/default${workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''}`
+      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/default`
     ),
 
   getAgentOverride: (projectId: string, agentType: string) =>

@@ -1,5 +1,5 @@
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TicketTranscriptPage } from './TicketTranscriptPage'
 import type { SessionMeta, SessionLogEntry } from '@potato-cannon/shared'
