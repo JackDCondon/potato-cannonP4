@@ -15,6 +15,7 @@ export type { Brainstorm };
 
 export interface CreateBrainstormInput {
   name?: string;
+  workflowId?: string;
 }
 
 export interface UpdateBrainstormInput {
@@ -36,6 +37,7 @@ interface BrainstormRow {
   updated_at: string;
   conversation_id: string | null;
   created_ticket_id: string | null;
+  workflow_id: string | null;
 }
 
 // =============================================================================
@@ -52,6 +54,7 @@ function rowToBrainstorm(row: BrainstormRow): Brainstorm {
     updatedAt: row.updated_at,
     conversationId: row.conversation_id,
     createdTicketId: row.created_ticket_id,
+    workflowId: row.workflow_id,
   };
 }
 
@@ -101,10 +104,10 @@ export class BrainstormStore {
 
     this.db
       .prepare(
-        `INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id)
-         VALUES (?, ?, ?, 'active', ?, ?, ?)`
+        `INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, workflow_id)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?)`
       )
-      .run(id, projectId, name, now, now, conversation.id);
+      .run(id, projectId, name, now, now, conversation.id, input.workflowId ?? null);
 
     return this.getBrainstorm(id)!;
   }

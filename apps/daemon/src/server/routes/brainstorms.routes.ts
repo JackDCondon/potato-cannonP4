@@ -61,10 +61,10 @@ export function registerBrainstormRoutes(
         return;
       }
 
-      const { name, initialMessage } = req.body as { name?: string; initialMessage?: string };
+      const { name, initialMessage, workflowId } = req.body as { name?: string; initialMessage?: string; workflowId?: string };
 
       // Create brainstorm with default name immediately
-      const brainstorm = await createBrainstorm(projectId, { name });
+      const brainstorm = await createBrainstorm(projectId, { name, workflowId });
 
       // Persist initial message to conversation history
       if (initialMessage && brainstorm.conversationId) {
