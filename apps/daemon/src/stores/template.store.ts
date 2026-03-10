@@ -384,6 +384,7 @@ export async function getWorkflowWithFullPhases(
     description: "Ticket completed",
     workers: [],
     transitions: { next: null },
+    unblocksTier: 'code-ready' as const,
   };
 
   // Update last workflow phase to point to Blocked
@@ -694,6 +695,7 @@ export async function getTemplateWithFullPhasesForProject(
     description: "Ticket completed",
     workers: [],
     transitions: { next: null },
+    unblocksTier: 'code-ready' as const,
   };
 
   // Update last workflow phase to point to Blocked

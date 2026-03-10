@@ -1,5 +1,7 @@
 // src/types/template.types.ts
 
+import type { DependencyTier } from "@potato-cannon/shared";
+
 // Worker types
 export type WorkerType = "agent" | "ralphLoop" | "taskLoop";
 
@@ -81,6 +83,7 @@ export interface Phase {
   /** @deprecated Use requiresIsolation instead */
   requiresWorktree?: boolean;
   requiresIsolation?: boolean;
+  unblocksTier?: DependencyTier | null;
 }
 
 // Template types
