@@ -22,6 +22,7 @@ import {
 import { SettingsSection } from './SettingsSection'
 import { ProjectIconPicker } from './ProjectIconPicker'
 import { ProjectColorPicker } from './ProjectColorPicker'
+import { WorkflowsSection } from './WorkflowsSection'
 import { useProjects, useTemplates, useUpdateProject, useDeleteProject } from '@/hooks/queries'
 import { useTemplateStatus } from '@/hooks/useTemplateStatus'
 import { ChangelogModal } from '@/components/ChangelogModal'
@@ -463,6 +464,9 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
             </div>
           </div>
         </SettingsSection>
+
+        {/* Workflows */}
+        <WorkflowsSection project={project} />
 
         {/* Danger Zone */}
         <SettingsSection

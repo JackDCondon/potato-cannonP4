@@ -1,22 +1,28 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { Board } from '@/components/board/Board'
-import { useProjects } from '@/hooks/queries'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { api } from '@/api/client'
 
 export const Route = createFileRoute('/projects/$projectId/board')({
-  component: BoardPage
+  beforeLoad: async ({ params }) => {
+    const { projectId: projectSlug } = params
+
+    // Look up the project by slug to get its actual ID
+    const projects = await api.getProjects()
+    const project = projects?.find((p) => p.slug === projectSlug)
+
+    if (!project) {
+      return
+    }
+
+    // Fetch workflows and redirect to the default one
+    const workflows = await api.getWorkflows(project.id)
+    const defaultWorkflow = workflows?.find((w) => w.isDefault) ?? workflows?.[0]
+
+    if (defaultWorkflow) {
+      throw redirect({
+        to: '/projects/$projectId/workflows/$workflowId/board',
+        params: { projectId: projectSlug, workflowId: defaultWorkflow.id }
+      })
+    }
+  },
+  component: () => null
 })
-
-function BoardPage() {
-  // URL param is the slug, not the ID
-  const { projectId: projectSlug } = Route.useParams()
-  const { data: projects } = useProjects()
-
-  // Look up project by slug to get the actual ID for API calls
-  const project = projects?.find((p) => p.slug === projectSlug)
-
-  if (!project) {
-    return null // Loading or project not found
-  }
-
-  return <Board projectId={project.id} />
-}
