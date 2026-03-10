@@ -1,5 +1,23 @@
 export type Complexity = 'simple' | 'standard' | 'complex'
 
+export type DependencyTier = 'artifact-ready' | 'code-ready'
+
+export interface TicketDependency {
+  id: string
+  ticketId: string
+  dependsOn: string
+  tier: DependencyTier
+  createdAt: string
+}
+
+export interface BlockedByEntry {
+  ticketId: string
+  title: string
+  currentPhase: string
+  tier: DependencyTier
+  satisfied: boolean
+}
+
 export interface Ticket {
   id: string
   title: string
@@ -15,6 +33,7 @@ export interface Ticket {
   conversationId?: string
   complexity: Complexity
   workflowId?: string
+  blockedBy?: BlockedByEntry[]
 }
 
 export interface ArchiveResult {
@@ -40,4 +59,5 @@ export interface TicketHistoryEntry {
   sessionId?: string
   sessions?: HistorySessionRecord[]
   endedAt?: string
+  metadata?: Record<string, unknown>
 }
