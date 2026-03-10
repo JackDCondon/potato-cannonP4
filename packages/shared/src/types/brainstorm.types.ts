@@ -9,6 +9,7 @@ export interface Brainstorm {
   updatedAt: string
   conversationId?: string | null
   createdTicketId?: string | null
+  workflowId?: string | null
   hasActiveSession?: boolean
 }
 
