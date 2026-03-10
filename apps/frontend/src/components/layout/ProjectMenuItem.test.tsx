@@ -30,9 +30,11 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 // Mock useWorkflows hook — default: no workflows (loading state)
-const mockUseWorkflows = vi.fn(() => ({ data: undefined }))
+const mockUseWorkflows = vi.fn<(projectId: string | null) => { data: unknown }>(
+  () => ({ data: undefined })
+)
 vi.mock('@/hooks/queries', () => ({
-  useWorkflows: (...args: any[]) => mockUseWorkflows(...args),
+  useWorkflows: (projectId: string | null) => mockUseWorkflows(projectId),
 }))
 
 function renderWithProviders(component: React.ReactElement) {

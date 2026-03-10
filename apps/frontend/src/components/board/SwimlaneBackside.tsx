@@ -8,6 +8,7 @@ import { AgentPromptEditor } from './AgentPromptEditor'
 interface SwimlaneBacksideProps {
   projectId: string
   phase: string
+  workflowId?: string
   currentColor: string | undefined
   onColorChange: (color: string | null) => void
   disabled?: boolean
@@ -16,6 +17,7 @@ interface SwimlaneBacksideProps {
 export function SwimlaneBackside({
   projectId,
   phase,
+  workflowId,
   currentColor,
   onColorChange,
   disabled
@@ -70,6 +72,7 @@ export function SwimlaneBackside({
               <WorkerTree
                 projectId={projectId}
                 phase={phase}
+                workflowId={workflowId}
                 onAgentClick={handleAgentClick}
               />
             </div>
@@ -84,6 +87,7 @@ export function SwimlaneBackside({
           agentType={selectedAgent.agentType}
           agentName={selectedAgent.agentName}
           model={selectedAgent.model}
+          workflowId={workflowId}
           open={true}
           onClose={handleCloseEditor}
         />,

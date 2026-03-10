@@ -270,6 +270,7 @@ export class SessionService {
     projectId: string,
     ticketId: string,
     brainstormId: string,
+    workflowId: string,
     agentType: string,
     phase: TicketPhase | undefined,
     projectPath: string,
@@ -323,6 +324,7 @@ export class SessionService {
             POTATO_PROJECT_ID: projectId,
             POTATO_TICKET_ID: ticketId,
             POTATO_BRAINSTORM_ID: brainstormId,
+            POTATO_WORKFLOW_ID: workflowId,
           },
         },
         ...additionalMcpServers,
@@ -368,6 +370,7 @@ export class SessionService {
       POTATO_PROJECT_ID: projectId,
       POTATO_TICKET_ID: ticketId,
       POTATO_BRAINSTORM_ID: brainstormId,
+      POTATO_WORKFLOW_ID: workflowId,
     };
     if (spawnProject?.helixSwarmUrl) {
       ptyEnv.HELIX_SWARM_URL = spawnProject.helixSwarmUrl;
@@ -656,6 +659,7 @@ export class SessionService {
     }
 
     const brainstorm = await getBrainstorm(projectId, brainstormId);
+    const workflowId = brainstorm.workflowId || "";
     const existingClaudeSessionId = getLatestClaudeSessionId(brainstormId);
 
     // Create session record in database
@@ -729,6 +733,7 @@ export class SessionService {
             POTATO_PROJECT_ID: projectId,
             POTATO_TICKET_ID: "",
             POTATO_BRAINSTORM_ID: brainstormId,
+            POTATO_WORKFLOW_ID: workflowId,
           },
         },
       },
@@ -784,6 +789,7 @@ export class SessionService {
         ...process.env,
         POTATO_PROJECT_ID: projectId,
         POTATO_BRAINSTORM_ID: brainstormId,
+        POTATO_WORKFLOW_ID: workflowId,
       },
     });
 
@@ -973,6 +979,7 @@ export class SessionService {
       projectId,
       ticketId,
       "",
+      ticket.workflowId || "",
       agentWorker.source,
       phase,
       projectPath,
@@ -1089,6 +1096,7 @@ export class SessionService {
       projectId,
       ticketId,
       "",
+      ticket.workflowId || "",
       "resume",
       ticket.phase,
       project.path,

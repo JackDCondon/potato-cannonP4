@@ -77,7 +77,7 @@ async function startDaemon(): Promise<void> {
   // In production, use Electron's Node.js to ensure native module compatibility
   // ELECTRON_RUN_AS_NODE makes Electron act as a regular Node.js process
   const nodePath = isDev ? process.execPath : process.execPath
-  const env = isDev
+  const env: NodeJS.ProcessEnv = isDev
     ? { ...process.env, NODE_ENV: nodeEnv }
     : { ...process.env, NODE_ENV: nodeEnv, ELECTRON_RUN_AS_NODE: '1' }
 

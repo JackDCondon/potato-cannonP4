@@ -20,7 +20,7 @@ if (fs.existsSync(buildDir)) {
 // pnpm deploy creates a standalone package with all dependencies
 // Must be run from workspace root with --filter
 // --prod excludes devDependencies
-execSync(`pnpm --filter @potato-cannon/daemon deploy --prod "${buildDir}"`, {
+execSync(`corepack pnpm --filter @potato-cannon/daemon deploy --prod "${buildDir}"`, {
   cwd: workspaceRoot,
   stdio: 'inherit'
 });
@@ -99,7 +99,17 @@ function flattenNodeModules(nodeModulesPath) {
   // Rename node_modules to _modules to avoid electron-builder's special handling
   // It will be renamed back by the main.ts when running
   const renamedPath = path.join(path.dirname(nodeModulesPath), '_modules');
-  fs.renameSync(nodeModulesPath, renamedPath);
+  try {
+    fs.renameSync(nodeModulesPath, renamedPath);
+  } catch (error) {
+    // Windows can intermittently fail rename with EPERM when scanners/indexers
+    // have a transient handle open; fall back to copy+remove.
+    if (error.code !== 'EPERM') {
+      throw error;
+    }
+    copyDirSync(nodeModulesPath, renamedPath);
+    fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+  }
   console.log('[prepare-daemon] Renamed node_modules to _modules to avoid electron-builder filtering');
 }
 

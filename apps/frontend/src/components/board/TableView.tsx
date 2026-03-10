@@ -25,7 +25,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import type { TemplatePhase } from '@potato-cannon/shared'
 import { phaseHasAutomation } from './board-utils'
 
 type SortColumn = 'id' | 'title' | 'phase' | 'updated'

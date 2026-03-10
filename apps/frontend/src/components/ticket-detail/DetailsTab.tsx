@@ -43,11 +43,13 @@ import {
 } from '@/components/ui/dialog'
 import { cn, formatDate, formatTime, timeAgo } from '@/lib/utils'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
+import { DependenciesSection } from './DependenciesSection'
 import type { Artifact, TicketHistoryEntry, SessionLogEntry, Complexity } from '@potato-cannon/shared'
 
 interface DetailsTabProps {
   projectId: string
   ticketId: string
+  workflowId?: string
   complexity: Complexity
   description?: string
   history?: TicketHistoryEntry[]
@@ -168,7 +170,7 @@ function ComplexityBadge({
   )
 }
 
-export function DetailsTab({ projectId, ticketId, complexity, description, history }: DetailsTabProps) {
+export function DetailsTab({ projectId, ticketId, workflowId, complexity, description, history }: DetailsTabProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editedDescription, setEditedDescription] = useState(description ?? '')
   const [isExpanded, setIsExpanded] = useState(false)
@@ -422,6 +424,12 @@ export function DetailsTab({ projectId, ticketId, complexity, description, histo
           </div>
         )}
       </div>
+
+      <DependenciesSection
+        projectId={projectId}
+        ticketId={ticketId}
+        workflowId={workflowId}
+      />
 
       {/* History Section */}
       <div>

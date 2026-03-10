@@ -33,6 +33,24 @@ export const dependencyTools: ToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: "delete_dependency",
+    description: "Delete a dependency edge between two tickets.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticketId: {
+          type: "string",
+          description: "The ticket that has the dependency edge.",
+        },
+        dependsOnId: {
+          type: "string",
+          description: "The ticket that the source ticket depends on.",
+        },
+      },
+      required: ["ticketId", "dependsOnId"],
+    },
+  },
 ];
 
 // =============================================================================
@@ -154,6 +172,22 @@ async function getDependencies(
   return results;
 }
 
+async function deleteDependency(
+  ctx: McpContext,
+  ticketId: string,
+  dependsOnId: string,
+): Promise<void> {
+  const url =
+    `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ticketId)}/dependencies` +
+    `?dependsOn=${encodeURIComponent(dependsOnId)}`;
+  const response = await fetch(url, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to delete dependency ${ticketId} -> ${dependsOnId}: ${response.statusText}`,
+    );
+  }
+}
+
 // =============================================================================
 // Handlers Export
 // =============================================================================
@@ -189,6 +223,21 @@ export const dependencyHandlers: Record<
         {
           type: "text",
           text: JSON.stringify({ dependencies }, null, 2),
+        },
+      ],
+    };
+  },
+  delete_dependency: async (ctx, args) => {
+    const ticketId = args.ticketId as string;
+    const dependsOnId = args.dependsOnId as string;
+
+    await deleteDependency(ctx, ticketId, dependsOnId);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Dependency deleted: ${ticketId} no longer depends on ${dependsOnId}`,
         },
       ],
     };

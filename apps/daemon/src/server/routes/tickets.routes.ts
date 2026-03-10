@@ -8,6 +8,7 @@ import {
   getTicket,
   createTicket,
   updateTicket,
+  setCurrentHistoryMetadata,
   deleteTicket,
   archiveTicket,
   restoreTicket,
@@ -20,6 +21,12 @@ import {
   loadConversations,
   appendConversation,
 } from "../../stores/ticket.store.js";
+import {
+  ticketDependencyGetDependents,
+  ticketDependencyGetWithSatisfaction,
+} from "../../stores/ticket-dependency.store.js";
+import { projectWorkflowGet } from "../../stores/project-workflow.store.js";
+import { getTemplateWithFullPhasesForProject, getWorkflowWithFullPhases } from "../../stores/template.store.js";
 import { DEFAULT_PHASES } from "../../types/index.js";
 import { readQuestion, writeResponse } from "../../stores/chat.store.js";
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
@@ -28,11 +35,37 @@ import type { SessionService } from "../../services/session/index.js";
 import type { Project } from "../../types/config.types.js";
 import type { TicketPhase } from "../../types/ticket.types.js";
 import { resolveTargetPhase, getPhaseConfig } from "../../services/session/phase-config.js";
+import type { TemplatePhase } from "@potato-cannon/shared";
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
+
+async function resolveTemplatePhases(
+  projectId: string,
+  workflowId: string | null | undefined,
+  cache?: Map<string, TemplatePhase[] | null>,
+): Promise<TemplatePhase[] | null> {
+  const cacheKey = workflowId ?? "__project_default__";
+  if (cache?.has(cacheKey)) {
+    return cache.get(cacheKey) ?? null;
+  }
+
+  if (workflowId) {
+    const workflow = projectWorkflowGet(workflowId);
+    if (workflow) {
+      const template = await getWorkflowWithFullPhases(workflow.templateName);
+      const phases = (template?.phases as TemplatePhase[] | undefined) ?? null;
+      cache?.set(cacheKey, phases);
+      return phases;
+    }
+  }
+  const template = await getTemplateWithFullPhasesForProject(projectId);
+  const phases = (template?.phases as TemplatePhase[] | undefined) ?? null;
+  cache?.set(cacheKey, phases);
+  return phases;
+}
 
 export function registerTicketRoutes(
   app: Express,
@@ -56,7 +89,28 @@ export function registerTicketRoutes(
       }
       // If archivedParam is undefined, archived stays undefined (default = false in store)
 
-      const tickets = await listTickets(projectId, { phase, archived, workflowId });
+      const includeDependencies = true;
+      const tickets = await listTickets(projectId, {
+        phase,
+        archived,
+        workflowId,
+        includeDependencies,
+      });
+
+      if (includeDependencies && tickets.length > 0) {
+        const phaseCache = new Map<string, TemplatePhase[] | null>();
+        for (const ticket of tickets) {
+          const templatePhases = await resolveTemplatePhases(
+            projectId,
+            ticket.workflowId,
+            phaseCache,
+          );
+          ticket.blockedBy = templatePhases
+            ? ticketDependencyGetWithSatisfaction(ticket.id, templatePhases)
+            : [];
+        }
+      }
+
       res.json(tickets);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -92,6 +146,13 @@ export function registerTicketRoutes(
       const projectId = decodeURIComponent(req.params.project);
       const ticketId = req.params.id;
       const ticket = await getTicket(projectId, ticketId);
+      const templatePhases = await resolveTemplatePhases(
+        projectId,
+        ticket.workflowId,
+      );
+      ticket.blockedBy = templatePhases
+        ? ticketDependencyGetWithSatisfaction(ticket.id, templatePhases)
+        : [];
       res.json(ticket);
     } catch (error) {
       res.status(404).json({ error: "Ticket not found" });
@@ -103,7 +164,11 @@ export function registerTicketRoutes(
     try {
       const projectId = decodeURIComponent(req.params.project);
       const ticketId = req.params.id;
-      const updates = req.body as { phase?: TicketPhase; sessionId?: string };
+      const updates = req.body as {
+        phase?: TicketPhase;
+        sessionId?: string;
+        overrideDependencies?: boolean;
+      };
 
       const oldTicket = await getTicket(projectId, ticketId);
       const oldPhase = oldTicket.phase;
@@ -122,14 +187,39 @@ export function registerTicketRoutes(
         }
       }
 
-      const ticket = await updateTicket(projectId, ticketId, {
+      let ticket = await updateTicket(projectId, ticketId, {
         ...updates,
         phase: resolvedPhase,
       });
 
+      if (resolvedPhase && resolvedPhase !== oldPhase && updates.overrideDependencies) {
+        const phases = await resolveTemplatePhases(projectId, oldTicket.workflowId);
+        if (phases) {
+          const unsatisfiedDeps = ticketDependencyGetWithSatisfaction(
+            ticketId,
+            phases,
+          ).filter((dep) => !dep.satisfied);
+
+          setCurrentHistoryMetadata(ticketId, {
+            overriddenDependencies: unsatisfiedDeps,
+          });
+          ticket = await getTicket(projectId, ticketId);
+        }
+      }
+
       eventBus.emit("ticket:updated", { projectId, ticket });
 
       if (resolvedPhase && resolvedPhase !== oldPhase) {
+        const dependents = ticketDependencyGetDependents(ticketId);
+        for (const dependent of dependents) {
+          try {
+            const dependentTicket = await getTicket(projectId, dependent.ticketId);
+            eventBus.emit("ticket:updated", { projectId, ticket: dependentTicket });
+          } catch {
+            // Ignore dependent rows that no longer resolve.
+          }
+        }
+
         eventBus.emit("ticket:moved", {
           projectId,
           ticketId,

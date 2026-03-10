@@ -53,6 +53,7 @@ const baseTicket = {
   title: 'Test Ticket',
   description: 'A test ticket',
   phase: 'Build',
+  complexity: 'standard',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   archived: false,
@@ -140,5 +141,31 @@ describe('TicketCard - Processing Activity', () => {
     render(<TicketCard ticket={baseTicket as any} projectId="proj-1" />)
 
     expect(screen.queryByText('Processing...')).toBeNull()
+  })
+})
+
+describe('TicketCard - Complexity Left Edge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('should apply standard complexity left border color', () => {
+    const { container } = render(<TicketCard ticket={baseTicket as any} projectId="proj-1" />)
+    const card = container.querySelector('.relative.group')
+
+    expect(card?.getAttribute('style')).toContain('border-left-color: var(--color-accent)')
+    expect(card?.getAttribute('style')).toContain('border-left-width: 3px')
+  })
+
+  it('should apply complex complexity left border color', () => {
+    const complexTicket = { ...baseTicket, complexity: 'complex' }
+    const { container } = render(<TicketCard ticket={complexTicket as any} projectId="proj-1" />)
+    const card = container.querySelector('.relative.group')
+
+    expect(card?.getAttribute('style')).toContain('border-left-color: var(--color-accent-yellow)')
   })
 })

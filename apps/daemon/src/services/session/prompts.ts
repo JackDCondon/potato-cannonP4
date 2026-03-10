@@ -13,6 +13,7 @@ import {
   getRalphIterations,
   type RalphFeedback,
 } from "../../stores/ralph-feedback.store.js";
+import { ticketDependencyGetForTicket } from "../../stores/ticket-dependency.store.js";
 
 /**
  * Load context artifacts based on agent's artifact configuration.
@@ -84,6 +85,21 @@ function formatArtifacts(
     .join("\n");
 }
 
+function formatDependencyHint(
+  deps: ReturnType<typeof ticketDependencyGetForTicket>,
+): string {
+  if (deps.length === 0) return "";
+  const exampleTitles = deps
+    .map((dep) => dep.title)
+    .filter(Boolean)
+    .slice(0, 2);
+  const examples = exampleTitles.length
+    ? ` (e.g., '${exampleTitles.join("', '")}')`
+    : "";
+
+  return `\nThis ticket has ${deps.length} dependencies${examples}. If you encounter a gap — an interface, contract, or system design you need to understand before proceeding — use get_dependencies() to see what's available. Do not call it preemptively.\n`;
+}
+
 /**
  * Format previous rejection attempts for builder prompt injection.
  */
@@ -138,6 +154,8 @@ export async function buildAgentPrompt(
     ticketId,
     contextArtifacts,
   );
+  const dependencies = ticketDependencyGetForTicket(ticketId);
+  const dependencyHint = formatDependencyHint(dependencies);
 
   // Load ralph feedback if in a ralph loop
   let previousAttemptsSection = "";
@@ -164,7 +182,7 @@ export async function buildAgentPrompt(
 ## Ticket Description
 
 ${ticket.description || "No description provided."}
-${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}Begin.`;
+${dependencyHint}${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}Begin.`;
 
   // If agent instructions provided, prepend them to the context
   if (agentPrompt) {

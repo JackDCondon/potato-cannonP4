@@ -1,16 +1,79 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act } from "react";
+import type { ReactNode } from "react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import type { Ticket } from "@potato-cannon/shared";
 import { Board } from "./Board";
 
-// Mock all external dependencies
+const mockState = vi.hoisted(() => ({
+  tickets: [] as Ticket[],
+  updateTicketMutate: vi.fn(),
+  onDragEnd: null as ((event: unknown) => void) | null,
+  useTemplate: vi.fn((_: string | null) => ({
+    data: {
+      phases: [
+        { name: "Ideas" },
+        { name: "Specification" },
+        { name: "Build" },
+        { name: "Done" },
+      ],
+    },
+  })),
+}));
+
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({
+    children,
+    onDragEnd,
+  }: {
+    children: ReactNode;
+    onDragEnd?: (event: unknown) => void;
+  }) => {
+    mockState.onDragEnd = onDragEnd ?? null;
+    return <div data-testid="dnd-context">{children}</div>;
+  },
+  DragOverlay: ({ children }: { children: ReactNode }) => (
+    <div data-testid="drag-overlay">{children}</div>
+  ),
+  PointerSensor: class {},
+  useSensor: () => ({}),
+  useSensors: (...sensors: unknown[]) => sensors,
+}));
+
 vi.mock("@/hooks/queries", () => ({
-  useTickets: () => ({ data: [], isLoading: false, error: null }),
-  useProjectPhases: () => ({ data: ["Ideas", "Build", "Done"] }),
-  useTemplate: () => ({ data: { phases: [] } }),
+  useTickets: () => ({
+    data: mockState.tickets,
+    isLoading: false,
+    error: null,
+  }),
+  useProjectPhases: () => ({ data: ["Ideas", "Specification", "Build", "Done"] }),
+  useTemplate: (name: string | null) => mockState.useTemplate(name),
   useProjects: () => ({
     data: [{ id: "test-project", template: { name: "product-development" } }],
   }),
-  useUpdateTicket: () => ({ mutate: vi.fn() }),
+  useWorkflows: () => ({
+    data: [
+      {
+        id: "workflow-default",
+        projectId: "test-project",
+        name: "Default",
+        templateName: "product-development",
+        isDefault: true,
+        createdAt: "2026-03-10T00:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+      },
+      {
+        id: "workflow-bug",
+        projectId: "test-project",
+        name: "Bug",
+        templateName: "bug-fix",
+        isDefault: false,
+        createdAt: "2026-03-10T00:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+      },
+    ],
+  }),
+  useUpdateTicket: () => ({ mutate: mockState.updateTicketMutate }),
   useToggleDisabledPhase: () => ({ mutate: vi.fn() }),
   useUpdateProject: () => ({ mutate: vi.fn() }),
 }));
@@ -81,6 +144,13 @@ Object.defineProperty(window, "matchMedia", {
 });
 
 describe("Board - Add Ticket button placement", () => {
+  beforeEach(() => {
+    mockState.tickets = [];
+    mockState.updateTicketMutate.mockReset();
+    mockState.onDragEnd = null;
+    mockState.useTemplate.mockClear();
+  });
+
   it("does not render an Add Ticket button in the board header", () => {
     render(<Board projectId="test-project" />);
 
@@ -94,9 +164,7 @@ describe("Board - Add Ticket button placement", () => {
   it("passes showAddTicket=true to the Ideas (first phase) column", () => {
     render(<Board projectId="test-project" />);
 
-    // Find the Ideas column in the kanban view (the one with data-testid in the flex container)
     const ideasColumns = screen.getAllByTestId("board-column-Ideas");
-    // There may be multiple due to different view modes - check the kanban view one
     const kanbanIdeasColumn = ideasColumns.find(
       (col) => col.dataset.showAddTicket !== undefined,
     );
@@ -107,7 +175,6 @@ describe("Board - Add Ticket button placement", () => {
   it("passes showAddTicket=false to non-Ideas columns", () => {
     render(<Board projectId="test-project" />);
 
-    // Find columns in kanban view
     const buildColumns = screen.getAllByTestId("board-column-Build");
     const buildColumn = buildColumns.find(
       (col) => col.dataset.showAddTicket !== undefined,
@@ -124,9 +191,89 @@ describe("Board - Add Ticket button placement", () => {
   it("right-aligns the board header content (justify-end)", () => {
     const { container } = render(<Board projectId="test-project" />);
 
-    // The board header div should use justify-end (not justify-between)
     const header = container.querySelector(".px-4.py-3");
     expect(header?.className).toMatch(/justify-end/);
     expect(header?.className).not.toMatch(/justify-between/);
+  });
+
+  it("uses the selected workflow template when workflowId is provided", () => {
+    render(<Board projectId="test-project" workflowId="workflow-bug" />);
+    expect(mockState.useTemplate).toHaveBeenCalledWith("bug-fix");
+  });
+});
+
+describe("Board dependency warning dialog", () => {
+  beforeEach(() => {
+    mockState.updateTicketMutate.mockReset();
+    mockState.onDragEnd = null;
+    mockState.tickets = [
+      {
+        id: "TKT-1",
+        project: "test-project",
+        title: "Blocked ticket",
+        description: "",
+        phase: "Ideas",
+        complexity: "standard",
+        createdAt: "2026-03-10T00:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z",
+        history: [],
+        blockedBy: [
+          {
+            ticketId: "TKT-2",
+            title: "Specification input",
+            currentPhase: "Ideas",
+            tier: "artifact-ready",
+            satisfied: false,
+          },
+        ],
+      },
+    ] as Ticket[];
+  });
+
+  it("shows dependency warning and moves with overrideDependencies when confirmed", () => {
+    render(<Board projectId="test-project" />);
+
+    act(() => {
+      mockState.onDragEnd?.({
+        active: {
+          id: "TKT-1",
+          data: { current: { ticket: mockState.tickets[0] } },
+        },
+        over: { id: "Specification" },
+      });
+    });
+
+    expect(screen.queryByText(/dependency warning/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /move anyway/i }));
+
+    expect(mockState.updateTicketMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "test-project",
+        ticketId: "TKT-1",
+        updates: expect.objectContaining({
+          phase: "Specification",
+          overrideDependencies: true,
+        }),
+      }),
+    );
+  });
+
+  it("does not move when dependency warning is cancelled", () => {
+    render(<Board projectId="test-project" />);
+
+    act(() => {
+      mockState.onDragEnd?.({
+        active: {
+          id: "TKT-1",
+          data: { current: { ticket: mockState.tickets[0] } },
+        },
+        over: { id: "Specification" },
+      });
+    });
+
+    expect(screen.queryByText(/dependency warning/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mockState.updateTicketMutate).not.toHaveBeenCalled();
   });
 });

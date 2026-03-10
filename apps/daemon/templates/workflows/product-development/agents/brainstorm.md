@@ -58,6 +58,25 @@ If the skill is not available, use these heuristics directly:
 
 Call `set_ticket_complexity` with your estimate. This is an initial estimate — refinement will re-evaluate.
 
+## Dependency Planning
+
+When the brainstorm leads to multiple tickets with ordering needs, model dependencies explicitly.
+
+- Use `artifact-ready` when a downstream ticket only needs upstream specs/interfaces/docs.
+- Use `code-ready` when downstream work should wait for upstream implementation completion.
+- Create tickets in sequence and keep a running list of created ticket IDs so dependencies can reference real IDs.
+- Use `create_ticket` with the optional `dependsOn` array, where each item is `{ ticketId, tier }`.
+
+After all related tickets are created, ask for confirmation with:
+
+`Confirm these dependencies? (Yes / Edit / Skip)`
+
+Handle responses as follows:
+
+- **Yes:** keep dependencies as created.
+- **Edit:** ask which dependency edges to remove, then call `delete_dependency`.
+- **Skip:** remove all created dependency edges with `delete_dependency`.
+
 ## Also Don't
 
 - Force a rigid process on open-ended conversations

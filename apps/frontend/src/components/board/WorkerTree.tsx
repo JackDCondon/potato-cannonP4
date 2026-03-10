@@ -5,11 +5,12 @@ import { WorkerTreeItem } from './WorkerTreeItem'
 interface WorkerTreeProps {
   projectId: string
   phase: string
+  workflowId?: string | null
   onAgentClick: (agentType: string, agentName: string, model?: string) => void
 }
 
-export function WorkerTree({ projectId, phase, onAgentClick }: WorkerTreeProps) {
-  const { data, isLoading, error } = usePhaseWorkers(projectId, phase)
+export function WorkerTree({ projectId, phase, workflowId, onAgentClick }: WorkerTreeProps) {
+  const { data, isLoading, error } = usePhaseWorkers(projectId, phase, workflowId)
 
   if (isLoading) {
     return (

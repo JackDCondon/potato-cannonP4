@@ -82,9 +82,9 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.equal(ticket.workflow_id, null, 'workflow_id should be null for pre-V13 tickets');
   });
 
-  it('schema version is 13', () => {
+  it('schema version is 15', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 13);
+    assert.equal(version, 15);
   });
 });
 

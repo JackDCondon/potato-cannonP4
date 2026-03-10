@@ -7,6 +7,7 @@ import type {
   McpToolResult,
 } from "../../types/mcp.types.js";
 import type { ArtifactManifest } from "../../types/index.js";
+import type { BlockedByEntry } from "@potato-cannon/shared";
 
 export const artifactTools: ToolDefinition[] = [
   {
@@ -15,7 +16,13 @@ export const artifactTools: ToolDefinition[] = [
       "List all artifacts attached to the current ticket. Returns filename, type, description, savedAt, and phase for each artifact.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        ticketId: {
+          type: "string",
+          description:
+            "Optional ticket ID to query. Must be a direct dependency of the current ticket.",
+        },
+      },
       required: [],
     },
   },
@@ -26,6 +33,11 @@ export const artifactTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        ticketId: {
+          type: "string",
+          description:
+            "Optional ticket ID to query. Must be a direct dependency of the current ticket.",
+        },
         filename: {
           type: "string",
           description: "The artifact filename (e.g., 'refinement.md')",
@@ -56,6 +68,34 @@ interface ArtifactContent {
 function getArtifactsDir(ctx: McpContext): string {
   const safeProject = ctx.projectId.replace(/\//g, "__");
   return path.join(TASKS_DIR, safeProject, ctx.ticketId, "artifacts");
+}
+
+async function resolveArtifactContext(
+  ctx: McpContext,
+  requestedTicketId: string,
+): Promise<McpContext> {
+  if (requestedTicketId === ctx.ticketId) {
+    return ctx;
+  }
+
+  const url = `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ctx.ticketId)}/dependencies`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch dependencies for ${ctx.ticketId}: ${response.statusText}`,
+    );
+  }
+  const deps = (await response.json()) as BlockedByEntry[];
+  const isDirectDependency = deps.some(
+    (dep) => dep.ticketId === requestedTicketId,
+  );
+  if (!isDirectDependency) {
+    throw new Error(
+      `Ticket ${requestedTicketId} is not a dependency of ${ctx.ticketId}`,
+    );
+  }
+
+  return { ...ctx, ticketId: requestedTicketId };
 }
 
 async function listArtifacts(ctx: McpContext): Promise<ArtifactListItem[]> {
@@ -136,8 +176,13 @@ export const artifactHandlers: Record<
   string,
   (ctx: McpContext, args: Record<string, unknown>) => Promise<McpToolResult>
 > = {
-  list_artifacts: async (ctx) => {
-    const artifacts = await listArtifacts(ctx);
+  list_artifacts: async (ctx, args) => {
+    const requestedTicketId = (args.ticketId as string) || ctx.ticketId;
+    const resolvedContext = await resolveArtifactContext(
+      ctx,
+      requestedTicketId,
+    );
+    const artifacts = await listArtifacts(resolvedContext);
     return {
       content: [
         {
@@ -148,11 +193,16 @@ export const artifactHandlers: Record<
     };
   },
   get_artifact: async (ctx, args) => {
+    const requestedTicketId = (args.ticketId as string) || ctx.ticketId;
     const filename = args.filename as string;
     if (!filename) {
       throw new Error("filename is required");
     }
-    const artifact = await getArtifact(ctx, filename);
+    const resolvedContext = await resolveArtifactContext(
+      ctx,
+      requestedTicketId,
+    );
+    const artifact = await getArtifact(resolvedContext, filename);
     return {
       content: [
         {

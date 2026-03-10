@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 14;
+const CURRENT_SCHEMA_VERSION = 15;
 
 /**
  * Run database migrations.
@@ -64,6 +64,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 14) {
     migrateV14(db);
+  }
+
+  if (version < 15) {
+    migrateV15(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -628,5 +632,15 @@ function migrateV14(db: Database.Database): void {
   const columns = db.pragma('table_info(brainstorms)') as { name: string }[]
   if (!columns.some(c => c.name === 'workflow_id')) {
     db.exec(`ALTER TABLE brainstorms ADD COLUMN workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL`)
+  }
+}
+
+/**
+ * V15: Add metadata field to ticket_history to persist phase override details.
+ */
+function migrateV15(db: Database.Database): void {
+  const columns = db.pragma('table_info(ticket_history)') as { name: string }[]
+  if (!columns.some((column) => column.name === 'metadata')) {
+    db.exec('ALTER TABLE ticket_history ADD COLUMN metadata TEXT')
   }
 }

@@ -10,6 +10,8 @@ interface ListItemCardProps extends React.HTMLAttributes<HTMLDivElement> {
   isActive?: boolean
   /** Tint color from parent container - card will be a lighter version */
   tintColor?: string
+  /** Optional left accent line color (e.g., complexity indicator) */
+  leftAccentColor?: string
 }
 
 /**
@@ -21,6 +23,7 @@ export function ListItemCard({
   isSelected,
   isActive,
   tintColor,
+  leftAccentColor,
   className,
   children,
   style,
@@ -29,12 +32,17 @@ export function ListItemCard({
   const Comp = asChild ? Slot : 'div'
 
   // Create a lighter background based on the tint color
-  const cardStyle = tintColor
-    ? {
-        ...style,
-        backgroundColor: `color-mix(in srgb, ${tintColor} 60%, #3a3a3c)`
-      }
-    : style
+  const cardStyle: React.CSSProperties = {
+    ...style,
+    ...(tintColor ? { backgroundColor: `color-mix(in srgb, ${tintColor} 60%, #3a3a3c)` } : {}),
+    ...(leftAccentColor
+      ? {
+          borderLeftWidth: '3px',
+          borderLeftStyle: 'solid',
+          borderLeftColor: leftAccentColor
+        }
+      : {})
+  }
 
   return (
     <Comp

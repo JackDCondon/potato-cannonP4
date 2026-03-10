@@ -7,7 +7,8 @@ import {
   useProjectPhases,
   useUpdateTicket,
   useProjects,
-  useTemplate
+  useTemplate,
+  useWorkflows
 } from '@/hooks/queries'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
@@ -52,26 +53,35 @@ export function TicketDetailPanel() {
   const ticketSheetTicketId = useAppStore((s) => s.ticketSheetTicketId)
   const ticketSheetProjectId = useAppStore((s) => s.ticketSheetProjectId)
   const closeTicketSheet = useAppStore((s) => s.closeTicketSheet)
-  const currentProjectId = useAppStore((s) => s.currentProjectId)
-
-  // Only show panel on board view and when viewing the same project where the ticket was opened
   const location = useLocation()
-  const isOnBoardView = !!location.pathname.match(/^\/projects\/[^/]+\/board/)
+  const routeProjectSlugMatch = location.pathname.match(/^\/projects\/([^/]+)/)
+  const routeProjectSlug = routeProjectSlugMatch ? decodeURIComponent(routeProjectSlugMatch[1]) : null
+  const isOnBoardView = /^\/projects\/[^/]+(?:\/workflows\/[^/]+)?\/board$/.test(location.pathname)
+
+  const { data: projects } = useProjects()
+  const currentProject = useMemo(
+    () => projects?.find((p) => p.slug === routeProjectSlug),
+    [projects, routeProjectSlug]
+  )
+  const currentProjectId = currentProject?.id ?? null
   const isCorrectProject = currentProjectId === ticketSheetProjectId
+  const { data: workflows } = useWorkflows(currentProjectId)
 
   // Queries
   const { data: ticket, isLoading } = useTicket(currentProjectId, ticketSheetTicketId)
-  const { data: phases } = useProjectPhases(currentProjectId)
-  const { data: projects } = useProjects()
+  const { data: projectPhases } = useProjectPhases(currentProjectId)
   const updateTicket = useUpdateTicket()
 
-  // Get current project to access template name
-  const currentProject = useMemo(
-    () => projects?.find((p) => p.id === currentProjectId),
-    [projects, currentProjectId]
+  const currentWorkflow = useMemo(
+    () => workflows?.find((workflow) => workflow.id === ticket?.workflowId),
+    [workflows, ticket?.workflowId]
   )
-
-  const { data: templateConfig } = useTemplate(currentProject?.template?.name ?? null)
+  const templateName = currentWorkflow?.templateName ?? currentProject?.template?.name ?? null
+  const { data: templateConfig } = useTemplate(templateName, { full: true })
+  const phases = useMemo(
+    () => templateConfig?.phases.map((phase) => phase.name) ?? projectPhases,
+    [templateConfig, projectPhases]
+  )
 
   // Phase change confirmation dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -265,6 +275,7 @@ export function TicketDetailPanel() {
                       <DetailsTab
                         projectId={currentProjectId!}
                         ticketId={ticket.id}
+                        workflowId={ticket.workflowId}
                         complexity={ticket.complexity}
                         description={ticket.description}
                         history={ticket.history}

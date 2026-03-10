@@ -9,7 +9,14 @@ import { useArchiveTicket } from '@/hooks/queries'
 import { ListItemCard } from '@/components/ui/list-item-card'
 import { IconButton } from '@/components/ui/icon-button'
 import { ArchiveConfirmDialog, shouldShowArchiveWarning } from '@/components/ticket-detail/ArchiveConfirmDialog'
+import { DependencyBadge } from '@/components/board/DependencyBadge'
 import type { Ticket } from '@potato-cannon/shared'
+
+const COMPLEXITY_BORDER_COLORS: Record<Ticket['complexity'], string> = {
+  simple: 'var(--color-text-muted)',
+  standard: 'var(--color-accent)',
+  complex: 'var(--color-accent-yellow)',
+}
 
 interface TicketCardProps {
   ticket: Ticket
@@ -86,6 +93,7 @@ export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps
       asChild
       isActive={isDragging}
       tintColor={swimlaneColor}
+      leftAccentColor={COMPLEXITY_BORDER_COLORS[ticket.complexity]}
     >
       <div
         ref={setNodeRef}
@@ -145,6 +153,7 @@ export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps
                   {imageCount}
                 </span>
               )}
+              <DependencyBadge blockedBy={ticket.blockedBy ?? []} />
             </>
           )}
         </div>

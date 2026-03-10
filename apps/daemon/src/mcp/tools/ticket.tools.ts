@@ -10,6 +10,7 @@ import type {
   McpToolResult,
 } from "../../types/mcp.types.js";
 import type { ArtifactManifest, ArtifactEntry } from "../../types/index.js";
+import type { DependencyTier } from "@potato-cannon/shared";
 
 export const ticketTools: ToolDefinition[] = [
   {
@@ -81,6 +82,26 @@ export const ticketTools: ToolDefinition[] = [
           type: "string",
           description: "Optional brainstorm ID this ticket originated from",
         },
+        dependsOn: {
+          type: "array",
+          description:
+            "Optional dependencies to create for the new ticket.",
+          items: {
+            type: "object",
+            properties: {
+              ticketId: {
+                type: "string",
+                description: "The ticket this new ticket depends on.",
+              },
+              tier: {
+                type: "string",
+                enum: ["artifact-ready", "code-ready"],
+                description: "The dependency tier to enforce.",
+              },
+            },
+            required: ["ticketId", "tier"],
+          },
+        },
       },
       required: ["title"],
     },
@@ -107,6 +128,11 @@ export const ticketTools: ToolDefinition[] = [
 interface CommentEntry {
   text: string;
   createdAt: string;
+}
+
+interface CreateTicketDependencyInput {
+  ticketId: string;
+  tier: DependencyTier;
 }
 
 async function getTicket(ctx: McpContext): Promise<unknown> {
@@ -278,6 +304,30 @@ async function createTicket(
   return await response.json();
 }
 
+async function createTicketDependency(
+  ctx: McpContext,
+  ticketId: string,
+  dependency: CreateTicketDependencyInput,
+): Promise<void> {
+  const response = await fetch(
+    `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ticketId)}/dependencies`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dependsOn: dependency.ticketId,
+        tier: dependency.tier,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to create dependency on ${dependency.ticketId}: ${response.statusText}`,
+    );
+  }
+}
+
 export const ticketHandlers: Record<
   string,
   (ctx: McpContext, args: Record<string, unknown>) => Promise<McpToolResult>
@@ -315,12 +365,26 @@ export const ticketHandlers: Record<
   },
 
   create_ticket: async (ctx, args) => {
+    const dependsOn = (Array.isArray(args.dependsOn)
+      ? args.dependsOn
+      : []) as CreateTicketDependencyInput[];
     const ticket = (await createTicket(
       ctx,
       args.title as string,
       args.description as string | undefined,
       args.brainstormId as string | undefined,
     )) as { id: string; title: string };
+
+    for (const dependency of dependsOn) {
+      try {
+        await createTicketDependency(ctx, ticket.id, dependency);
+      } catch (error) {
+        console.warn(
+          `[create_ticket] Failed to create dependency ${ticket.id} -> ${dependency.ticketId}: ${(error as Error).message}`,
+        );
+      }
+    }
+
     return {
       content: [
         {

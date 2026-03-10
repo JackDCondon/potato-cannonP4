@@ -23,6 +23,7 @@ interface AgentPromptEditorProps {
   agentType: string
   agentName: string
   model?: string
+  workflowId?: string
   open: boolean
   onClose: () => void
 }
@@ -32,6 +33,7 @@ export function AgentPromptEditor({
   agentType,
   agentName,
   model,
+  workflowId,
   open,
   onClose
 }: AgentPromptEditorProps) {
@@ -69,7 +71,7 @@ export function AgentPromptEditor({
     // Fetch default prompt
     setIsLoadingDefault(true)
     api
-      .getAgentDefault(projectId, agentType)
+      .getAgentDefault(projectId, agentType, workflowId)
       .then((res) => setDefaultContent(res.content))
       .catch((err) => {
         console.error('Failed to fetch default prompt:', err)
@@ -91,7 +93,7 @@ export function AgentPromptEditor({
         setOriginalOverride(null)
       })
       .finally(() => setIsLoadingOverride(false))
-  }, [open, projectId, agentType])
+  }, [open, projectId, agentType, workflowId])
 
   // Render markdown for default prompt
   const renderedDefault = useMemo(() => {
@@ -134,7 +136,8 @@ export function AgentPromptEditor({
       await saveOverride.mutateAsync({
         projectId,
         agentType,
-        content: overrideContent
+        content: overrideContent,
+        workflowId
       })
       setOriginalOverride(overrideContent)
       toast.success('Override saved')
@@ -142,7 +145,7 @@ export function AgentPromptEditor({
       console.error('Failed to save override:', err)
       toast.error('Failed to save override')
     }
-  }, [projectId, agentType, overrideContent, saveOverride])
+  }, [projectId, agentType, overrideContent, workflowId, saveOverride])
 
   // Reset to default (delete override)
   const handleReset = useCallback(async () => {

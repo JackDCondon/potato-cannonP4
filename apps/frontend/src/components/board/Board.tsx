@@ -13,6 +13,7 @@ import {
   useTickets,
   useProjectPhases,
   useTemplate,
+  useWorkflows,
   useUpdateTicket,
   useProjects,
   useToggleDisabledPhase,
@@ -69,11 +70,39 @@ interface BoardProps {
   workflowId?: string
 }
 
+type DialogType = 'automation' | 'dependency'
+
+function neededPhaseForTier(tier: string): string {
+  if (tier === 'artifact-ready') return 'Specification'
+  if (tier === 'code-ready') return 'Done'
+  return 'Done'
+}
+
+function getDependencyWarning(
+  ticket: Ticket,
+  targetPhase: string,
+  phases: string[]
+): { title: string; neededPhase: string } | null {
+  const targetIndex = phases.findIndex((phase) => phase === targetPhase)
+  if (targetIndex === -1) return null
+
+  const unsatisfied = (ticket.blockedBy ?? []).filter((dep) => !dep.satisfied)
+  for (const dep of unsatisfied) {
+    const neededPhase = neededPhaseForTier(dep.tier)
+    const neededIndex = phases.findIndex((phase) => phase === neededPhase)
+    if (neededIndex !== -1 && targetIndex >= neededIndex) {
+      return { title: dep.title, neededPhase }
+    }
+  }
+  return null
+}
+
 export function Board({ projectId, workflowId }: BoardProps) {
   // Queries
   const { data: projects } = useProjects()
+  const { data: workflows } = useWorkflows(projectId)
   const { data: tickets, isLoading: ticketsLoading, error: ticketsError } = useTickets(projectId, workflowId)
-  const { data: phases } = useProjectPhases(projectId)
+  const { data: projectPhases } = useProjectPhases(projectId)
 
   // Get current project to access template name
   const currentProject = useMemo(
@@ -81,7 +110,21 @@ export function Board({ projectId, workflowId }: BoardProps) {
     [projects, projectId]
   )
 
-  const { data: templateConfig } = useTemplate(currentProject?.template?.name ?? null)
+  const activeWorkflow = useMemo(
+    () =>
+      workflowId
+        ? workflows?.find((w) => w.id === workflowId)
+        : workflows?.find((w) => w.isDefault) ?? workflows?.[0],
+    [workflowId, workflows]
+  )
+
+  const activeTemplateName =
+    activeWorkflow?.templateName ?? currentProject?.template?.name ?? null
+  const { data: templateConfig } = useTemplate(activeTemplateName, { full: true })
+  const phases = useMemo(
+    () => templateConfig?.phases.map((phase) => phase.name) ?? projectPhases,
+    [templateConfig, projectPhases]
+  )
 
   // Mutations
   const updateTicket = useUpdateTicket()
@@ -145,9 +188,12 @@ export function Board({ projectId, workflowId }: BoardProps) {
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
+    type: DialogType
     ticketId: string
     targetPhase: string
     phaseName: string
+    dependencyTitle?: string
+    dependencyNeededPhase?: string
   } | null>(null)
 
   // Group tickets by phase
@@ -193,6 +239,22 @@ export function Board({ projectId, workflowId }: BoardProps) {
 
       if (!ticket || ticket.phase === targetPhase) return
 
+      const dependencyWarning = phases
+        ? getDependencyWarning(ticket, targetPhase, phases)
+        : null
+      if (dependencyWarning) {
+        setConfirmDialog({
+          open: true,
+          type: 'dependency',
+          ticketId,
+          targetPhase,
+          phaseName: targetPhase,
+          dependencyTitle: dependencyWarning.title,
+          dependencyNeededPhase: dependencyWarning.neededPhase,
+        })
+        return
+      }
+
       // Check if target phase has automation
       const phaseConfig = templateConfig?.phases.find((p) => p.name === targetPhase)
       const hasAutomation = phaseHasAutomation(phaseConfig)
@@ -201,6 +263,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
         // Show confirmation dialog
         setConfirmDialog({
           open: true,
+          type: 'automation',
           ticketId,
           targetPhase,
           phaseName: targetPhase
@@ -214,7 +277,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
         })
       }
     },
-    [projectId, templateConfig, updateTicket]
+    [projectId, phases, templateConfig, updateTicket]
   )
 
   const handleConfirmMove = useCallback(() => {
@@ -223,7 +286,9 @@ export function Board({ projectId, workflowId }: BoardProps) {
     updateTicket.mutate({
       projectId: projectId,
       ticketId: confirmDialog.ticketId,
-      updates: { phase: confirmDialog.targetPhase }
+      updates: confirmDialog.type === 'dependency'
+        ? { phase: confirmDialog.targetPhase, overrideDependencies: true }
+        : { phase: confirmDialog.targetPhase }
     })
 
     setConfirmDialog(null)
@@ -232,6 +297,24 @@ export function Board({ projectId, workflowId }: BoardProps) {
   const handleCancelMove = useCallback(() => {
     setConfirmDialog(null)
   }, [])
+
+  const blockedColumnIds = useMemo(() => {
+    if (!activeTicket || !phases || phases.length === 0) return new Set<string>()
+
+    const blocked = new Set<string>()
+    const unsatisfied = (activeTicket.blockedBy ?? []).filter((dep) => !dep.satisfied)
+
+    for (const dep of unsatisfied) {
+      const neededPhase = neededPhaseForTier(dep.tier)
+      const neededIndex = phases.findIndex((phase) => phase === neededPhase)
+      if (neededIndex === -1) continue
+      for (let i = neededIndex; i < phases.length; i++) {
+        blocked.add(phases[i])
+      }
+    }
+
+    return blocked
+  }, [activeTicket, phases])
 
   // Loading state
   if (ticketsLoading) {
@@ -299,10 +382,12 @@ export function Board({ projectId, workflowId }: BoardProps) {
                       phase={phase}
                       tickets={ticketsByPhase[phase] || []}
                       projectId={projectId}
+                      workflowId={workflowId}
                       showAddTicket={phase === phases?.[0]}
                       isManualPhase={isManual}
                       isDisabled={isDisabled}
                       isMigrating={isMigrating}
+                      isBlockedForDrag={!!activeTicket && blockedColumnIds.has(phase)}
                       onToggleDisabled={isManual ? () => handleToggleDisabled(phase) : undefined}
                       swimlaneColor={currentProject?.swimlaneColors?.[phase]}
                       onColorChange={(color) => handleSwimlaneColorChange(phase, color)}
@@ -336,17 +421,33 @@ export function Board({ projectId, workflowId }: BoardProps) {
       >
         <DialogContent className="bg-bg-secondary border-border">
           <DialogHeader>
-            <DialogTitle className="text-text-primary">Start Automation?</DialogTitle>
+            <DialogTitle className="text-text-primary">
+              {confirmDialog?.type === 'dependency' ? 'Dependency Warning' : 'Start Automation?'}
+            </DialogTitle>
             <DialogDescription className="text-text-secondary">
-              Moving to <span className="font-medium text-accent">{confirmDialog?.phaseName}</span>{' '}
-              will start Claude automation. Continue?
+              {confirmDialog?.type === 'dependency' ? (
+                <>
+                  This ticket depends on{' '}
+                  <span className="font-medium text-accent">{confirmDialog?.dependencyTitle}</span>{' '}
+                  which has not reached{' '}
+                  <span className="font-medium text-accent">{confirmDialog?.dependencyNeededPhase}</span>{' '}
+                  yet. Proceed anyway?
+                </>
+              ) : (
+                <>
+                  Moving to <span className="font-medium text-accent">{confirmDialog?.phaseName}</span>{' '}
+                  will start Claude automation. Continue?
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={handleCancelMove}>
               Cancel
             </Button>
-            <Button onClick={handleConfirmMove}>Continue</Button>
+            <Button onClick={handleConfirmMove}>
+              {confirmDialog?.type === 'dependency' ? 'Move Anyway' : 'Continue'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -17,10 +17,12 @@ interface BoardColumnProps {
   phase: string
   tickets: Ticket[]
   projectId: string
+  workflowId?: string
   showAddTicket?: boolean
   isManualPhase?: boolean
   isDisabled?: boolean
   isMigrating?: boolean
+  isBlockedForDrag?: boolean
   onToggleDisabled?: () => void
   swimlaneColor?: string
   onColorChange?: (color: string | null) => void
@@ -30,10 +32,12 @@ export function BoardColumn({
   phase,
   tickets,
   projectId,
+  workflowId,
   showAddTicket,
   isManualPhase,
   isDisabled,
   isMigrating,
+  isBlockedForDrag,
   onToggleDisabled,
   swimlaneColor,
   onColorChange
@@ -133,6 +137,7 @@ export function BoardColumn({
             className={cn(
               'swimlane-tickets-fade flex-1 p-2 overflow-y-auto min-h-[100px] transition-colors',
               isOver && 'bg-accent/10',
+              isBlockedForDrag && 'ring-2 ring-red-500/40 bg-red-500/5',
               isFlipped && 'fading'
             )}
           >
@@ -157,6 +162,7 @@ export function BoardColumn({
           <SwimlaneBackside
             projectId={projectId}
             phase={phase}
+            workflowId={workflowId}
             currentColor={swimlaneColor}
             onColorChange={handleColorChange}
           />

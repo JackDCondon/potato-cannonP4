@@ -27,7 +27,8 @@ import type {
   CreateWorkflowInput,
   UpdateWorkflowInput,
   DependencyTier,
-  TicketDependency
+  TicketDependency,
+  BlockedByEntry
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
@@ -122,7 +123,11 @@ export const api = {
       body: JSON.stringify({ title, description, ...(workflowId ? { workflowId } : {}) })
     }),
 
-  updateTicket: (projectId: string, ticketId: string, updates: Partial<Ticket>) =>
+  updateTicket: (
+    projectId: string,
+    ticketId: string,
+    updates: Partial<Ticket> & { overrideDependencies?: boolean }
+  ) =>
     request<Ticket>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}`, {
       method: 'PUT',
       body: JSON.stringify(updates)
@@ -448,31 +453,37 @@ export const api = {
 
   // ============ Phase Workers ============
 
-  getPhaseWorkers: (projectId: string, phase: string) =>
-    request<WorkerTreeResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phase)}/workers`
-    ),
+  getPhaseWorkers: (projectId: string, phase: string, workflowId?: string | null) => {
+    const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''
+    return request<WorkerTreeResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phase)}/workers${query}`
+    )
+  },
 
   // ============ Agent Overrides ============
 
-  getAgentDefault: (projectId: string, agentType: string) =>
-    request<{ content: string }>(
-      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/default`
-    ),
+  getAgentDefault: (projectId: string, agentType: string, workflowId?: string | null) => {
+    const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''
+    return request<{ content: string }>(
+      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/default${query}`
+    )
+  },
 
   getAgentOverride: (projectId: string, agentType: string) =>
     request<{ content: string }>(
       `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override`
     ),
 
-  saveAgentOverride: (projectId: string, agentType: string, content: string) =>
-    request<{ ok: true }>(
-      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override`,
+  saveAgentOverride: (projectId: string, agentType: string, content: string, workflowId?: string | null) => {
+    const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''
+    return request<{ ok: true }>(
+      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override${query}`,
       {
         method: 'PUT',
         body: JSON.stringify({ content })
       }
-    ),
+    )
+  },
 
   deleteAgentOverride: (projectId: string, agentType: string) =>
     request<{ ok: true }>(
@@ -508,18 +519,20 @@ export const api = {
 
   // ============ Ticket Dependencies ============
 
-  getTicketDependencies: (ticketId: string) =>
-    request<TicketDependency[]>(`/api/tickets/${encodeURIComponent(ticketId)}/dependencies`),
+  getTicketDependencies: (projectId: string, ticketId: string) =>
+    request<BlockedByEntry[]>(
+      `/api/tickets/${encodeURIComponent(projectId)}/${encodeURIComponent(ticketId)}/dependencies`
+    ),
 
-  addTicketDependency: (ticketId: string, dependsOn: string, tier: DependencyTier) =>
-    request<TicketDependency>(`/api/tickets/${encodeURIComponent(ticketId)}/dependencies`, {
+  addTicketDependency: (projectId: string, ticketId: string, dependsOn: string, tier: DependencyTier) =>
+    request<TicketDependency>(`/api/tickets/${encodeURIComponent(projectId)}/${encodeURIComponent(ticketId)}/dependencies`, {
       method: 'POST',
       body: JSON.stringify({ dependsOn, tier })
     }),
 
-  removeTicketDependency: (ticketId: string, dependsOn: string) =>
+  removeTicketDependency: (projectId: string, ticketId: string, dependsOn: string) =>
     request<void>(
-      `/api/tickets/${encodeURIComponent(ticketId)}/dependencies?dependsOn=${encodeURIComponent(dependsOn)}`,
+      `/api/tickets/${encodeURIComponent(projectId)}/${encodeURIComponent(ticketId)}/dependencies?dependsOn=${encodeURIComponent(dependsOn)}`,
       { method: 'DELETE' }
     ),
 }

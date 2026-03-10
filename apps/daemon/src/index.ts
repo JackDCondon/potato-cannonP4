@@ -10,10 +10,13 @@ export * from './stores/index.js';
 export * from './services/index.js';
 
 // Auto-start if run directly
-import { fileURLToPath } from 'url';
+import { pathToFileURL } from 'url';
 import { main } from './server/server.js';
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const entryPath = process.argv[1];
+const entryUrl = entryPath ? pathToFileURL(entryPath).href : null;
+
+if (entryUrl && import.meta.url === entryUrl) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);

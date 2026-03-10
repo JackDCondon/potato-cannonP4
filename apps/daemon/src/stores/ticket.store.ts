@@ -33,6 +33,7 @@ export interface ListTicketsOptions {
   phase?: TicketPhase | null;
   archived?: boolean;
   workflowId?: string | null;
+  includeDependencies?: boolean;
 }
 
 // Re-export ArchiveResult for consumers of this store
@@ -64,6 +65,7 @@ interface HistoryRow {
   phase: string;
   entered_at: string;
   exited_at: string | null;
+  metadata: string | null;
 }
 
 
@@ -349,6 +351,20 @@ export class TicketStore {
     return { id: row.id, entry: this.rowToHistoryEntry(row) };
   }
 
+  setCurrentHistoryMetadata(
+    ticketId: string,
+    metadata: Record<string, unknown>,
+  ): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE ticket_history
+         SET metadata = ?
+         WHERE ticket_id = ? AND exited_at IS NULL`
+      )
+      .run(JSON.stringify(metadata), ticketId);
+    return result.changes > 0;
+  }
+
   // ---------------------------------------------------------------------------
   // Worker State Management
   // ---------------------------------------------------------------------------
@@ -431,10 +447,20 @@ export class TicketStore {
   }
 
   private rowToHistoryEntry(row: HistoryRow): TicketHistoryEntry {
+    let metadata: Record<string, unknown> | undefined;
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata) as Record<string, unknown>;
+      } catch {
+        metadata = undefined;
+      }
+    }
+
     return {
       phase: row.phase as TicketPhase,
       at: row.entered_at,
       endedAt: row.exited_at || undefined,
+      metadata,
     };
   }
 }
@@ -602,6 +628,16 @@ export function getPhaseHistoryEntries(ticketId: string): Array<{ id: string; ph
 
 export function deleteHistoryEntries(historyIds: string[]): number {
   return new TicketStore(getDatabase()).deleteHistoryEntries(historyIds);
+}
+
+export function setCurrentHistoryMetadata(
+  ticketId: string,
+  metadata: Record<string, unknown>,
+): boolean {
+  return new TicketStore(getDatabase()).setCurrentHistoryMetadata(
+    ticketId,
+    metadata,
+  );
 }
 
 // =============================================================================

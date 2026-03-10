@@ -7,7 +7,7 @@
   "scripts": {
     "rebuild:node": "pnpm install --force && pnpm run fix:node-pty",
     "rebuild:electron": "npx electron-rebuild -f -w better-sqlite3",
-    "dev": "pnpm --filter @potato-cannon/daemon dev & pnpm --filter @potato-cannon/frontend dev",
+    "dev": "pnpm -r --parallel --filter @potato-cannon/daemon --filter @potato-cannon/frontend dev",
     "dev:daemon": "pnpm --filter @potato-cannon/daemon dev",
     "dev:frontend": "pnpm --filter @potato-cannon/frontend dev",
     "dev:desktop": "pnpm -w run rebuild:electron && pnpm --filter @potato-cannon/desktop dev",

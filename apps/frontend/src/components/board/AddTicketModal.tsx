@@ -1,6 +1,8 @@
 import { useState, useCallback, type KeyboardEvent } from 'react'
+import { useLocation } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
+import { useProjects } from '@/hooks/queries'
 import { useAppStore } from '@/stores/appStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,16 +17,22 @@ import {
 } from '@/components/ui/dialog'
 
 /** Extract workflowId from /projects/:slug/workflows/:workflowId/board paths */
-function getCurrentWorkflowId(): string | undefined {
-  const match = window.location.pathname.match(/\/workflows\/([^/]+)\/board/)
+function getCurrentWorkflowId(pathname: string): string | undefined {
+  const match = pathname.match(/\/workflows\/([^/]+)\/board/)
   return match?.[1]
 }
 
 export function AddTicketModal() {
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const { data: projects } = useProjects()
   const currentProjectId = useAppStore((s) => s.currentProjectId)
   const isOpen = useAppStore((s) => s.addTicketModalOpen)
   const closeModal = useAppStore((s) => s.closeAddTicketModal)
+  const routeProjectSlugMatch = location.pathname.match(/^\/projects\/([^/]+)/)
+  const routeProjectSlug = routeProjectSlugMatch ? decodeURIComponent(routeProjectSlugMatch[1]) : null
+  const routeProject = projects?.find((project) => project.slug === routeProjectSlug)
+  const effectiveProjectId = routeProject?.id ?? currentProjectId
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -43,19 +51,24 @@ export function AddTicketModal() {
   }, [closeModal, resetForm])
 
   const handleSubmit = useCallback(async () => {
-    if (!currentProjectId || !title.trim()) return
+    if (!effectiveProjectId || !title.trim()) {
+      if (!effectiveProjectId) {
+        setError('No active project selected')
+      }
+      return
+    }
 
     setIsSubmitting(true)
     setError(null)
 
     try {
-      const workflowId = getCurrentWorkflowId()
+      const workflowId = getCurrentWorkflowId(location.pathname)
       const body: Record<string, string> = { title: title.trim() }
       const trimmedDesc = description.trim()
       if (trimmedDesc) body.description = trimmedDesc
       if (workflowId) body.workflowId = workflowId
 
-      const res = await fetch(`/api/tickets/${encodeURIComponent(currentProjectId)}`, {
+      const res = await fetch(`/api/tickets/${encodeURIComponent(effectiveProjectId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -65,14 +78,15 @@ export function AddTicketModal() {
         throw new Error(err.message || err.error || 'Request failed')
       }
 
-      queryClient.invalidateQueries({ queryKey: ['tickets', currentProjectId] })
+      queryClient.invalidateQueries({ queryKey: ['tickets', effectiveProjectId] })
+      queryClient.invalidateQueries({ queryKey: ['tickets', effectiveProjectId, workflowId ?? null] })
       handleClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create ticket')
     } finally {
       setIsSubmitting(false)
     }
-  }, [currentProjectId, title, description, queryClient, handleClose])
+  }, [effectiveProjectId, title, description, queryClient, handleClose, location.pathname])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && title.trim() && !isSubmitting) {

@@ -14,8 +14,9 @@ import {
   getTemplate,
   getDefaultTemplate,
   getTemplateWithFullPhasesForProject,
+  getTemplateWithFullPhasesForContext,
   getTemplateChangelog,
-  getAgentPrompt as getGlobalAgentPrompt,
+  getAgentPromptForProject,
 } from "../../stores/template.store.js";
 import {
   copyTemplateToProject,
@@ -24,7 +25,6 @@ import {
   hasProjectAgentOverride,
   getProjectAgentOverride,
   saveProjectAgentOverride,
-  getProjectAgentPrompt,
   deleteProjectAgentOverride,
 } from "../../stores/project-template.store.js";
 import { listTickets, getTicket, updateTicket } from "../../stores/ticket.store.js";
@@ -741,6 +741,9 @@ export function registerProjectRoutes(
       try {
         const id = decodeURIComponent(req.params.id);
         const agentType = decodeURIComponent(req.params.agentType);
+        const workflowId = typeof req.query.workflowId === "string"
+          ? req.query.workflowId
+          : null;
         const { content } = req.body as { content?: string };
 
         if (!isValidAgentType(agentType)) {
@@ -763,7 +766,7 @@ export function registerProjectRoutes(
 
         // Verify base agent exists before creating override
         try {
-          await getProjectAgentPrompt(id, agentPath);
+          await getAgentPromptForProject(id, agentPath, workflowId, { includeOverride: false });
         } catch {
           res.status(400).json({ error: "Agent type does not exist in template" });
           return;
@@ -812,6 +815,9 @@ export function registerProjectRoutes(
       try {
         const id = decodeURIComponent(req.params.id);
         const agentType = decodeURIComponent(req.params.agentType);
+        const workflowId = typeof req.query.workflowId === "string"
+          ? req.query.workflowId
+          : null;
 
         if (!isValidAgentType(agentType)) {
           res.status(400).json({ error: "Invalid agent type" });
@@ -826,24 +832,17 @@ export function registerProjectRoutes(
 
         const agentPath = `agents/${agentType}.md`;
 
-        // Try project template first, then fall back to global
         try {
-          const content = await getProjectAgentPrompt(id, agentPath);
+          const content = await getAgentPromptForProject(
+            id,
+            agentPath,
+            workflowId,
+            { includeOverride: false },
+          );
           res.json({ content });
           return;
         } catch {
-          // Fall through to global template
-        }
-
-        // Try global template
-        if (project.template?.name) {
-          try {
-            const content = await getGlobalAgentPrompt(project.template.name, agentPath);
-            res.json({ content });
-            return;
-          } catch {
-            // Fall through to 404
-          }
+          // Fall through to 404
         }
 
         res.status(404).json({ error: "Agent not found in template" });
@@ -860,6 +859,9 @@ export function registerProjectRoutes(
       try {
         const id = decodeURIComponent(req.params.id);
         const phaseName = decodeURIComponent(req.params.phase);
+        const workflowId = typeof req.query.workflowId === "string"
+          ? req.query.workflowId
+          : null;
 
         const project = getProjectById(id);
         if (!project) {
@@ -872,7 +874,7 @@ export function registerProjectRoutes(
           return;
         }
 
-        const template = await getTemplateWithFullPhasesForProject(id);
+        const template = await getTemplateWithFullPhasesForContext(id, workflowId);
         if (!template) {
           res.json({ workers: [] });
           return;

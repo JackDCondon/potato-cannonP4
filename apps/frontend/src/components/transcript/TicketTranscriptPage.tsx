@@ -7,7 +7,9 @@ import type { SessionLogEntry, SessionMeta } from '@potato-cannon/shared'
 import { PhaseHeader } from './PhaseHeader'
 import { PhaseDivider } from './PhaseDivider'
 import { IdleMarker } from './IdleMarker'
-import { EventRow } from './EventRow'
+import { normalizeTranscriptEntries } from './log-normalizer'
+import { buildTranscriptRenderableItems, type TranscriptRenderableItem } from './transcript-presentation'
+import { TranscriptAttemptCard, TranscriptRawMarker, TranscriptSystemMarker } from './TranscriptAttemptCard'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -15,6 +17,11 @@ type TimelineEntry =
   | { kind: 'phase-divider'; session: SessionMeta }
   | { kind: 'entry'; sessionId: string; entry: SessionLogEntry }
   | { kind: 'idle'; phase: string; timestamp: string }
+
+type RenderTimelineEntry =
+  | { kind: 'phase-divider'; session: SessionMeta }
+  | { kind: 'idle'; phase: string; timestamp: string }
+  | { kind: 'renderable'; sessionId: string; item: TranscriptRenderableItem }
 
 interface Props {
   projectId: string
@@ -43,6 +50,9 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [liveEntries, setLiveEntries] = useState<TimelineEntry[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
+  const [showSystemEvents, setShowSystemEvents] = useState(false)
+  const [showRawEvents, setShowRawEvents] = useState(false)
+  const [expandAllDetails, setExpandAllDetails] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const knownSessionIds = useRef<Set<string>>(new Set())
@@ -77,7 +87,8 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
         built.push({ kind: 'phase-divider', session })
         try {
           const log = await api.getSessionLog(session.id)
-          for (const entry of log) {
+          const normalizedLog = normalizeTranscriptEntries(log)
+          for (const entry of normalizedLog) {
             built.push({ kind: 'entry', sessionId: session.id, entry })
           }
         } catch {
@@ -132,10 +143,12 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
 
         const event = data.event as SessionLogEntry | undefined
         if (!event) return
+        const normalized = normalizeTranscriptEntries([event])
+        if (normalized.length === 0) return
 
         setLiveEntries((prev) => [
           ...prev,
-          { kind: 'entry', sessionId: sid, entry: event },
+          ...normalized.map((entry) => ({ kind: 'entry' as const, sessionId: sid, entry })),
         ])
       },
       [],
@@ -164,10 +177,56 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
     [timeline, liveEntries],
   )
 
+  const renderTimeline = useMemo(() => {
+    const rendered: RenderTimelineEntry[] = []
+    let pendingSessionId: string | null = null
+    let pendingEntries: SessionLogEntry[] = []
+
+    const flushPending = () => {
+      if (!pendingSessionId || pendingEntries.length === 0) {
+        pendingSessionId = null
+        pendingEntries = []
+        return
+      }
+      const items = buildTranscriptRenderableItems(pendingEntries, {
+        showSystemEvents,
+        showRawEvents,
+      })
+      for (const item of items) {
+        rendered.push({ kind: 'renderable', sessionId: pendingSessionId, item })
+      }
+      pendingSessionId = null
+      pendingEntries = []
+    }
+
+    for (const item of combinedTimeline) {
+      if (item.kind === 'entry') {
+        if (!pendingSessionId) {
+          pendingSessionId = item.sessionId
+        } else if (pendingSessionId !== item.sessionId) {
+          flushPending()
+          pendingSessionId = item.sessionId
+        }
+        pendingEntries.push(item.entry)
+        continue
+      }
+
+      flushPending()
+      if (item.kind === 'phase-divider') {
+        rendered.push(item)
+      } else if (item.kind === 'idle') {
+        rendered.push(item)
+      }
+    }
+
+    flushPending()
+    return rendered
+  }, [combinedTimeline, showSystemEvents, showRawEvents])
+
   useEffect(() => {
     if (!autoScroll || !scrollRef.current) return
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [combinedTimeline, autoScroll])
+  }, [renderTimeline, autoScroll])
 
   function handleScroll() {
     const el = scrollRef.current
@@ -193,7 +252,36 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto"
       >
-        {combinedTimeline.map((item, i) => {
+        <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-white/10 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowSystemEvents((v) => !v)}
+              className={`text-xs px-2 py-1 rounded border transition-colors ${showSystemEvents
+                ? 'bg-accent/10 border-accent/30 text-accent'
+                : 'bg-bg-tertiary/40 border-border text-text-secondary hover:text-text-primary'}`}
+            >
+              Show system events
+            </button>
+            <button
+              onClick={() => setShowRawEvents((v) => !v)}
+              className={`text-xs px-2 py-1 rounded border transition-colors ${showRawEvents
+                ? 'bg-accent-yellow/10 border-accent-yellow/30 text-accent-yellow'
+                : 'bg-bg-tertiary/40 border-border text-text-secondary hover:text-text-primary'}`}
+            >
+              Show raw events
+            </button>
+            <button
+              onClick={() => setExpandAllDetails((v) => !v)}
+              className={`text-xs px-2 py-1 rounded border transition-colors ${expandAllDetails
+                ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
+                : 'bg-bg-tertiary/40 border-border text-text-secondary hover:text-text-primary'}`}
+            >
+              Expand all details
+            </button>
+          </div>
+        </div>
+
+        {renderTimeline.map((item, i) => {
           switch (item.kind) {
             case 'phase-divider':
               return (
@@ -205,19 +293,36 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
                   color={phaseColor(swimlaneColors, item.session.phase)}
                 />
               )
-            case 'entry':
-              return (
-                <EventRow
-                  key={`entry-${item.sessionId}-${i}`}
-                  entry={item.entry}
-                />
-              )
             case 'idle':
               return (
                 <IdleMarker
                   key={`idle-${item.phase}`}
                   phase={item.phase}
                   timestamp={item.timestamp}
+                />
+              )
+            case 'renderable':
+              if (item.item.kind === 'attempt') {
+                return (
+                  <TranscriptAttemptCard
+                    key={`attempt-${item.sessionId}-${item.item.id}-${i}`}
+                    attempt={item.item}
+                    expandAll={expandAllDetails}
+                  />
+                )
+              }
+              if (item.item.kind === 'system') {
+                return (
+                  <TranscriptSystemMarker
+                    key={`system-${item.sessionId}-${item.item.id}-${i}`}
+                    marker={item.item}
+                  />
+                )
+              }
+              return (
+                <TranscriptRawMarker
+                  key={`raw-${item.sessionId}-${item.item.id}-${i}`}
+                  marker={item.item}
                 />
               )
           }

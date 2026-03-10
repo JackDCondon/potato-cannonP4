@@ -12,6 +12,7 @@ export interface McpContext {
   projectId: string;
   ticketId: string;
   brainstormId: string;
+  workflowId: string;
   daemonUrl: string;
 }
 

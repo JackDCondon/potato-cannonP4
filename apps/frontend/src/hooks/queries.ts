@@ -1,7 +1,11 @@
 // src/hooks/queries.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { Ticket, Template, TemplatePhase, Complexity, CreateWorkflowInput } from '@potato-cannon/shared'
+import type { Ticket, Template, TemplatePhase, Complexity, CreateWorkflowInput, DependencyTier } from '@potato-cannon/shared'
+
+export type UpdateTicketRequest = Partial<Ticket> & {
+  overrideDependencies?: boolean
+}
 
 // ============ Projects ============
 
@@ -132,6 +136,38 @@ export function useTicket(projectId: string | null, ticketId: string | null) {
   })
 }
 
+export function useTicketDependencies(projectId: string | null, ticketId: string | null) {
+  return useQuery({
+    queryKey: ['ticket-dependencies', projectId, ticketId],
+    queryFn: () => api.getTicketDependencies(projectId!, ticketId!),
+    enabled: !!projectId && !!ticketId
+  })
+}
+
+export function useAddDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projectId, ticketId, dependsOn, tier }: { projectId: string; ticketId: string; dependsOn: string; tier: DependencyTier }) =>
+      api.addTicketDependency(projectId, ticketId, dependsOn, tier),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ticket-dependencies'] })
+      queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    }
+  })
+}
+
+export function useRemoveDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projectId, ticketId, dependsOn }: { projectId: string; ticketId: string; dependsOn: string }) =>
+      api.removeTicketDependency(projectId, ticketId, dependsOn),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ticket-dependencies'] })
+      queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    }
+  })
+}
+
 export function useCreateTicket() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -162,7 +198,7 @@ export function useUpdateTicket() {
     }: {
       projectId: string
       ticketId: string
-      updates: Partial<Ticket>
+      updates: UpdateTicketRequest
     }) => api.updateTicket(projectId, ticketId, updates),
     onSuccess: (_, { projectId, ticketId }) => {
       queryClient.invalidateQueries({ queryKey: ['tickets', projectId] })
@@ -346,10 +382,11 @@ export function useTemplates() {
   })
 }
 
-export function useTemplate(name: string | null) {
+export function useTemplate(name: string | null, options?: { full?: boolean }) {
+  const full = options?.full ?? false
   return useQuery({
-    queryKey: ['template', name],
-    queryFn: () => api.getTemplate(name!),
+    queryKey: ['template', name, full ? 'full' : 'base'],
+    queryFn: () => (full ? api.getTemplateFull(name!) : api.getTemplate(name!)),
     enabled: !!name
   })
 }
@@ -439,10 +476,10 @@ export function useProjectTemplateStatus(projectId: string | null) {
 
 // ============ Phase Workers ============
 
-export function usePhaseWorkers(projectId: string | null, phase: string | null) {
+export function usePhaseWorkers(projectId: string | null, phase: string | null, workflowId?: string | null) {
   return useQuery({
-    queryKey: ['phaseWorkers', projectId, phase],
-    queryFn: () => api.getPhaseWorkers(projectId!, phase!),
+    queryKey: ['phaseWorkers', projectId, phase, workflowId ?? null],
+    queryFn: () => api.getPhaseWorkers(projectId!, phase!, workflowId),
     enabled: !!projectId && !!phase
   })
 }
@@ -455,12 +492,14 @@ export function useSaveAgentOverride() {
     mutationFn: ({
       projectId,
       agentType,
-      content
+      content,
+      workflowId
     }: {
       projectId: string
       agentType: string
       content: string
-    }) => api.saveAgentOverride(projectId, agentType, content),
+      workflowId?: string | null
+    }) => api.saveAgentOverride(projectId, agentType, content, workflowId),
     onSuccess: (_, { projectId }) => {
       // Invalidate all phase workers queries for this project to refresh hasOverride
       queryClient.invalidateQueries({ queryKey: ['phaseWorkers', projectId] })

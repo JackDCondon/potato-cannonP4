@@ -23,6 +23,7 @@ import os from 'os';
 const PROJECT_ID = process.env.POTATO_PROJECT_ID || '';
 const TICKET_ID = process.env.POTATO_TICKET_ID || '';
 const BRAINSTORM_ID = process.env.POTATO_BRAINSTORM_ID || '';
+const WORKFLOW_ID = process.env.POTATO_WORKFLOW_ID || '';
 
 async function getDaemonUrl(): Promise<string> {
   const daemonFile = path.join(os.homedir(), '.potato-cannon', 'daemon.json');
@@ -60,6 +61,7 @@ async function callTool(
         projectId: PROJECT_ID,
         ticketId: TICKET_ID || undefined,
         brainstormId: BRAINSTORM_ID || undefined,
+        workflowId: WORKFLOW_ID || undefined,
       },
     }),
   });
