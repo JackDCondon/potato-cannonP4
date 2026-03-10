@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 12;
+const CURRENT_SCHEMA_VERSION = 13;
 
 /**
  * Run database migrations.
@@ -55,6 +55,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 12) {
     migrateV12(db);
+  }
+
+  if (version < 13) {
+    migrateV13(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -494,5 +498,35 @@ function migrateV12(db: Database.Database): void {
   );
   if (!taskCols.has('complexity')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN complexity TEXT NOT NULL DEFAULT 'standard' CHECK(complexity IN ('simple', 'standard', 'complex'))`);
+  }
+}
+
+/**
+ * V13: Add project_workflows table and workflow_id FK on tickets.
+ * Enables multiple independent workflow boards per project.
+ * Existing tickets get workflow_id = NULL (nullable for backward compatibility).
+ */
+function migrateV13(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_workflows (
+      id            TEXT PRIMARY KEY,
+      project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name          TEXT NOT NULL,
+      template_name TEXT NOT NULL,
+      is_default    INTEGER NOT NULL DEFAULT 0,
+      created_at    TEXT NOT NULL,
+      updated_at    TEXT NOT NULL,
+      UNIQUE(project_id, name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_workflows_project ON project_workflows(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_workflows_default ON project_workflows(project_id, is_default) WHERE is_default = 1;
+  `);
+
+  const ticketCols = new Set(
+    (db.prepare('PRAGMA table_info(tickets)').all() as { name: string }[]).map((r) => r.name)
+  );
+  if (!ticketCols.has('workflow_id')) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL`);
   }
 }
