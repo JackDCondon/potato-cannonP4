@@ -321,6 +321,73 @@ describe("ProjectWorkflowStore", () => {
       assert.strictEqual(workflow.isDefault, true);
     });
 
+    it("should enforce single default per project when updating", () => {
+      const workflowA = store.createWorkflow({
+        projectId,
+        name: "Workflow A",
+        templateName: "product-development",
+        isDefault: true,
+      });
+      const workflowB = store.createWorkflow({
+        projectId,
+        name: "Workflow B",
+        templateName: "product-development",
+        isDefault: false,
+      });
+
+      // Set workflow B as default — should clear A's default
+      store.updateWorkflow(workflowB.id, { isDefault: true });
+
+      const defaultWorkflow = store.getDefaultWorkflow(projectId);
+      assert.ok(defaultWorkflow, "A default workflow should exist");
+      assert.strictEqual(
+        defaultWorkflow.id,
+        workflowB.id,
+        "Workflow B should be the default"
+      );
+
+      // Verify A is no longer the default
+      const updatedA = store.getWorkflow(workflowA.id);
+      assert.strictEqual(
+        updatedA?.isDefault,
+        false,
+        "Workflow A should no longer be default"
+      );
+
+      // Verify exactly one default exists
+      const allWorkflows = store.listWorkflows(projectId);
+      const defaults = allWorkflows.filter((w) => w.isDefault);
+      assert.strictEqual(defaults.length, 1, "Exactly one default should exist");
+    });
+
+    it("should enforce single default per project when creating", () => {
+      store.createWorkflow({
+        projectId,
+        name: "First Default",
+        templateName: "product-development",
+        isDefault: true,
+      });
+      store.createWorkflow({
+        projectId,
+        name: "Second Default",
+        templateName: "product-development",
+        isDefault: true,
+      });
+
+      const defaultWorkflow = store.getDefaultWorkflow(projectId);
+      assert.ok(defaultWorkflow, "A default workflow should exist");
+      assert.strictEqual(
+        defaultWorkflow.name,
+        "Second Default",
+        "The last created default should be the default"
+      );
+
+      // Verify exactly one default exists
+      const allWorkflows = store.listWorkflows(projectId);
+      const defaults = allWorkflows.filter((w) => w.isDefault);
+      assert.strictEqual(defaults.length, 1, "Exactly one default should exist");
+    });
+
     it("should only return default from the specified project", () => {
       // Create a second project with its own default
       const projectStore = createProjectStore(db);

@@ -46,18 +46,28 @@ export class ProjectWorkflowStore {
 
   /**
    * Create a new workflow for a project.
+   * If isDefault is true, clears any existing default for the project first.
    */
   createWorkflow(input: CreateWorkflowInput): ProjectWorkflow {
     const id = randomUUID();
     const now = new Date().toISOString();
     const isDefault = input.isDefault ?? false;
 
-    this.db
-      .prepare(
-        `INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(id, input.projectId, input.name, input.templateName, isDefault ? 1 : 0, now, now);
+    const insert = this.db.prepare(
+      `INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+    const clearDefaults = this.db.prepare(
+      `UPDATE project_workflows SET is_default = 0 WHERE project_id = ?`
+    );
+
+    const run = this.db.transaction(() => {
+      if (isDefault) {
+        clearDefaults.run(input.projectId);
+      }
+      insert.run(id, input.projectId, input.name, input.templateName, isDefault ? 1 : 0, now, now);
+    });
+    run();
 
     return this.getWorkflow(id)!;
   }
@@ -120,9 +130,23 @@ export class ProjectWorkflowStore {
     values.push(new Date().toISOString());
 
     values.push(id);
-    this.db
-      .prepare(`UPDATE project_workflows SET ${fields.join(", ")} WHERE id = ?`)
-      .run(...values);
+
+    const updateStmt = this.db.prepare(
+      `UPDATE project_workflows SET ${fields.join(", ")} WHERE id = ?`
+    );
+
+    if (updates.isDefault === true) {
+      const clearDefaults = this.db.prepare(
+        `UPDATE project_workflows SET is_default = 0 WHERE project_id = ? AND id != ?`
+      );
+      const run = this.db.transaction(() => {
+        clearDefaults.run(existing.projectId, id);
+        updateStmt.run(...values);
+      });
+      run();
+    } else {
+      updateStmt.run(...values);
+    }
 
     return this.getWorkflow(id);
   }
