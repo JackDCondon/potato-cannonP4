@@ -56,13 +56,13 @@ function WorkflowRow({ workflow, isOnlyWorkflow, onDelete, isDeleting }: Workflo
 }
 
 interface AddWorkflowFormProps {
-  projectId: string
-  onSubmit: (name: string, templateName: string) => void
+  onSubmit: (name: string, templateName: string, onSuccess: () => void) => void
   isSubmitting: boolean
   templates: Array<{ name: string; isDefault?: boolean }> | undefined
+  error?: Error | null
 }
 
-function AddWorkflowForm({ projectId: _projectId, onSubmit, isSubmitting, templates }: AddWorkflowFormProps) {
+function AddWorkflowForm({ onSubmit, isSubmitting, templates, error }: AddWorkflowFormProps) {
   const [name, setName] = useState('')
   const [templateName, setTemplateName] = useState('')
 
@@ -74,14 +74,16 @@ function AddWorkflowForm({ projectId: _projectId, onSubmit, isSubmitting, templa
     if (!trimmed) return
     const tpl = templateName || defaultTemplate
     if (!tpl) return
-    onSubmit(trimmed, tpl)
-    setName('')
-    setTemplateName('')
+    onSubmit(trimmed, tpl, () => {
+      setName('')
+      setTemplateName('')
+    })
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 pt-4 border-t border-border">
       <p className="text-sm font-medium text-text-primary">Add Workflow</p>
+      {error && <p className="text-sm text-red-500">{error.message}</p>}
       <div className="flex flex-col gap-2 @sm:flex-row">
         <Input
           value={name}
@@ -125,12 +127,15 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
   const createWorkflow = useCreateWorkflow()
   const deleteWorkflow = useDeleteWorkflow()
 
-  function handleAdd(name: string, templateName: string) {
-    createWorkflow.mutate({ projectId: project.id, name, templateName })
+  function handleAdd(name: string, templateName: string, onSuccess: () => void) {
+    createWorkflow.mutate({ projectId: project.id, name, templateName }, { onSuccess })
   }
 
   function handleDelete(workflowId: string) {
-    deleteWorkflow.mutate({ projectId: project.id, workflowId })
+    deleteWorkflow.mutate(
+      { projectId: project.id, workflowId },
+      { onError: (err) => console.error('delete workflow failed', err) },
+    )
   }
 
   return (
@@ -156,10 +161,10 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
         )}
 
         <AddWorkflowForm
-          projectId={project.id}
           onSubmit={handleAdd}
           isSubmitting={createWorkflow.isPending}
           templates={templates}
+          error={createWorkflow.error}
         />
       </div>
     </SettingsSection>
