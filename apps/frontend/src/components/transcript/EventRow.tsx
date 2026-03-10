@@ -6,6 +6,7 @@ import typescript from 'highlight.js/lib/languages/typescript'
 import cpp from 'highlight.js/lib/languages/cpp'
 import bash from 'highlight.js/lib/languages/bash'
 import 'highlight.js/styles/github-dark.css'
+import stripAnsi from 'strip-ansi'
 import { cn, timeAgo } from '@/lib/utils'
 import type { SessionLogEntry, SessionLogContentBlock } from '@potato-cannon/shared'
 
@@ -32,27 +33,30 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
 }
 
+function cleanContent(content: string): string {
+  return stripAnsi(content)
+}
+
 function truncate(text: string, max = 120): string {
   return text.length > max ? text.slice(0, max) + '…' : text
 }
 
-function formatToolSummary(name: string, input: Record<string, unknown>): string {
-  const val =
-    input.path ??
-    input.command ??
-    input.file_path ??
-    input.pattern ??
-    Object.values(input)[0]
-  if (val == null) return name
-  const valStr =
-    typeof val === 'string'
-      ? val.split(/[/\\]/).pop() ?? val
-      : JSON.stringify(val)
-  return `${name} → ${truncate(String(valStr), 60)}`
+/** Extract the most meaningful single arg from a tool's input for the collapsed summary. */
+function toolPrimaryArg(name: string, input: Record<string, unknown>): string {
+  const fileTools = ['Read', 'Write', 'Edit', 'MultiEdit', 'NotebookRead', 'NotebookEdit']
+  const bashTools = ['Bash']
+  const searchTools = ['Grep', 'Glob']
+
+  if (fileTools.includes(name)) return String(input.file_path ?? input.path ?? '')
+  if (bashTools.includes(name)) return truncate(String(input.command ?? ''), 60)
+  if (searchTools.includes(name)) return truncate(String(input.pattern ?? input.query ?? ''), 60)
+
+  const firstValue = Object.values(input)[0]
+  return firstValue != null ? truncate(String(firstValue), 60) : ''
 }
 
 function blockContent(block: SessionLogContentBlock): string {
-  if (typeof block.content === 'string') return block.content
+  if (typeof block.content === 'string') return cleanContent(block.content)
   if (Array.isArray(block.content)) return JSON.stringify(block.content, null, 2)
   return ''
 }
@@ -79,7 +83,7 @@ function CollapsibleRow({
   const [open, setOpen] = useState(false)
   const rel = timestamp ? timeAgo(timestamp) : ''
   return (
-    <div>
+    <div className={cn(isError && 'border-l-2 border-red-500')}>
       <button
         onClick={() => setOpen(!open)}
         className={cn(
@@ -112,6 +116,53 @@ function CollapsibleRow({
               </p>
             )
           }
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Tool call row ───────────────────────────────────────────────────────────
+
+interface ToolCallRowProps {
+  name: string
+  input: Record<string, unknown>
+  timestamp?: string
+}
+
+function ToolCallRow({ name, input, timestamp }: ToolCallRowProps) {
+  const [expanded, setExpanded] = useState(false)
+  const primaryArg = toolPrimaryArg(name, input)
+  const rel = timestamp ? timeAgo(timestamp) : ''
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-2 w-full text-left px-4 py-1.5 text-xs hover:bg-white/5 transition-colors group"
+      >
+        {expanded
+          ? <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
+          : <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
+        }
+        <Zap className="h-3 w-3 text-yellow-400 shrink-0" />
+        <span className="font-mono text-yellow-400/80">{name}</span>
+        {primaryArg && (
+          <span className="text-zinc-400 truncate">
+            {'→ '}
+            {primaryArg}
+          </span>
+        )}
+        <span className="ml-auto text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          {rel}
+        </span>
+      </button>
+      {expanded && (
+        <div className="mx-4 mb-2 rounded overflow-auto max-h-96 text-xs">
+          <pre
+            className="p-3 bg-zinc-900 rounded"
+            dangerouslySetInnerHTML={{ __html: highlight(JSON.stringify(input, null, 2)) }}
+          />
         </div>
       )}
     </div>
@@ -171,23 +222,24 @@ export function EventRow({ entry }: EventRowProps) {
 
     return (
       <div className="space-y-0.5">
-        {textBlocks.map((block, i) => (
-          <CollapsibleRow
-            key={`text-${i}`}
-            icon={<span className="text-[10px] font-bold text-violet-400">AI</span>}
-            summary={truncate(block.text ?? '', 120)}
-            expandedContent={block.text ?? ''}
-            isCode={false}
-            timestamp={entry.timestamp}
-          />
-        ))}
+        {textBlocks.map((block, i) => {
+          const cleaned = cleanContent(block.text ?? '')
+          return (
+            <CollapsibleRow
+              key={`text-${i}`}
+              icon={<span className="text-[10px] font-bold text-violet-400">AI</span>}
+              summary={truncate(cleaned, 120)}
+              expandedContent={cleaned}
+              isCode={false}
+              timestamp={entry.timestamp}
+            />
+          )
+        })}
         {toolBlocks.map((block, i) => (
-          <CollapsibleRow
+          <ToolCallRow
             key={`tool-${i}`}
-            icon={<Zap className="h-3 w-3 text-yellow-400" />}
-            summary={formatToolSummary(block.name ?? '', block.input ?? {})}
-            expandedContent={JSON.stringify(block.input, null, 2)}
-            isCode
+            name={block.name ?? ''}
+            input={block.input ?? {}}
             timestamp={entry.timestamp}
           />
         ))}
@@ -229,9 +281,10 @@ export function EventRow({ entry }: EventRowProps) {
   // ── Raw / unrecognised ───────────────────────────────────────────────────
   if (entry.type === 'raw') {
     if (!entry.content) return null
+    const cleaned = cleanContent(entry.content)
     return (
       <div className="px-4 py-0.5 text-xs text-text-muted italic truncate">
-        {entry.content}
+        {cleaned}
       </div>
     )
   }
