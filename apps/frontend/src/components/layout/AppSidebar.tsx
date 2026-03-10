@@ -163,6 +163,10 @@ export function AppSidebar() {
     ? decodeURIComponent(projectMatch[1])
     : null;
 
+  // Extract workflow ID from URL
+  const workflowMatch = location.pathname.match(/\/workflows\/([^/]+)/);
+  const currentWorkflowId = workflowMatch ? workflowMatch[1] : null;
+
   // Find the current project
   const currentProject = projects?.find((p) => p.slug === currentProjectSlug);
 
@@ -340,6 +344,7 @@ export function AppSidebar() {
                               isActive={project.slug === currentProjectSlug}
                               hasActiveSessions={hasActiveSessions(project.id)}
                               hasPendingQuestions={hasPendingQuestions(project.id)}
+                              currentWorkflowId={currentWorkflowId}
                             />
                           ))}
                         </SidebarMenu>
@@ -357,6 +362,7 @@ export function AppSidebar() {
                             isActive={project.slug === currentProjectSlug}
                             hasActiveSessions={hasActiveSessions(project.id)}
                             hasPendingQuestions={hasPendingQuestions(project.id)}
+                            currentWorkflowId={currentWorkflowId}
                           />
                         ))}
                       </SidebarMenu>

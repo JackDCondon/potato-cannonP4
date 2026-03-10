@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ProjectMenuItem } from './ProjectMenuItem'
 import { SidebarProvider } from '@/components/ui/sidebar'
 
@@ -28,11 +29,22 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, ...props }: any) => <a {...props}>{children}</a>,
 }))
 
-const renderWithSidebar = (component: React.ReactElement) => {
+// Mock useWorkflows hook — default: no workflows (loading state)
+const mockUseWorkflows = vi.fn(() => ({ data: undefined }))
+vi.mock('@/hooks/queries', () => ({
+  useWorkflows: (...args: any[]) => mockUseWorkflows(...args),
+}))
+
+function renderWithProviders(component: React.ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   return render(
-    <SidebarProvider>
-      {component}
-    </SidebarProvider>
+    <QueryClientProvider client={queryClient}>
+      <SidebarProvider>
+        {component}
+      </SidebarProvider>
+    </QueryClientProvider>
   )
 }
 
@@ -44,8 +56,29 @@ describe('ProjectMenuItem', () => {
     displayName: 'My Project',
   }
 
+  const mockWorkflow = {
+    id: 'wf-1',
+    projectId: 'proj-1',
+    name: 'Default Board',
+    templateName: 'product-development',
+    isDefault: true,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  }
+
+  const mockWorkflow2 = {
+    id: 'wf-2',
+    projectId: 'proj-1',
+    name: 'Secondary Board',
+    templateName: 'product-development',
+    isDefault: false,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  }
+
   it('should render project name', () => {
-    renderWithSidebar(
+    mockUseWorkflows.mockReturnValue({ data: undefined })
+    renderWithProviders(
       <ProjectMenuItem
         project={mockProject}
         isActive={false}
@@ -58,7 +91,8 @@ describe('ProjectMenuItem', () => {
   })
 
   it('should apply thinking-shimmer class when hasActiveSessions is true', () => {
-    const { container } = renderWithSidebar(
+    mockUseWorkflows.mockReturnValue({ data: undefined })
+    const { container } = renderWithProviders(
       <ProjectMenuItem
         project={mockProject}
         isActive={false}
@@ -71,7 +105,8 @@ describe('ProjectMenuItem', () => {
   })
 
   it('should show dot indicator when hasPendingQuestions is true', () => {
-    const { container } = renderWithSidebar(
+    mockUseWorkflows.mockReturnValue({ data: undefined })
+    const { container } = renderWithProviders(
       <ProjectMenuItem
         project={mockProject}
         isActive={false}
@@ -86,7 +121,8 @@ describe('ProjectMenuItem', () => {
   })
 
   it('should apply active styling when isActive is true', () => {
-    const { container } = renderWithSidebar(
+    mockUseWorkflows.mockReturnValue({ data: undefined })
+    const { container } = renderWithProviders(
       <ProjectMenuItem
         project={mockProject}
         isActive={true}
@@ -101,7 +137,8 @@ describe('ProjectMenuItem', () => {
   })
 
   it('should render both shimmer and dot when both conditions are true', () => {
-    const { container } = renderWithSidebar(
+    mockUseWorkflows.mockReturnValue({ data: undefined })
+    const { container } = renderWithProviders(
       <ProjectMenuItem
         project={mockProject}
         isActive={false}
@@ -115,12 +152,13 @@ describe('ProjectMenuItem', () => {
   })
 
   it('should apply project color to text when color is provided', () => {
+    mockUseWorkflows.mockReturnValue({ data: undefined })
     const projectWithColor = {
       ...mockProject,
       color: '#FF0000',
     }
 
-    const { container } = renderWithSidebar(
+    const { container } = renderWithProviders(
       <ProjectMenuItem
         project={projectWithColor}
         isActive={false}
@@ -133,5 +171,71 @@ describe('ProjectMenuItem', () => {
     const projectSpan = Array.from(spans).find(s => s.textContent === 'My Project')
     expect(projectSpan).toBeTruthy()
     expect((projectSpan as HTMLElement).style.color).toBe('rgb(255, 0, 0)')
+  })
+
+  it('links directly to workflow board when project has a single workflow', () => {
+    mockUseWorkflows.mockReturnValue({ data: [mockWorkflow] })
+    const { container } = renderWithProviders(
+      <ProjectMenuItem
+        project={mockProject}
+        isActive={false}
+        hasActiveSessions={false}
+        hasPendingQuestions={false}
+      />
+    )
+
+    const link = container.querySelector('a')
+    expect(link).toBeTruthy()
+    // TanStack Router Link mock renders `to` as an attribute
+    const toAttr = link?.getAttribute('to')
+    expect(toAttr).toContain('workflows')
+    expect(toAttr).toContain('board')
+  })
+
+  it('renders workflow children when project has multiple workflows', () => {
+    mockUseWorkflows.mockReturnValue({ data: [mockWorkflow, mockWorkflow2] })
+    renderWithProviders(
+      <ProjectMenuItem
+        project={mockProject}
+        isActive={false}
+        hasActiveSessions={false}
+        hasPendingQuestions={false}
+      />
+    )
+
+    expect(screen.getByText('Default Board')).toBeTruthy()
+    expect(screen.getByText('Secondary Board')).toBeTruthy()
+  })
+
+  it('marks the active workflow sub-item when currentWorkflowId matches', () => {
+    mockUseWorkflows.mockReturnValue({ data: [mockWorkflow, mockWorkflow2] })
+    const { container } = renderWithProviders(
+      <ProjectMenuItem
+        project={mockProject}
+        isActive={true}
+        hasActiveSessions={false}
+        hasPendingQuestions={false}
+        currentWorkflowId="wf-1"
+      />
+    )
+
+    const activeSubButton = container.querySelector('[data-active="true"]')
+    expect(activeSubButton).toBeTruthy()
+  })
+
+  it('shows chevron toggle for multi-workflow projects', () => {
+    mockUseWorkflows.mockReturnValue({ data: [mockWorkflow, mockWorkflow2] })
+    const { container } = renderWithProviders(
+      <ProjectMenuItem
+        project={mockProject}
+        isActive={false}
+        hasActiveSessions={false}
+        hasPendingQuestions={false}
+      />
+    )
+
+    // ChevronRight renders an SVG
+    const svg = container.querySelector('svg')
+    expect(svg).toBeTruthy()
   })
 })
