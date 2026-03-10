@@ -8,7 +8,7 @@ export const Route = createFileRoute('/projects/$projectId/workflows/$workflowId
 
 function WorkflowBoardPage() {
   // URL param is the slug, not the ID
-  const { projectId: projectSlug } = Route.useParams()
+  const { projectId: projectSlug, workflowId } = Route.useParams()
   const { data: projects } = useProjects()
 
   // Look up project by slug to get the actual ID for API calls
@@ -17,6 +17,9 @@ function WorkflowBoardPage() {
   if (!project) {
     return null // Loading or project not found
   }
+
+  // TODO(42p.9): Pass workflowId to Board once Board supports workflow-scoped filtering
+  void workflowId
 
   return <Board projectId={project.id} />
 }
