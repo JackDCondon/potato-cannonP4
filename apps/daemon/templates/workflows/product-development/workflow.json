@@ -93,6 +93,7 @@
       "id": "Specification",
       "name": "Specification",
       "description": "Create detailed implementation specification with wave-based tickets",
+      "unblocksTier": "artifact-ready",
       "workers": [
         {
           "id": "specification-agent",
