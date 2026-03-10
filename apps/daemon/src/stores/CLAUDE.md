@@ -53,6 +53,12 @@ if (version < 6) {
 | V4 | Backfill conversation_id for existing tickets |
 | V5 | Tasks, provider channels, ralph feedback, artifacts, templates, config |
 | V6 | Add `branch_prefix` column to projects table (default: 'potato') |
+| V7 | Add `folders` table and `folder_id` FK on projects |
+| V8 | Add Perforce project configuration columns (`p4_stream`, `agent_workspace_root`, `helix_swarm_url`) to projects |
+| V9 | Add `suggested_p4_stream` column to projects (AI-detected P4 stream on registration) |
+| V10 | Add `vcs_type` column to projects (default 'git'); backfill 'perforce' for projects with `p4_stream` set |
+| V11 | Add `p4_mcp_server_path` column to projects |
+| V12 | Add `complexity` column to tickets and tasks (default 'standard'; CHECK constraint: simple/standard/complex) |
 | V13 | Add `project_workflows` table + `workflow_id` FK on tickets; backfill default workflow per project |
 
 ## Tables
@@ -635,7 +641,7 @@ V13 creates the `project_workflows` table and adds the `workflow_id` column to `
 1. For each existing project that has no `is_default = 1` workflow, a new workflow named `"Default"` is created using the project's `template_name` (falling back to `'product-development'` if unset).
 2. All tickets with `workflow_id IS NULL` for each project are updated to reference their project's default workflow.
 
-The backfill is **idempotent**: it uses `INSERT OR IGNORE` semantics (checking for an existing default before inserting) and only updates tickets with `NULL` workflow_id. Re-running the migration on an already-migrated database is safe.
+The backfill is **idempotent**: it checks for an existing default with a SELECT before inserting (application-level idempotency check), and only updates tickets with `NULL workflow_id`. Re-running the migration on an already-migrated database is safe.
 
 ## Conventions
 
