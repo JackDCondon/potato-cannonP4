@@ -209,8 +209,6 @@ describe("workflow routes — store-level integration", () => {
     });
 
     it("should not delete default workflow (route guard logic)", () => {
-      // This test validates the guard logic that the route will enforce:
-      // if workflow.isDefault is true → 400 error (cannot delete default)
       const workflow = store.createWorkflow({
         projectId,
         name: "Default",
@@ -218,14 +216,19 @@ describe("workflow routes — store-level integration", () => {
         isDefault: true,
       });
 
-      // Guard check: isDefault === true → should be rejected
+      // Simulate the route guard: isDefault === true → do NOT call deleteWorkflow
       assert.strictEqual(workflow.isDefault, true, "workflow is default");
-      // The route will return 400 before calling deleteWorkflow
+      if (!workflow.isDefault) {
+        store.deleteWorkflow(workflow.id);
+      }
+
+      // Workflow must still exist — the guard prevented deletion
+      const check = store.getWorkflow(workflow.id);
+      assert.ok(check, "default workflow was NOT deleted");
+      assert.strictEqual(check.id, workflow.id);
     });
 
     it("should not delete last workflow (route guard logic)", () => {
-      // This test validates the guard logic:
-      // if listWorkflows(projectId).length === 1 → 400 error (cannot delete last)
       const workflow = store.createWorkflow({
         projectId,
         name: "Only One",
@@ -234,8 +237,16 @@ describe("workflow routes — store-level integration", () => {
 
       const all = store.listWorkflows(projectId);
       assert.strictEqual(all.length, 1, "only one workflow");
-      assert.strictEqual(all[0].id, workflow.id);
-      // The route will return 400 before calling deleteWorkflow
+
+      // Simulate the route guard: length <= 1 → do NOT call deleteWorkflow
+      if (all.length > 1) {
+        store.deleteWorkflow(workflow.id);
+      }
+
+      // Workflow must still exist — the guard prevented deletion
+      const check = store.getWorkflow(workflow.id);
+      assert.ok(check, "last workflow was NOT deleted");
+      assert.strictEqual(check.id, workflow.id);
     });
   });
 });

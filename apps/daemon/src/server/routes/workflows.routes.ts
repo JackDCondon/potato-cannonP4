@@ -93,6 +93,13 @@ export function registerWorkflowRoutes(app: Express): void {
         }
 
         if (isDefault !== undefined) {
+          if (isDefault === false) {
+            res.status(400).json({
+              error:
+                "Cannot clear isDefault — set another workflow as default first",
+            });
+            return;
+          }
           updates.isDefault = isDefault;
         }
 
@@ -133,7 +140,11 @@ export function registerWorkflowRoutes(app: Express): void {
           return;
         }
 
-        store.deleteWorkflow(workflowId);
+        const deleted = store.deleteWorkflow(workflowId);
+        if (!deleted) {
+          res.status(404).json({ error: "Workflow not found" });
+          return;
+        }
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
