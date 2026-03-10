@@ -1,5 +1,15 @@
 export type SessionStatus = 'running' | 'completed' | 'failed'
 
+export interface SessionMeta {
+  id: string
+  ticketId?: string
+  phase?: string
+  agentSource?: string
+  status: SessionStatus
+  startedAt: string
+  endedAt?: string
+}
+
 export interface Session {
   id: string
   projectId: string

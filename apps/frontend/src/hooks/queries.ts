@@ -255,6 +255,14 @@ export function useArchivedTickets(projectId: string | null) {
 
 // ============ Sessions ============
 
+export function useTicketSessions(projectId: string | undefined, ticketId: string | undefined) {
+  return useQuery({
+    queryKey: ['ticketSessions', projectId, ticketId],
+    queryFn: () => api.getTicketSessions(projectId!, ticketId!),
+    enabled: !!projectId && !!ticketId,
+  })
+}
+
 export function useSessions() {
   return useQuery({
     queryKey: ['sessions'],
@@ -346,6 +354,14 @@ export function useTemplate(name: string | null) {
   })
 }
 
+export function useTemplateFull(name: string | null) {
+  return useQuery({
+    queryKey: ['template-full', name],
+    queryFn: () => api.getTemplateFull(name!),
+    enabled: !!name
+  })
+}
+
 export function useCreateTemplate() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -431,10 +447,10 @@ export function useProjectTemplateStatus(projectId: string | null) {
 
 // ============ Phase Workers ============
 
-export function usePhaseWorkers(projectId: string | null, phase: string | null) {
+export function usePhaseWorkers(projectId: string | null, phase: string | null, workflowId?: string | null) {
   return useQuery({
-    queryKey: ['phaseWorkers', projectId, phase],
-    queryFn: () => api.getPhaseWorkers(projectId!, phase!),
+    queryKey: ['phaseWorkers', projectId, phase, workflowId ?? null],
+    queryFn: () => api.getPhaseWorkers(projectId!, phase!, workflowId ?? undefined),
     enabled: !!projectId && !!phase
   })
 }

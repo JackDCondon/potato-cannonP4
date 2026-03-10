@@ -4,6 +4,7 @@ import type {
   Folder,
   Ticket,
   Session,
+  SessionMeta,
   Brainstorm,
   Template,
   Artifact,
@@ -232,6 +233,9 @@ export const api = {
 
   // ============ Sessions ============
 
+  getTicketSessions: (projectId: string, ticketId: string) =>
+    request<SessionMeta[]>(`/api/projects/${encodeURIComponent(projectId)}/tickets/${encodeURIComponent(ticketId)}/sessions`),
+
   getSessions: () =>
     request<Session[]>('/api/sessions'),
 
@@ -442,16 +446,16 @@ export const api = {
 
   // ============ Phase Workers ============
 
-  getPhaseWorkers: (projectId: string, phase: string) =>
+  getPhaseWorkers: (projectId: string, phase: string, workflowId?: string) =>
     request<WorkerTreeResponse>(
-      `/api/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phase)}/workers`
+      `/api/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phase)}/workers${workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''}`
     ),
 
   // ============ Agent Overrides ============
 
-  getAgentDefault: (projectId: string, agentType: string) =>
+  getAgentDefault: (projectId: string, agentType: string, workflowId?: string) =>
     request<{ content: string }>(
-      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/default`
+      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/default${workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''}`
     ),
 
   getAgentOverride: (projectId: string, agentType: string) =>
