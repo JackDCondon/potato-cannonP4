@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-10
 **Status:** Design Complete
-**Revision:** 3
+**Revision:** 4 (PASSED review)
 
 ## Overview
 
@@ -239,6 +239,10 @@ The DELETE endpoint uses `?dependsOn=<ticketId>` (the target ticket ID) rather t
 
 No server-side enforcement — the soft warning is client-side only.
 
+### SSE events
+
+When a dependency edge is created or deleted, the server emits `ticket:updated` for both the dependent ticket and the dependency ticket so the board refreshes `blockedBy` state. When any ticket's phase changes, `blockedBy` must be re-evaluated for all tickets that depend on it (via `getDependentsOfTicket`) and `ticket:updated` emitted for each.
+
 ---
 
 ## Board UI
@@ -297,8 +301,11 @@ The brainstorm agent creates tickets **sequentially**, capturing each returned I
 The `brainstorms` table currently has no `workflow_id` column. A new column must be added in the v14 migration:
 
 ```sql
+-- Idempotent: check column existence before altering
 ALTER TABLE brainstorms ADD COLUMN workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL;
 ```
+
+This ALTER TABLE uses the same idempotent column-existence check pattern as v8/v11/v12 migrations (pragma `table_info` before ALTER).
 
 When a brainstorm is started from a workflow-scoped context (e.g., from a specific board), the `workflow_id` is set on the brainstorm record and surfaced in `McpContext` as `ctx.workflowId`. This allows `create_ticket` to inherit the workflow scope.
 
@@ -388,7 +395,9 @@ get_artifact(filename: string, ticketId?: string)
 
 When a ticket session starts and the ticket has dependencies, a single line is injected into context:
 
-> "This ticket has N dependencies. If you encounter a gap — an interface, contract, or system design you need to understand before proceeding — use `get_dependencies()` to see what's available. Do not call it preemptively."
+> "This ticket has N dependencies (e.g., 'Auth system', 'User API'). If you encounter a gap — an interface, contract, or system design you need to understand before proceeding — use `get_dependencies()` to see what's available. Do not call it preemptively."
+
+The hint includes dependency ticket **titles** (not IDs) so the agent has enough signal to recognise when a gap relates to a known dependency.
 
 ### Shared workflow preamble
 
@@ -398,12 +407,19 @@ A `shared.md` file at `templates/workflows/{name}/agents/shared.md` is prepended
 
 ```typescript
 async function loadAgentDefinition(projectId: string, agentPath: string) {
-  const sharedPrompt = await getAgentPromptForProject(projectId, 'shared')  // may return null
-  const agentPrompt = await getAgentPromptForProject(projectId, agentPath)
+  const sharedRaw = await getAgentPromptForProject(projectId, 'shared')  // may return null
+  const agentRaw = await getAgentPromptForProject(projectId, agentPath)
+
+  // Strip frontmatter from each file independently before concatenating
+  const sharedPrompt = sharedRaw ? stripFrontmatter(sharedRaw) : null
+  const { frontmatter, content: agentPrompt } = extractFrontmatter(agentRaw)
+
   const fullPrompt = sharedPrompt ? `${sharedPrompt}\n\n---\n\n${agentPrompt}` : agentPrompt
-  // ... continue with frontmatter extraction on fullPrompt
+  // ... continue with frontmatter from agentRaw (not shared)
 }
 ```
+
+Frontmatter is extracted from each file independently. `shared.md` may have its own frontmatter (e.g., for documentation) which must be stripped before prepending to avoid injecting YAML into the agent prompt.
 
 The `shared.md` file follows the same override resolution: project override > project copy > global template. This means a project can customise the shared preamble independently.
 
