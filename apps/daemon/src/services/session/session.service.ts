@@ -26,11 +26,13 @@ import {
   endStoredSession,
   getLatestClaudeSessionId,
   getLatestClaudeSessionIdForTicket,
+  getRecentSessionsForContinuity,
   updateClaudeSessionId,
   getActiveSessionForBrainstorm,
   getActiveSessionForTicket,
   getSessionsByTicket,
 } from "../../stores/session.store.js";
+import { getMessagesForContinuity } from "../../stores/conversation.store.js";
 import {
   readResponse,
   readQuestion,
@@ -73,6 +75,11 @@ import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 import { createSpawnPendingWorkerState } from "./worker-state.js";
 import { evaluateResumeEligibility } from "./continuity-policy.js";
+import {
+  buildBoundedContinuityPacket,
+  type ContinuityPacketLimits,
+  type ContinuityPacketFilter,
+} from "./continuity-context.service.js";
 
 export class TicketLifecycleConflictError extends Error {
   readonly code = "TICKET_LIFECYCLE_CONFLICT";
@@ -125,6 +132,15 @@ export interface SessionTranscriptHighlight {
   kind: "assistant" | "tool";
   summary: string;
   timestamp?: string;
+}
+
+interface BuildContinuityPacketForTicketInput {
+  ticketId: string;
+  conversationId?: string;
+  filter: ContinuityPacketFilter;
+  limits: ContinuityPacketLimits;
+  reasonForRestart?: string;
+  scope: ContinuityPacket["scope"];
 }
 
 export class SessionService {
@@ -472,6 +488,37 @@ export class SessionService {
       return highlights;
     }
     return highlights.slice(highlights.length - bounded);
+  }
+
+  async buildContinuityPacketForTicket(
+    input: BuildContinuityPacketForTicketInput,
+  ): Promise<ContinuityPacket | null> {
+    const conversationMessages = input.conversationId
+      ? getMessagesForContinuity(input.conversationId, input.filter, input.limits.maxConversationTurns)
+      : [];
+    const candidateSessions = getRecentSessionsForContinuity(
+      input.ticketId,
+      input.filter,
+      input.limits.maxSessionEvents,
+    );
+
+    const transcriptHighlights: SessionTranscriptHighlight[] = [];
+    for (const session of candidateSessions) {
+      const highlights = await this.getTranscriptHighlightsForContinuity(
+        session.id,
+        input.limits.maxSessionEvents,
+      );
+      transcriptHighlights.push(...highlights);
+    }
+
+    return buildBoundedContinuityPacket({
+      scope: input.scope,
+      reasonForRestart: input.reasonForRestart,
+      filter: input.filter,
+      limits: input.limits,
+      conversationMessages,
+      transcriptHighlights,
+    });
   }
 
   isActive(sessionId: string): boolean {
