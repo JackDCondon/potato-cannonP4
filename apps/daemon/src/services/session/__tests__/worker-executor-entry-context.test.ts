@@ -55,6 +55,8 @@ await mock.module("../phase-config.js", {
 await mock.module("../../../stores/ticket.store.js", {
   namedExports: {
     getTicket: () => ({ executionGeneration: 2 }),
+    listArtifacts: () => [],
+    getArtifactContent: async () => "",
   },
 });
 
@@ -90,6 +92,13 @@ await mock.module("../../../stores/ralph-feedback.store.js", {
     addRalphIteration: () => {},
     updateRalphFeedbackStatus: () => {},
     getRalphFeedbackForLoop: () => null,
+    getRalphIterations: () => [],
+  },
+});
+
+await mock.module("../../../stores/ticket-dependency.store.js", {
+  namedExports: {
+    ticketDependencyGetForTicket: () => [],
   },
 });
 
@@ -118,6 +127,7 @@ await mock.module("../loops/task-loop.js", {
 });
 
 const { startPhase } = await import("../worker-executor.js");
+const { buildAgentPrompt, formatContinuityHandoff } = await import("../prompts.js");
 
 const callbacks = {
   spawnAgent: async (
@@ -187,5 +197,64 @@ describe("worker-executor phase entry context", () => {
         ],
       },
     });
+  });
+});
+
+describe("continuity handoff prompt formatting", () => {
+  it("includes one continuity section before phase entry context with mode/reason/scope", async () => {
+    const prompt = await buildAgentPrompt(
+      "proj-1",
+      "POT-1",
+      {
+        id: "POT-1",
+        title: "Implement continuity",
+        description: "Carry context between sessions",
+      } as any,
+      "Build",
+      { id: "taskmaster", type: "agent", source: "agents/taskmaster.md" } as any,
+      [],
+      undefined,
+      undefined,
+      {
+        mode: "re_entry",
+        taskSummary: {
+          totalInPhase: 2,
+          actionableInPhase: 1,
+          pendingCount: 1,
+          inProgressCount: 0,
+          failedCount: 0,
+          completedCount: 1,
+          cancelledCount: 0,
+          sampleTasks: [{ id: "task-1", description: "Implement API", status: "pending" }],
+        },
+      },
+      {
+        mode: "handoff",
+        reason: "packet_available",
+        scope: "same_lifecycle",
+        packet: {
+          scope: "same_lifecycle",
+          conversationTurns: [{ role: "user", text: "Please continue from last run." }],
+          sessionHighlights: [{ summary: "Created initial scaffolding" }],
+          unresolvedQuestions: ["Which API route should we use?"],
+        },
+      },
+    );
+
+    assert.strictEqual((prompt.match(/## Continuity Handoff/g) ?? []).length, 1);
+    assert.ok(prompt.includes("- mode: handoff"));
+    assert.ok(prompt.includes("- reason: packet_available"));
+    assert.ok(prompt.includes("- scope: same_lifecycle"));
+    assert.ok(prompt.indexOf("## Continuity Handoff") < prompt.indexOf("## Phase Entry Context"));
+  });
+
+  it("does not inject handoff content for resume mode decisions", () => {
+    const section = formatContinuityHandoff({
+      mode: "resume",
+      reason: "same_lifecycle_resume",
+      sourceSessionId: "claude_123",
+    });
+
+    assert.strictEqual(section, "");
   });
 });

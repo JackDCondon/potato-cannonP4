@@ -1388,40 +1388,6 @@ export class SessionService {
       throw new Error(`Agent ${agentWorker.source} not found in template`);
     }
 
-    // Build prompt with task context if provided
-    let prompt = agentDefinition.prompt;
-    if (taskContext) {
-      prompt += `\n\n---\n\n${formatTaskContext(taskContext)}`;
-    }
-
-    // Build ticket context with optional ralph feedback injection
-    const ticketContext = await buildAgentPrompt(
-      projectId,
-      ticketId,
-      ticket,
-      phase,
-      agentWorker,
-      images,
-      undefined, // agentPrompt - we already have it
-      ralphContext,
-      phaseEntryContext,
-    );
-    prompt += `\n\n---\n\n${ticketContext}`;
-
-    const meta: SessionMeta = {
-      projectId,
-      ticketId,
-      ticketTitle: ticket.title,
-      executionGeneration: ticket.executionGeneration ?? 0,
-      phase,
-      worktreePath,
-      branchName: workspaceLabel,
-      startedAt: new Date().toISOString(),
-      status: "running",
-      agentType: agentWorker.source,
-      stage: 0,
-    };
-
     // Resolve model for this agent, using task complexity if available, else ticket complexity
     const taskComplexity = taskContext?.complexity ?? ticket.complexity;
     const resolvedModel = resolveModel(agentWorker.model, taskComplexity);
@@ -1463,6 +1429,43 @@ export class SessionService {
     });
     const resumeSessionId =
       continuityDecision.mode === "resume" ? existingClaudeSessionId ?? undefined : undefined;
+    const handoffDecision =
+      continuityDecision.mode === "handoff" ? continuityDecision : undefined;
+
+    // Build prompt with task context if provided
+    let prompt = agentDefinition.prompt;
+    if (taskContext) {
+      prompt += `\n\n---\n\n${formatTaskContext(taskContext)}`;
+    }
+
+    // Build ticket context with optional continuity and phase-entry sections
+    const ticketContext = await buildAgentPrompt(
+      projectId,
+      ticketId,
+      ticket,
+      phase,
+      agentWorker,
+      images,
+      undefined, // agentPrompt - we already have it
+      ralphContext,
+      phaseEntryContext,
+      handoffDecision,
+    );
+    prompt += `\n\n---\n\n${ticketContext}`;
+
+    const meta: SessionMeta = {
+      projectId,
+      ticketId,
+      ticketTitle: ticket.title,
+      executionGeneration: ticket.executionGeneration ?? 0,
+      phase,
+      worktreePath,
+      branchName: workspaceLabel,
+      startedAt: new Date().toISOString(),
+      status: "running",
+      agentType: agentWorker.source,
+      stage: 0,
+    };
 
     const storedSession = createStoredSession({
       projectId,

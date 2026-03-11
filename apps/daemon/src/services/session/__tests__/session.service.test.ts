@@ -937,4 +937,35 @@ describe("SessionService decideContinuityForTicket", () => {
     assert.strictEqual(decision.reason, "suspended_session_resume");
     assert.strictEqual(decision.sourceSessionId, "claude_suspended_1");
   });
+
+  it("returns handoff decision details for same-lifecycle packets", async () => {
+    const service = new SessionService(new EventEmitter());
+    (service as any).buildContinuityPacketForTicket = async () => ({
+      scope: "same_lifecycle",
+      conversationTurns: [{ role: "user", text: "handoff context" }],
+      sessionHighlights: [{ summary: "completed scaffolding" }],
+      unresolvedQuestions: ["confirm endpoint naming"],
+    });
+
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: { ...baseKey, phase: "Refinement" },
+        claudeSessionId: "claude_resume_1",
+      },
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "packet_available");
+    assert.strictEqual(decision.scope, "same_lifecycle");
+    assert.strictEqual(decision.packet?.conversationTurns.length, 1);
+  });
 });

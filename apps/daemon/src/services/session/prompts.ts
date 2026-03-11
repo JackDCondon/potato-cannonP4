@@ -5,6 +5,7 @@ import type {
 } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { PhaseEntryContext } from "./types.js";
+import type { ContinuityDecision } from "./continuity.types.js";
 import {
   getArtifactContent,
   listArtifacts,
@@ -179,6 +180,49 @@ ${sampleLines}
 `;
 }
 
+export function formatContinuityHandoff(
+  continuityDecision?: ContinuityDecision,
+): string {
+  if (
+    !continuityDecision ||
+    continuityDecision.mode !== "handoff" ||
+    !continuityDecision.packet
+  ) {
+    return "";
+  }
+
+  const { reason, scope, packet } = continuityDecision;
+  const conversationTurnsSection =
+    packet.conversationTurns.length > 0
+      ? packet.conversationTurns
+          .map((turn) => `- [${turn.role}] ${turn.text}`)
+          .join("\n")
+      : "- (none)";
+  const highlightsSection =
+    packet.sessionHighlights.length > 0
+      ? packet.sessionHighlights.map((item) => `- ${item.summary}`).join("\n")
+      : "- (none)";
+  const unresolvedQuestionsSection =
+    packet.unresolvedQuestions.length > 0
+      ? packet.unresolvedQuestions.map((item) => `- ${item}`).join("\n")
+      : "- (none)";
+
+  return `## Continuity Handoff
+
+- mode: ${continuityDecision.mode}
+- reason: ${reason}
+- scope: ${scope ?? packet.scope}
+
+### Conversation Turns
+${conversationTurnsSection}
+
+### Session Highlights
+${highlightsSection}
+
+### Unresolved Questions
+${unresolvedQuestionsSection}`;
+}
+
 /**
  * Build a full prompt for an agent, combining agent instructions with ticket context.
  * Agent instructions are passed directly via --print, not via --agents flag.
@@ -197,6 +241,7 @@ export async function buildAgentPrompt(
     taskId: string | null;
   },
   phaseEntryContext?: PhaseEntryContext,
+  continuityDecision?: ContinuityDecision,
 ): Promise<string> {
   // AgentWorker doesn't have context.artifacts - this is now handled by agent-loader
   const contextArtifacts: string[] = [];
@@ -234,13 +279,17 @@ export async function buildAgentPrompt(
 
 ${ticket.description || "No description provided."}
 ${dependencyHint}${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}${formatPhaseEntryContext(phaseEntryContext)}Begin.`;
+  const continuitySection = formatContinuityHandoff(continuityDecision);
+  const promptBody = continuitySection
+    ? `${continuitySection}\n\n${context}`
+    : context;
 
   // If agent instructions provided, prepend them to the context
   if (agentPrompt) {
-    return `${agentPrompt}\n\n---\n\n${context}`;
+    return `${agentPrompt}\n\n---\n\n${promptBody}`;
   }
 
-  return context;
+  return promptBody;
 }
 
 /**
