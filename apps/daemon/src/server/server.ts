@@ -94,6 +94,7 @@ let sessionService: SessionService | null = null;
 let telegramProvider: TelegramProvider | null = null;
 let telegramMode = "none";
 let slackProvider: SlackProvider | null = null;
+let releaseDaemonLock: (() => Promise<void>) | null = null;
 let lifecycleHardeningFlags = {
   strictStaleDrop: false,
   strictStaleResume409: false,
@@ -110,17 +111,27 @@ async function acquireDaemonLock(): Promise<void> {
   // Ensure lock file exists
   await fs.writeFile(LOCK_FILE, "", { flag: "a" });
 
-  try {
-    await lock(LOCK_FILE, { stale: 10000 }); // 10s stale threshold
-  } catch (err) {
-    // Lock held by another process - read PID file for helpful error
-    const existingPid = await fs
-      .readFile(PID_FILE, "utf-8")
-      .catch(() => "unknown");
-    console.error(
-      `Daemon already running (PID ${existingPid.trim()}). Exiting.`,
-    );
-    process.exit(1);
+  const maxAttempts = 40;
+  const retryDelayMs = 250;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      releaseDaemonLock = await lock(LOCK_FILE, { stale: 10000 }); // 10s stale threshold
+      return;
+    } catch {
+      if (attempt === maxAttempts) {
+        // Lock held by another process - read PID file for helpful error
+        const existingPid = await fs
+          .readFile(PID_FILE, "utf-8")
+          .catch(() => "unknown");
+        console.error(
+          `Daemon already running (PID ${existingPid.trim()}). Exiting.`,
+        );
+        process.exit(1);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
   }
 }
 
@@ -1154,6 +1165,17 @@ async function shutdown(): Promise<void> {
 
   await removeDaemonInfo();
   await removePid();
+  if (releaseDaemonLock) {
+    try {
+      await releaseDaemonLock();
+    } catch (error) {
+      console.warn(
+        `[shutdown] Failed to release daemon lock: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      releaseDaemonLock = null;
+    }
+  }
   closeDatabase();
   process.exit(0);
 }
