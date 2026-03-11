@@ -657,11 +657,44 @@ export async function getTemplateForProject(
 
   // Try project-local first
   if (await hasProjectTemplate(projectId)) {
-    return getProjectTemplate(projectId);
+    const localTemplate = await getProjectTemplate(projectId);
+    if (localTemplate) {
+      return hydrateDependencyTierMetadata(localTemplate, project.template.name);
+    }
+    return null;
   }
 
   // Fall back to global catalog
   return getWorkflow(project.template.name);
+}
+
+async function hydrateDependencyTierMetadata(
+  localTemplate: WorkflowTemplate,
+  templateName: string,
+): Promise<WorkflowTemplate> {
+  const globalTemplate = await getWorkflow(templateName);
+  if (!globalTemplate) return localTemplate;
+
+  const mergedPhases = localTemplate.phases.map((localPhase) => {
+    const globalPhase = globalTemplate.phases.find(
+      (phase) => phase.id === localPhase.id || phase.name === localPhase.name,
+    );
+    if (!globalPhase) return localPhase;
+
+    return {
+      ...localPhase,
+      unblocksTier:
+        localPhase.unblocksTier !== undefined
+          ? localPhase.unblocksTier
+          : globalPhase.unblocksTier,
+      blocksOnUnsatisfiedTiers:
+        localPhase.blocksOnUnsatisfiedTiers !== undefined
+          ? localPhase.blocksOnUnsatisfiedTiers
+          : globalPhase.blocksOnUnsatisfiedTiers,
+    };
+  });
+
+  return { ...localTemplate, phases: mergedPhases };
 }
 
 /**

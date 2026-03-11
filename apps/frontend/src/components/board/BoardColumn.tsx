@@ -11,7 +11,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip'
-import type { Ticket } from '@potato-cannon/shared'
+import type { DependencyTier, Ticket } from '@potato-cannon/shared'
 
 interface BoardColumnProps {
   phase: string
@@ -26,6 +26,7 @@ interface BoardColumnProps {
   onToggleDisabled?: () => void
   swimlaneColor?: string
   onColorChange?: (color: string | null) => void
+  blockedFromPhaseByTier?: Record<DependencyTier, string>
 }
 
 export function BoardColumn({
@@ -40,7 +41,8 @@ export function BoardColumn({
   isBlockedForDrag,
   onToggleDisabled,
   swimlaneColor,
-  onColorChange
+  onColorChange,
+  blockedFromPhaseByTier
 }: BoardColumnProps) {
   const openAddTicketModal = useAppStore((s) => s.openAddTicketModal)
   const showArchivedTickets = useAppStore((s) => s.showArchivedTickets)
@@ -143,7 +145,13 @@ export function BoardColumn({
           >
             <div className="flex flex-col gap-2">
               {tickets.map((ticket) => (
-                <TicketCard key={ticket.id} ticket={ticket} projectId={projectId} swimlaneColor={swimlaneColor} />
+                <TicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  projectId={projectId}
+                  swimlaneColor={swimlaneColor}
+                  blockedFromPhaseByTier={blockedFromPhaseByTier}
+                />
               ))}
               {tickets.length === 0 && (
                 <div className="text-center text-text-muted text-xs py-8">

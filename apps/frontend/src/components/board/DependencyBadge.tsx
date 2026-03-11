@@ -1,18 +1,25 @@
 import { CircleSlash } from "lucide-react"
-import type { BlockedByEntry } from "@potato-cannon/shared"
+import type { BlockedByEntry, DependencyTier } from "@potato-cannon/shared"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface DependencyBadgeProps {
   blockedBy: BlockedByEntry[]
+  blockedFromPhaseByTier?: Record<DependencyTier, string>
 }
 
-function neededPhaseForTier(tier: BlockedByEntry["tier"]): string {
-  if (tier === "artifact-ready") return "Specification"
-  if (tier === "code-ready") return "Done"
-  return tier
+function neededPhaseForTier(
+  tier: BlockedByEntry["tier"],
+  blockedFromPhaseByTier?: Record<DependencyTier, string>
+): string {
+  if (!blockedFromPhaseByTier) {
+    if (tier === "artifact-ready") return "Specification"
+    if (tier === "code-ready") return "Done"
+    return tier
+  }
+  return blockedFromPhaseByTier[tier]
 }
 
-export function DependencyBadge({ blockedBy }: DependencyBadgeProps) {
+export function DependencyBadge({ blockedBy, blockedFromPhaseByTier }: DependencyBadgeProps) {
   const unsatisfied = blockedBy.filter((dep) => !dep.satisfied)
   if (unsatisfied.length === 0) return null
 
@@ -30,7 +37,7 @@ export function DependencyBadge({ blockedBy }: DependencyBadgeProps) {
             <div key={`${dep.ticketId}-${dep.tier}`} className="rounded border border-border bg-bg-secondary px-2 py-1.5">
               <div className="text-text-primary text-xs font-medium">{dep.title}</div>
               <div className="text-text-muted text-[11px]">
-                {dep.currentPhase} -&gt; {neededPhaseForTier(dep.tier)} ({dep.tier})
+                {dep.currentPhase} -&gt; {neededPhaseForTier(dep.tier, blockedFromPhaseByTier)} ({dep.tier})
               </div>
             </div>
           ))}

@@ -207,9 +207,8 @@ export class TicketDependencyStore {
    * `unblocksTier`, then checks if the dependent ticket's phase index is >= that
    * phase's index.
    *
-   * Fallback: if no phase has the tier marker and tier is `artifact-ready`,
-   * returns `true` (permissive) with a warning log. `code-ready` always has
-   * Done (synthetic), so a missing marker should not occur.
+   * Fallback: if no phase has the tier marker, return `false` (fail-safe) and
+   * emit a warning log. This prevents false-positive unblocking.
    */
   isSatisfied(
     depTicketPhase: string,
@@ -221,13 +220,9 @@ export class TicketDependencyStore {
     );
 
     if (tierPhaseIndex === -1) {
-      if (tier === "artifact-ready") {
-        console.warn(
-          `[ticket-dependency] No phase with unblocksTier="${tier}" found in template; defaulting to satisfied (permissive fallback)`
-        );
-        return true;
-      }
-      // code-ready should always have Done phase with the marker
+      console.warn(
+        `[ticket-dependency] No phase with unblocksTier="${tier}" found in template; defaulting to unsatisfied (fail-safe fallback)`
+      );
       return false;
     }
 

@@ -458,7 +458,7 @@ describe("TicketDependencyStore", () => {
       assert.strictEqual(result, true);
     });
 
-    it("should return true (permissive fallback) when no phase has artifact-ready marker", () => {
+    it("should return false when no phase has artifact-ready marker", () => {
       const phasesNoMarker: TemplatePhase[] = [
         { id: "Ideas", name: "Ideas" },
         { id: "Build", name: "Build" },
@@ -466,7 +466,7 @@ describe("TicketDependencyStore", () => {
       ];
 
       const result = store.isSatisfied("Ideas", "artifact-ready", phasesNoMarker);
-      assert.strictEqual(result, true, "Should default to satisfied when no artifact-ready marker");
+      assert.strictEqual(result, false, "Should default to unsatisfied when no artifact-ready marker");
     });
 
     it("should return false when depTicketPhase is not found in template phases", () => {

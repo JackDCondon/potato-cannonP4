@@ -2,7 +2,7 @@
   "$schema": "../workflow.schema.json",
   "name": "bug-fix",
   "description": "Fast-path workflow for diagnosing and fixing bugs: interactive diagnosis, targeted build, PR.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "parentTemplate": "product-development",
   "phases": [
     {
@@ -26,6 +26,8 @@
       "id": "Backlog",
       "name": "Backlog",
       "description": "Resolution confirmed, awaiting implementation",
+      "unblocksTier": "artifact-ready",
+      "blocksOnUnsatisfiedTiers": ["artifact-ready"],
       "workers": [],
       "transitions": {
         "next": null,
@@ -36,6 +38,7 @@
       "id": "Build",
       "name": "Build",
       "description": "Implement the fix from resolution.md with adversarial review",
+      "blocksOnUnsatisfiedTiers": ["code-ready"],
       "workers": [
         {
           "id": "build-ralph-loop",

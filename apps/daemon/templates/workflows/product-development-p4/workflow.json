@@ -2,7 +2,7 @@
   "$schema": "../workflow.schema.json",
   "name": "product-development-p4",
   "description": "Product development workflow for Perforce teams with sync and shelve phases",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "parentTemplate": "product-development",
   "phases": [
     {
@@ -51,6 +51,7 @@
       "id": "Architecture",
       "name": "Architecture",
       "description": "Design technical architecture based on refinement",
+      "blocksOnUnsatisfiedTiers": ["artifact-ready"],
       "workers": [
         {
           "id": "architecture-ralph-loop",
@@ -94,6 +95,7 @@
       "id": "Specification",
       "name": "Specification",
       "description": "Create detailed implementation specification with wave-based tickets",
+      "unblocksTier": "artifact-ready",
       "workers": [
         {
           "id": "specification-agent",
@@ -122,6 +124,7 @@
       "id": "Build",
       "name": "Build",
       "description": "Execute specification tickets in waves with QA validation",
+      "blocksOnUnsatisfiedTiers": ["code-ready"],
       "workers": [
         {
           "id": "taskmaster-agent",

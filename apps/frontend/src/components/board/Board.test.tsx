@@ -13,8 +13,10 @@ const mockState = vi.hoisted(() => ({
     data: {
       phases: [
         { name: "Ideas" },
-        { name: "Specification" },
+        { name: "Backlog" },
+        { name: "Architecture", blocksOnUnsatisfiedTiers: ["artifact-ready"] },
         { name: "Build" },
+        { name: "Pull Requests" },
         { name: "Done" },
       ],
     },
@@ -46,7 +48,7 @@ vi.mock("@/hooks/queries", () => ({
     isLoading: false,
     error: null,
   }),
-  useProjectPhases: () => ({ data: ["Ideas", "Specification", "Build", "Done"] }),
+  useProjectPhases: () => ({ data: ["Ideas", "Backlog", "Architecture", "Build", "Pull Requests", "Done"] }),
   useTemplate: (name: string | null) => mockState.useTemplate(name),
   useProjects: () => ({
     data: [{ id: "test-project", template: { name: "product-development" } }],
@@ -239,7 +241,7 @@ describe("Board dependency warning dialog", () => {
           id: "TKT-1",
           data: { current: { ticket: mockState.tickets[0] } },
         },
-        over: { id: "Specification" },
+        over: { id: "Architecture" },
       });
     });
 
@@ -251,7 +253,7 @@ describe("Board dependency warning dialog", () => {
         projectId: "test-project",
         ticketId: "TKT-1",
         updates: expect.objectContaining({
-          phase: "Specification",
+          phase: "Architecture",
           overrideDependencies: true,
         }),
       }),
@@ -267,7 +269,7 @@ describe("Board dependency warning dialog", () => {
           id: "TKT-1",
           data: { current: { ticket: mockState.tickets[0] } },
         },
-        over: { id: "Specification" },
+        over: { id: "Architecture" },
       });
     });
 

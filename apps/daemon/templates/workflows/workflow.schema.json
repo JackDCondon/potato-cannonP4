@@ -66,6 +66,15 @@
           "type": ["string", "null"],
           "enum": ["artifact-ready", "code-ready", null],
           "description": "When a ticket reaches this phase, dependencies with this tier are considered satisfied"
+        },
+        "blocksOnUnsatisfiedTiers": {
+          "type": "array",
+          "description": "Dependency tiers that must be satisfied before entering this phase (and later phases)",
+          "items": {
+            "type": "string",
+            "enum": ["artifact-ready", "code-ready"]
+          },
+          "uniqueItems": true
         }
       }
     },

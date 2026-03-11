@@ -10,7 +10,7 @@ import { ListItemCard } from '@/components/ui/list-item-card'
 import { IconButton } from '@/components/ui/icon-button'
 import { ArchiveConfirmDialog, shouldShowArchiveWarning } from '@/components/ticket-detail/ArchiveConfirmDialog'
 import { DependencyBadge } from '@/components/board/DependencyBadge'
-import type { Ticket } from '@potato-cannon/shared'
+import type { DependencyTier, Ticket } from '@potato-cannon/shared'
 
 const COMPLEXITY_BORDER_COLORS: Record<Ticket['complexity'], string> = {
   simple: 'var(--color-text-muted)',
@@ -22,9 +22,10 @@ interface TicketCardProps {
   ticket: Ticket
   projectId: string
   swimlaneColor?: string
+  blockedFromPhaseByTier?: Record<DependencyTier, string>
 }
 
-export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps) {
+export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseByTier }: TicketCardProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
   const isProcessing = useAppStore((s) => s.isTicketProcessing(projectId, ticket.id))
   const activity = useAppStore((s) => s.getTicketActivity(projectId, ticket.id))
@@ -153,7 +154,10 @@ export function TicketCard({ ticket, projectId, swimlaneColor }: TicketCardProps
                   {imageCount}
                 </span>
               )}
-              <DependencyBadge blockedBy={ticket.blockedBy ?? []} />
+              <DependencyBadge
+                blockedBy={ticket.blockedBy ?? []}
+                blockedFromPhaseByTier={blockedFromPhaseByTier}
+              />
             </>
           )}
         </div>

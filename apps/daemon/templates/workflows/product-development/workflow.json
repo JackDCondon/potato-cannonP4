@@ -2,7 +2,7 @@
   "$schema": "./workflow.schema.json",
   "name": "product-development",
   "description": "Standard product development workflow with refinement, architecture, and build phases",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "phases": [
     {
       "id": "Refinement",
@@ -50,6 +50,7 @@
       "id": "Architecture",
       "name": "Architecture",
       "description": "Design technical architecture based on refinement",
+      "blocksOnUnsatisfiedTiers": ["artifact-ready"],
       "workers": [
         {
           "id": "architecture-ralph-loop",
@@ -122,6 +123,7 @@
       "id": "Build",
       "name": "Build",
       "description": "Execute specification tickets in waves with QA validation",
+      "blocksOnUnsatisfiedTiers": ["code-ready"],
       "workers": [
         {
           "id": "taskmaster-agent",

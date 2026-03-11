@@ -84,6 +84,7 @@ export interface Phase {
   requiresWorktree?: boolean;
   requiresIsolation?: boolean;
   unblocksTier?: DependencyTier | null;
+  blocksOnUnsatisfiedTiers?: DependencyTier[];
 }
 
 // Template types

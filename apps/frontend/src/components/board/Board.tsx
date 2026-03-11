@@ -37,7 +37,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import type { Ticket, TemplatePhase } from '@potato-cannon/shared'
-import { phaseHasAutomation } from './board-utils'
+import { getBlockedFromPhaseMap, phaseHasAutomation } from './board-utils'
 
 
 /**
@@ -72,23 +72,18 @@ interface BoardProps {
 
 type DialogType = 'automation' | 'dependency'
 
-function neededPhaseForTier(tier: string): string {
-  if (tier === 'artifact-ready') return 'Specification'
-  if (tier === 'code-ready') return 'Done'
-  return 'Done'
-}
-
 function getDependencyWarning(
   ticket: Ticket,
   targetPhase: string,
-  phases: string[]
+  phases: string[],
+  blockedFromPhaseByTier: Record<'artifact-ready' | 'code-ready', string>
 ): { title: string; neededPhase: string } | null {
   const targetIndex = phases.findIndex((phase) => phase === targetPhase)
   if (targetIndex === -1) return null
 
   const unsatisfied = (ticket.blockedBy ?? []).filter((dep) => !dep.satisfied)
   for (const dep of unsatisfied) {
-    const neededPhase = neededPhaseForTier(dep.tier)
+    const neededPhase = blockedFromPhaseByTier[dep.tier]
     const neededIndex = phases.findIndex((phase) => phase === neededPhase)
     if (neededIndex !== -1 && targetIndex >= neededIndex) {
       return { title: dep.title, neededPhase }
@@ -124,6 +119,10 @@ export function Board({ projectId, workflowId }: BoardProps) {
   const phases = useMemo(
     () => templateConfig?.phases.map((phase) => phase.name) ?? projectPhases,
     [templateConfig, projectPhases]
+  )
+  const blockedFromPhaseByTier = useMemo(
+    () => getBlockedFromPhaseMap(templateConfig?.phases),
+    [templateConfig]
   )
 
   // Mutations
@@ -240,7 +239,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
       if (!ticket || ticket.phase === targetPhase) return
 
       const dependencyWarning = phases
-        ? getDependencyWarning(ticket, targetPhase, phases)
+        ? getDependencyWarning(ticket, targetPhase, phases, blockedFromPhaseByTier)
         : null
       if (dependencyWarning) {
         setConfirmDialog({
@@ -277,7 +276,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
         })
       }
     },
-    [projectId, phases, templateConfig, updateTicket]
+    [blockedFromPhaseByTier, projectId, phases, templateConfig, updateTicket]
   )
 
   const handleConfirmMove = useCallback(() => {
@@ -305,7 +304,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
     const unsatisfied = (activeTicket.blockedBy ?? []).filter((dep) => !dep.satisfied)
 
     for (const dep of unsatisfied) {
-      const neededPhase = neededPhaseForTier(dep.tier)
+      const neededPhase = blockedFromPhaseByTier[dep.tier]
       const neededIndex = phases.findIndex((phase) => phase === neededPhase)
       if (neededIndex === -1) continue
       for (let i = neededIndex; i < phases.length; i++) {
@@ -314,7 +313,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
     }
 
     return blocked
-  }, [activeTicket, phases])
+  }, [activeTicket, blockedFromPhaseByTier, phases])
 
   // Loading state
   if (ticketsLoading) {
@@ -391,6 +390,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
                       onToggleDisabled={isManual ? () => handleToggleDisabled(phase) : undefined}
                       swimlaneColor={currentProject?.swimlaneColors?.[phase]}
                       onColorChange={(color) => handleSwimlaneColorChange(phase, color)}
+                      blockedFromPhaseByTier={blockedFromPhaseByTier}
                     />
                   )
                 })}
@@ -406,7 +406,11 @@ export function Board({ projectId, workflowId }: BoardProps) {
             <DragOverlay>
               {activeTicket && (
                 <div className="opacity-80">
-                  <TicketCard ticket={activeTicket} projectId={projectId} />
+                  <TicketCard
+                    ticket={activeTicket}
+                    projectId={projectId}
+                    blockedFromPhaseByTier={blockedFromPhaseByTier}
+                  />
                 </div>
               )}
             </DragOverlay>

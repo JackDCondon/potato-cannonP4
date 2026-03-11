@@ -20,18 +20,28 @@ type EventName =
   | "session:remote-control-url"
   | "session:remote-control-cleared";
 
-class EventBus extends EventEmitter {
+export class EventBus extends EventEmitter {
   private clients: Set<Response> = new Set();
 
   addClient(res: Response): void {
     this.clients.add(res);
     res.on("close", () => this.clients.delete(res));
+    res.on("error", () => this.clients.delete(res));
   }
 
   broadcast(event: EventName, data: unknown): void {
     const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const client of this.clients) {
-      client.write(message);
+      // Prune closed/broken SSE clients so one bad socket can't crash the daemon.
+      if (client.writableEnded || client.destroyed) {
+        this.clients.delete(client);
+        continue;
+      }
+      try {
+        client.write(message);
+      } catch {
+        this.clients.delete(client);
+      }
     }
   }
 }

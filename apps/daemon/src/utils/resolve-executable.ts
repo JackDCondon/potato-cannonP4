@@ -2,6 +2,22 @@ import { execSync } from "child_process";
 import { existsSync } from "fs";
 import path from "path";
 
+function findExecutable(command: string): string[] {
+  try {
+    return execSync(command, {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    })
+      .trim()
+      .split(/\r?\n/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Resolve the absolute path to a named executable, cross-platform.
  *
@@ -14,27 +30,15 @@ import path from "path";
 export function resolveExecutable(name: string): string | null {
   if (process.platform === "win32") {
     // Try Windows 'where' first
-    try {
-      const results = execSync(`where ${name}`, { encoding: "utf-8" })
-        .trim()
-        .split(/\r?\n/)
-        .map((p) => p.trim())
-        .filter(Boolean);
+    const results = findExecutable(`where ${name}`);
 
-      // Prefer .exe if available (native/standalone installer)
-      const exePath = results.find((p) => /\.exe$/i.test(p));
-      if (exePath && existsSync(exePath)) return exePath;
+    // Prefer .exe if available (native/standalone installer)
+    const exePath = results.find((p) => /\.exe$/i.test(p));
+    if (exePath && existsSync(exePath)) return exePath;
 
-      // .cmd or first result — note: .cmd files require shell:true in spawnSync
-      const first = results[0];
-      if (first && existsSync(first)) return first;
-    } catch { /* where not found or failed */ }
-
-    // Try Unix 'which' (works in Git Bash)
-    try {
-      const found = execSync(`which ${name}`, { encoding: "utf-8" }).trim();
-      if (found && existsSync(found)) return found;
-    } catch { /* not in Git Bash */ }
+    // .cmd or first result - note: .cmd files require shell:true in spawnSync
+    const first = results[0];
+    if (first && existsSync(first)) return first;
 
     // Common Windows fallback paths
     const appData = process.env.APPDATA;
@@ -49,10 +53,8 @@ export function resolveExecutable(name: string): string | null {
   }
 
   // Unix: try 'which' first
-  try {
-    const found = execSync(`which ${name}`, { encoding: "utf-8" }).trim();
-    if (found) return found;
-  } catch { /* not on PATH */ }
+  const found = findExecutable(`which ${name}`)[0];
+  if (found) return found;
 
   // Unix common fallback paths
   const home = process.env.HOME || "";
@@ -85,43 +87,31 @@ export function resolveClaude(nodeExecutable: string): {
   claudePath: string;
   claudePrependArgs: string[];
 } {
-  // Try Unix 'which' first (works on macOS, Linux, and Git Bash on Windows)
-  try {
-    const found = execSync("which claude", { encoding: "utf-8" }).trim();
-    if (found) return { claudePath: found, claudePrependArgs: [] };
-  } catch { /* continue */ }
-
   if (process.platform === "win32") {
     // Try Windows 'where' command to find claude on PATH
-    try {
-      const results = execSync("where claude", { encoding: "utf-8" })
-        .trim()
-        .split(/\r?\n/)
-        .map((p) => p.trim())
-        .filter(Boolean);
+    const results = findExecutable("where claude");
 
-      // Prefer .exe if available (native/standalone installer)
-      const exePath = results.find((p) => /\.exe$/i.test(p));
-      if (exePath && existsSync(exePath)) {
-        return { claudePath: exePath, claudePrependArgs: [] };
-      }
+    // Prefer .exe if available (native/standalone installer)
+    const exePath = results.find((p) => /\.exe$/i.test(p));
+    if (exePath && existsSync(exePath)) {
+      return { claudePath: exePath, claudePrependArgs: [] };
+    }
 
-      // .cmd found (npm global install) — find the underlying JS entry point
-      const cmdPath = results[0];
-      if (cmdPath && existsSync(cmdPath)) {
-        const npmBinDir = path.dirname(cmdPath);
-        const jsPath = path.join(
-          npmBinDir,
-          "node_modules",
-          "@anthropic-ai",
-          "claude-code",
-          "cli.js"
-        );
-        if (existsSync(jsPath)) {
-          return { claudePath: nodeExecutable, claudePrependArgs: [jsPath] };
-        }
+    // .cmd found (npm global install) - find the underlying JS entry point
+    const cmdPath = results[0];
+    if (cmdPath && existsSync(cmdPath)) {
+      const npmBinDir = path.dirname(cmdPath);
+      const jsPath = path.join(
+        npmBinDir,
+        "node_modules",
+        "@anthropic-ai",
+        "claude-code",
+        "cli.js"
+      );
+      if (existsSync(jsPath)) {
+        return { claudePath: nodeExecutable, claudePrependArgs: [jsPath] };
       }
-    } catch { /* where command failed */ }
+    }
 
     // Fallback: check APPDATA/npm (common npm global install location)
     const appData = process.env.APPDATA;
@@ -139,8 +129,14 @@ export function resolveClaude(nodeExecutable: string): {
       }
     }
 
-    // Last resort — hope claude.exe is findable by the OS
+    // Last resort - hope claude.exe is findable by the OS
     return { claudePath: "claude", claudePrependArgs: [] };
+  }
+
+  // Unix lookup
+  const found = findExecutable("which claude")[0];
+  if (found) {
+    return { claudePath: found, claudePrependArgs: [] };
   }
 
   // Unix fallback

@@ -23,6 +23,7 @@ export interface TemplatePhase {
     artifacts?: string[]
   }
   unblocksTier?: DependencyTier | null
+  blocksOnUnsatisfiedTiers?: DependencyTier[]
   workers?: TemplateWorker[]
   agents?: TemplateAgent[]
   ralphLoop?: RalphLoopConfig
