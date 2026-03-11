@@ -64,7 +64,30 @@ export async function restartToPhase(
     console.log(`[restart] Found active session ${activeSession.id} for lifecycle invalidation`);
   }
 
-  // 5. Delete data for affected phases
+  // 5. Build safe restart snapshot before any destructive cleanup begins.
+  const restartSnapshot = await sessionService.buildRestartSnapshotForLifecycleRestart({
+    projectId,
+    ticketId,
+    currentPhase: ticket.phase,
+    targetPhase,
+    executionGeneration: ticket.executionGeneration ?? 0,
+    conversationId: ticket.conversationId,
+  });
+
+  // 6. Apply lifecycle invalidation first (phase update + generation bump + spawn_pending marker)
+  const lifecycle = await sessionService.invalidateTicketLifecycle(
+    projectId,
+    ticketId,
+    {
+      targetPhase,
+      expectedPhase: ticket.phase,
+      expectedGeneration: ticket.executionGeneration ?? 0,
+      restartSnapshot: restartSnapshot ?? undefined,
+    },
+  );
+  const updatedTicket = lifecycle.ticket;
+
+  // 7. Delete data for affected phases (after snapshot + lifecycle marker are in place)
   const sessionsDeleted = deleteSessionsForPhases(ticketId, phasesToReset);
   const tasksDeleted = deleteTasksForPhases(ticketId, phasesToReset);
   const feedbackDeleted = deleteRalphFeedbackForPhases(ticketId, phasesToReset);
@@ -73,7 +96,7 @@ export async function restartToPhase(
 
   console.log(`[restart] Deleted: ${sessionsDeleted} sessions, ${tasksDeleted} tasks, ${feedbackDeleted} feedback, ${artifactsDeleted} artifacts, ${historyEntriesDeleted} history entries`);
 
-  // 6. Get project and handle worktree/branch
+  // 8. Get project and handle worktree/branch
   const project = getProjectById(projectId);
   let worktreeRemoved = false;
   let branchRenamed: string | null = null;
@@ -97,19 +120,7 @@ export async function restartToPhase(
     }
   }
 
-  // 7. Apply lifecycle invalidation transaction (phase update + generation bump + spawn_pending marker)
-  const lifecycle = await sessionService.invalidateTicketLifecycle(
-    projectId,
-    ticketId,
-    {
-      targetPhase,
-      expectedPhase: ticket.phase,
-      expectedGeneration: ticket.executionGeneration ?? 0,
-    },
-  );
-  const updatedTicket = lifecycle.ticket;
-
-  // 8. Auto-spawn session if target phase has automation (workers defined)
+  // 9. Auto-spawn session if target phase has automation (workers defined)
   let sessionSpawned = false;
   if (project) {
     const phaseConfig = await getPhaseConfig(

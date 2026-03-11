@@ -32,7 +32,11 @@ import {
   getActiveSessionForTicket,
   getSessionsByTicket,
 } from "../../stores/session.store.js";
-import { getMessagesForContinuity } from "../../stores/conversation.store.js";
+import { getMessages, getMessagesForContinuity } from "../../stores/conversation.store.js";
+import {
+  DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
+  getConfigStore,
+} from "../../stores/config.store.js";
 import {
   readResponse,
   readQuestion,
@@ -80,6 +84,7 @@ import {
   type ContinuityPacketLimits,
   type ContinuityPacketFilter,
 } from "./continuity-context.service.js";
+import { buildRestartSnapshot } from "./continuity-snapshot.service.js";
 
 export class TicketLifecycleConflictError extends Error {
   readonly code = "TICKET_LIFECYCLE_CONFLICT";
@@ -141,6 +146,15 @@ interface BuildContinuityPacketForTicketInput {
   limits: ContinuityPacketLimits;
   reasonForRestart?: string;
   scope: ContinuityPacket["scope"];
+}
+
+interface BuildRestartSnapshotInput {
+  projectId: string;
+  ticketId: string;
+  currentPhase: string;
+  targetPhase: string;
+  executionGeneration: number;
+  conversationId?: string;
 }
 
 export class SessionService {
@@ -518,6 +532,44 @@ export class SessionService {
       limits: input.limits,
       conversationMessages,
       transcriptHighlights,
+    });
+  }
+
+  async buildRestartSnapshotForLifecycleRestart(
+    input: BuildRestartSnapshotInput,
+  ): Promise<ContinuityPacket | null> {
+    const daemonConfig = getConfigStore().getDaemonConfig();
+    const lifecycleContinuity = daemonConfig?.lifecycleContinuity ?? {};
+    const limits: ContinuityPacketLimits = {
+      maxConversationTurns:
+        lifecycleContinuity.maxConversationTurns ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxConversationTurns,
+      // Restart snapshots are safe user context only; transcript events are excluded.
+      maxSessionEvents: 1,
+      maxCharsPerItem:
+        lifecycleContinuity.maxCharsPerItem ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxCharsPerItem,
+      maxPromptChars:
+        lifecycleContinuity.maxPromptChars ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxPromptChars,
+    };
+
+    const conversationMessages = input.conversationId
+      ? getMessages(input.conversationId)
+      : [];
+    const pendingQuestion = await readQuestion(input.projectId, input.ticketId);
+    const pendingResponse = await readResponse(input.projectId, input.ticketId);
+
+    return buildRestartSnapshot({
+      projectId: input.projectId,
+      ticketId: input.ticketId,
+      currentPhase: input.currentPhase,
+      targetPhase: input.targetPhase,
+      executionGeneration: input.executionGeneration,
+      conversationMessages,
+      pendingQuestion,
+      pendingResponse,
+      limits,
     });
   }
 
