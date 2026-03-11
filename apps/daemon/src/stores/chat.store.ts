@@ -143,6 +143,14 @@ export async function clearResponse(
   }
 }
 
+export async function clearPendingInteraction(
+  projectId: string,
+  contextId: string,
+): Promise<void> {
+  await clearQuestion(projectId, contextId);
+  await clearResponse(projectId, contextId);
+}
+
 /**
  * Wait for a response to be written for the given context.
  *

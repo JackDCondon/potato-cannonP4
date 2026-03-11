@@ -1,7 +1,10 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert";
 import { EventEmitter } from "events";
-import { SessionService } from "../session.service.js";
+import {
+  SessionService,
+  TicketLifecycleConflictError,
+} from "../session.service.js";
 
 /**
  * Tests for SessionService.terminateExistingSession
@@ -512,5 +515,16 @@ describe("SessionService.startRemoteControl", () => {
 
     // Restore
     (eventBus as any).emit = originalEmit;
+  });
+});
+
+describe("TicketLifecycleConflictError", () => {
+  it("exposes the lifecycle conflict contract fields", () => {
+    const error = new TicketLifecycleConflictError("Backlog", 11);
+    assert.strictEqual(error.code, "TICKET_LIFECYCLE_CONFLICT");
+    assert.strictEqual(error.retryable, true);
+    assert.strictEqual(error.currentPhase, "Backlog");
+    assert.strictEqual(error.currentGeneration, 11);
+    assert.strictEqual(error.name, "TicketLifecycleConflictError");
   });
 });

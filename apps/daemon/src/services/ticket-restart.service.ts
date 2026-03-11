@@ -1,5 +1,4 @@
-import { getDatabase } from "../stores/db.js";
-import { getTicket, getPhaseHistoryEntries, deleteHistoryEntries, clearWorkerState, deleteArtifactsForPhases } from "../stores/ticket.store.js";
+import { getTicket, getPhaseHistoryEntries, deleteHistoryEntries, deleteArtifactsForPhases } from "../stores/ticket.store.js";
 import { deleteSessionsForPhases, getActiveSessionForTicket } from "../stores/session.store.js";
 import { deleteTasksForPhases } from "../stores/task.store.js";
 import { deleteRalphFeedbackForPhases } from "../stores/ralph-feedback.store.js";
@@ -59,11 +58,10 @@ export async function restartToPhase(
   console.log(`[restart] Restarting ticket ${ticketId} to phase ${targetPhase}`);
   console.log(`[restart] Phases to reset: ${phasesToReset.join(', ')}`);
 
-  // 4. Stop any active sessions for this ticket
+  // 4. Capture active session status for diagnostics (actual close happens in lifecycle invalidation)
   const activeSession = getActiveSessionForTicket(ticketId);
   if (activeSession && sessionService.isActive(activeSession.id)) {
-    console.log(`[restart] Stopping active session ${activeSession.id}`);
-    await sessionService.stopSession(activeSession.id);
+    console.log(`[restart] Found active session ${activeSession.id} for lifecycle invalidation`);
   }
 
   // 5. Delete data for affected phases
@@ -75,10 +73,7 @@ export async function restartToPhase(
 
   console.log(`[restart] Deleted: ${sessionsDeleted} sessions, ${tasksDeleted} tasks, ${feedbackDeleted} feedback, ${artifactsDeleted} artifacts, ${historyEntriesDeleted} history entries`);
 
-  // 6. Clear worker state
-  clearWorkerState(ticketId);
-
-  // 7. Get project and handle worktree/branch
+  // 6. Get project and handle worktree/branch
   const project = getProjectById(projectId);
   let worktreeRemoved = false;
   let branchRenamed: string | null = null;
@@ -102,26 +97,19 @@ export async function restartToPhase(
     }
   }
 
-  // 8. Update ticket phase and create new history entry
-  const now = new Date().toISOString();
-  const db = getDatabase();
+  // 7. Apply lifecycle invalidation transaction (phase update + generation bump + spawn_pending marker)
+  const lifecycle = await sessionService.invalidateTicketLifecycle(
+    projectId,
+    ticketId,
+    {
+      targetPhase,
+      expectedPhase: ticket.phase,
+      expectedGeneration: ticket.executionGeneration ?? 0,
+    },
+  );
+  const updatedTicket = lifecycle.ticket;
 
-  // Create new history entry for target phase
-  const historyId = crypto.randomUUID();
-  db.prepare(
-    `INSERT INTO ticket_history (id, ticket_id, phase, entered_at)
-     VALUES (?, ?, ?, ?)`
-  ).run(historyId, ticketId, targetPhase, now);
-
-  // Update ticket phase and clear worker state
-  db.prepare(
-    `UPDATE tickets SET phase = ?, worker_state = NULL, updated_at = ? WHERE id = ?`
-  ).run(targetPhase, now, ticketId);
-
-  // 9. Get updated ticket
-  const updatedTicket = getTicket(projectId, ticketId)!;
-
-  // 10. Auto-spawn session if target phase has automation (workers defined)
+  // 8. Auto-spawn session if target phase has automation (workers defined)
   let sessionSpawned = false;
   if (project) {
     const phaseConfig = await getPhaseConfig(projectId, targetPhase);

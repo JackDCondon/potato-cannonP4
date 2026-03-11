@@ -32,8 +32,9 @@ import { readQuestion, writeResponse } from "../../stores/chat.store.js";
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
 import { getMessages } from "../../stores/conversation.store.js";
 import type { SessionService } from "../../services/session/index.js";
+import { TicketLifecycleConflictError } from "../../services/session/session.service.js";
 import type { Project } from "../../types/config.types.js";
-import type { TicketPhase } from "../../types/ticket.types.js";
+import type { Ticket, TicketPhase } from "../../types/ticket.types.js";
 import { resolveTargetPhase, getPhaseConfig } from "../../services/session/phase-config.js";
 import type { TemplatePhase } from "@potato-cannon/shared";
 
@@ -65,6 +66,32 @@ async function resolveTemplatePhases(
   const phases = (template?.phases as TemplatePhase[] | undefined) ?? null;
   cache?.set(cacheKey, phases);
   return phases;
+}
+
+export function mapLifecycleConflict(error: unknown): {
+  status: 409;
+  body: {
+    code: "TICKET_LIFECYCLE_CONFLICT";
+    message: string;
+    currentPhase: string;
+    currentGeneration: number;
+    retryable: true;
+  };
+} | null {
+  if (!(error instanceof TicketLifecycleConflictError)) {
+    return null;
+  }
+
+  return {
+    status: 409,
+    body: {
+      code: "TICKET_LIFECYCLE_CONFLICT",
+      message: error.message,
+      currentPhase: error.currentPhase,
+      currentGeneration: error.currentGeneration,
+      retryable: true,
+    },
+  };
 }
 
 export function registerTicketRoutes(
@@ -187,10 +214,36 @@ export function registerTicketRoutes(
         }
       }
 
-      let ticket = await updateTicket(projectId, ticketId, {
-        ...updates,
-        phase: resolvedPhase,
-      });
+      let ticket: Ticket;
+      let lifecycleResult:
+        | { ticket: Awaited<ReturnType<typeof getTicket>>; executionGeneration: number }
+        | null = null;
+      if (resolvedPhase && resolvedPhase !== oldPhase) {
+        try {
+          lifecycleResult = await sessionService.invalidateTicketLifecycle(
+            projectId,
+            ticketId,
+            {
+              targetPhase: resolvedPhase,
+              expectedPhase: oldPhase,
+              expectedGeneration: oldTicket.executionGeneration ?? 0,
+            },
+          );
+          ticket = lifecycleResult.ticket;
+        } catch (error) {
+          const conflict = mapLifecycleConflict(error);
+          if (conflict) {
+            res.status(conflict.status).json(conflict.body);
+            return;
+          }
+          throw error;
+        }
+      } else {
+        ticket = await updateTicket(projectId, ticketId, {
+          ...updates,
+          phase: resolvedPhase,
+        });
+      }
 
       if (resolvedPhase && resolvedPhase !== oldPhase && updates.overrideDependencies) {
         const phases = await resolveTemplatePhases(projectId, oldTicket.workflowId);
@@ -242,7 +295,9 @@ export function registerTicketRoutes(
               );
             } else {
               console.log(
-                `Ticket ${ticketId} moved to ${resolvedPhase}, spawning Claude...`,
+                `Ticket ${ticketId} moved to ${resolvedPhase}, spawning Claude (generation ${
+                  lifecycleResult?.executionGeneration ?? "unknown"
+                })...`,
               );
               sessionService
                 .spawnForTicket(
@@ -645,6 +700,11 @@ export function registerTicketRoutes(
 
         res.json(result);
       } catch (error) {
+        const conflict = mapLifecycleConflict(error);
+        if (conflict) {
+          res.status(conflict.status).json(conflict.body);
+          return;
+        }
         const message = (error as Error).message;
         if (message.includes("not found")) {
           res.status(404).json({ error: message });

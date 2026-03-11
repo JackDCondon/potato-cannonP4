@@ -18,6 +18,7 @@ import {
   listTicketImages,
   updateTicket,
 } from "../../stores/ticket.store.js";
+import { getDatabase } from "../../stores/db.js";
 import { getProjectById } from "../../stores/project.store.js";
 import { getBrainstorm } from "../../stores/brainstorm.store.js";
 import {
@@ -34,6 +35,7 @@ import {
   readQuestion,
   clearResponse,
   clearQuestion,
+  clearPendingInteraction,
   cancelWaitForResponse,
 } from "../../stores/chat.store.js";
 import type {
@@ -63,7 +65,31 @@ import {
 } from "./worker-executor.js";
 import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
+import { createSpawnPendingWorkerState } from "./worker-state.js";
 
+export class TicketLifecycleConflictError extends Error {
+  readonly code = "TICKET_LIFECYCLE_CONFLICT";
+  readonly retryable = true;
+
+  constructor(
+    public readonly currentPhase: string,
+    public readonly currentGeneration: number,
+  ) {
+    super("Ticket lifecycle changed concurrently");
+    this.name = "TicketLifecycleConflictError";
+  }
+}
+
+interface InvalidateTicketLifecycleOptions {
+  targetPhase: TicketPhase;
+  expectedPhase?: TicketPhase;
+  expectedGeneration?: number;
+}
+
+interface InvalidateTicketLifecycleResult {
+  ticket: Awaited<ReturnType<typeof getTicket>>;
+  executionGeneration: number;
+}
 
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
@@ -80,6 +106,117 @@ export class SessionService {
 
   getSessionLogPath(sessionId: string): string {
     return path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  }
+
+  async invalidateTicketLifecycle(
+    projectId: string,
+    ticketId: string,
+    options: InvalidateTicketLifecycleOptions,
+  ): Promise<InvalidateTicketLifecycleResult> {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+
+    const run = db.transaction(() => {
+      const current = db
+        .prepare(
+          `SELECT phase, execution_generation
+           FROM tickets
+           WHERE id = ? AND project_id = ?`
+        )
+        .get(ticketId, projectId) as
+        | { phase: string; execution_generation: number }
+        | undefined;
+
+      if (!current) {
+        throw new Error(`Ticket ${ticketId} not found`);
+      }
+
+      if (
+        (options.expectedPhase !== undefined &&
+          current.phase !== options.expectedPhase) ||
+        (options.expectedGeneration !== undefined &&
+          current.execution_generation !== options.expectedGeneration)
+      ) {
+        throw new TicketLifecycleConflictError(
+          current.phase,
+          current.execution_generation,
+        );
+      }
+
+      const newGeneration = current.execution_generation + 1;
+      const workerState = createSpawnPendingWorkerState(
+        options.targetPhase,
+        newGeneration,
+      );
+
+      const result = db
+        .prepare(
+          `UPDATE tickets
+           SET phase = ?, execution_generation = ?, worker_state = ?, updated_at = ?
+           WHERE id = ? AND project_id = ? AND phase = ? AND execution_generation = ?`
+        )
+        .run(
+          options.targetPhase,
+          newGeneration,
+          JSON.stringify(workerState),
+          now,
+          ticketId,
+          projectId,
+          current.phase,
+          current.execution_generation,
+        );
+
+      if (result.changes === 0) {
+        const refreshed = db
+          .prepare(
+            `SELECT phase, execution_generation
+             FROM tickets
+             WHERE id = ? AND project_id = ?`
+          )
+          .get(ticketId, projectId) as
+          | { phase: string; execution_generation: number }
+          | undefined;
+
+        throw new TicketLifecycleConflictError(
+          refreshed?.phase ?? current.phase,
+          refreshed?.execution_generation ?? current.execution_generation,
+        );
+      }
+
+      db.prepare(
+        `UPDATE ticket_history
+         SET exited_at = ?
+         WHERE ticket_id = ? AND exited_at IS NULL`
+      ).run(now, ticketId);
+
+      db.prepare(
+        `INSERT INTO ticket_history (id, ticket_id, phase, entered_at)
+         VALUES (?, ?, ?, ?)`
+      ).run(crypto.randomUUID(), ticketId, options.targetPhase, now);
+
+      db.prepare(
+        `UPDATE sessions
+         SET ended_at = ?, exit_code = -1
+         WHERE ticket_id = ? AND ended_at IS NULL`
+      ).run(now, ticketId);
+
+      return newGeneration;
+    });
+
+    const executionGeneration = run();
+
+    cancelWaitForResponse(ticketId);
+    await clearPendingInteraction(projectId, ticketId);
+    await this.terminateExistingSession("ticket", ticketId, {
+      skipDatabaseClose: true,
+    });
+
+    const ticket = await getTicket(projectId, ticketId);
+
+    return {
+      ticket,
+      executionGeneration,
+    };
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -622,7 +759,8 @@ export class SessionService {
    */
   private async terminateExistingSession(
     contextType: 'brainstorm' | 'ticket',
-    contextId: string
+    contextId: string,
+    options: { skipDatabaseClose?: boolean } = {},
   ): Promise<void> {
     // Query for active session using existing store functions
     const activeSession = contextType === 'brainstorm'
@@ -648,7 +786,9 @@ export class SessionService {
     }
 
     // Step 3: Mark session as ended in database (releases the "lock")
-    endStoredSession(activeSession.id, -1); // -1 indicates forced termination
+    if (!options.skipDatabaseClose) {
+      endStoredSession(activeSession.id, -1); // -1 indicates forced termination
+    }
 
     // Brief delay to allow cleanup
     await new Promise(resolve => setTimeout(resolve, 50));

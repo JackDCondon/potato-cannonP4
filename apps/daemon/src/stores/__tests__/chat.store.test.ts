@@ -20,7 +20,13 @@ const TEST_DIR = path.join(os.tmpdir(), `potato-chat-test-${Date.now()}`);
 
 describe("chat.store cancellation", () => {
   const projectId = "test-project";
-  const contextId = "brain_test123";
+  const contextsToCleanup: string[] = [];
+
+  function createContextId(): string {
+    const contextId = `brain_test_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    contextsToCleanup.push(contextId);
+    return contextId;
+  }
 
   before(async () => {
     // Create test directory
@@ -36,23 +42,16 @@ describe("chat.store cancellation", () => {
     }
   });
 
-  beforeEach(async () => {
-    // Clean up any existing test files for this context
-    const safeProject = projectId.replace(/\//g, "__");
-    const brainstormsDir = path.join(os.homedir(), ".potato-cannon", "brainstorms");
-    const basePath = path.join(brainstormsDir, safeProject, contextId);
-    try {
-      await fs.rm(basePath, { recursive: true, force: true });
-    } catch {
-      // Ignore if doesn't exist
+  afterEach(async () => {
+    for (const contextId of contextsToCleanup.splice(0)) {
+      cancelWaitForResponse(contextId);
+      await clearQuestion(projectId, contextId);
+      await clearResponse(projectId, contextId);
     }
   });
 
-  afterEach(() => {
-    cancelWaitForResponse(contextId);
-  });
-
   it("should cancel waitForResponse when abort signal is triggered", async () => {
+    const contextId = createContextId();
     const controller = createWaitController(contextId);
 
     const waitPromise = waitForResponse(projectId, contextId, 10000, controller.signal);
@@ -69,6 +68,7 @@ describe("chat.store cancellation", () => {
   });
 
   it("should replace existing controller when creating a new one", () => {
+    const contextId = createContextId();
     const controller1 = createWaitController(contextId);
     const controller2 = createWaitController(contextId);
 
@@ -78,6 +78,7 @@ describe("chat.store cancellation", () => {
   });
 
   it("should return response when not cancelled", async () => {
+    const contextId = createContextId();
     const controller = createWaitController(contextId);
 
     // Write response after 100ms
@@ -90,6 +91,7 @@ describe("chat.store cancellation", () => {
   });
 
   it("should work without providing a signal (backwards compatibility)", async () => {
+    const contextId = createContextId();
     // Write response after 100ms
     setTimeout(async () => {
       await writeResponse(projectId, contextId, { answer: "backwards compat" });
