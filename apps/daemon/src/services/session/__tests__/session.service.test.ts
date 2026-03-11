@@ -4,6 +4,7 @@ import { EventEmitter } from "events";
 import {
   SessionService,
   TicketLifecycleConflictError,
+  StaleTicketInputError,
 } from "../session.service.js";
 
 /**
@@ -526,5 +527,24 @@ describe("TicketLifecycleConflictError", () => {
     assert.strictEqual(error.currentPhase, "Backlog");
     assert.strictEqual(error.currentGeneration, 11);
     assert.strictEqual(error.name, "TicketLifecycleConflictError");
+  });
+});
+
+describe("StaleTicketInputError", () => {
+  it("exposes the stale input contract fields", () => {
+    const error = new StaleTicketInputError(
+      "Ticket input no longer matches the active lifecycle",
+      9,
+      7,
+      "q-1",
+      "q-2",
+    );
+    assert.strictEqual(error.code, "STALE_TICKET_INPUT");
+    assert.strictEqual(error.retryable, false);
+    assert.strictEqual(error.currentGeneration, 9);
+    assert.strictEqual(error.providedGeneration, 7);
+    assert.strictEqual(error.expectedQuestionId, "q-1");
+    assert.strictEqual(error.providedQuestionId, "q-2");
+    assert.strictEqual(error.name, "StaleTicketInputError");
   });
 });

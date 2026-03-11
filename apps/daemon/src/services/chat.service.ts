@@ -14,6 +14,7 @@ import {
 import {
   writeQuestion,
   readResponse,
+  readQuestion,
   clearQuestion,
   clearResponse,
   waitForResponse,
@@ -92,6 +93,7 @@ export class ChatService {
     const contextKey = this.getContextKey(context);
     const contextId = this.getContextId(context);
     const now = new Date().toISOString();
+    const ticketGeneration = this.getTicketGeneration(context);
 
     // Create abort controller for this wait - allows session termination to cancel
     const controller = createWaitController(contextId);
@@ -133,10 +135,13 @@ export class ChatService {
     // Write pending question for MCP sync (allows web UI to poll)
     await writeQuestion(context.projectId, contextId, {
       conversationId: questionMessageId || this.generateConversationId(),
+      questionId: questionMessageId,
       question,
       options: options || null,
       askedAt: now,
       phase,
+      ticketGeneration,
+      phaseAtAsk: phase,
     });
 
     // Log the question being sent
@@ -249,6 +254,7 @@ export class ChatService {
     const contextKey = this.getContextKey(context);
     const contextId = this.getContextId(context);
     const now = new Date().toISOString();
+    const ticketGeneration = this.getTicketGeneration(context);
 
     // Store options for potential number-to-option mapping on response
     if (options && options.length > 0) {
@@ -273,10 +279,13 @@ export class ChatService {
     // Write pending question for IPC (allows session respawn to inject response)
     await writeQuestion(context.projectId, contextId, {
       conversationId: questionMessageId || this.generateConversationId(),
+      questionId: questionMessageId || undefined,
       question,
       options: options || null,
       askedAt: now,
       phase,
+      ticketGeneration,
+      phaseAtAsk: phase,
     });
 
     // Log the question
@@ -393,8 +402,14 @@ export class ChatService {
     }
 
     // Write response
+    const pendingQuestion = await readQuestion(
+      context.projectId,
+      this.getContextId(context),
+    );
     await writeResponse(context.projectId, this.getContextId(context), {
       answer,
+      questionId: pendingQuestion?.questionId,
+      ticketGeneration: pendingQuestion?.ticketGeneration,
     });
 
     // All contexts use async askAsync flow — save user message to conversation store here.
@@ -520,6 +535,22 @@ export class ChatService {
     }
 
     return null;
+  }
+
+  private getTicketGeneration(context: ChatContext): number | undefined {
+    if (!context.ticketId) return undefined;
+    const db = getDatabase();
+    const row = db
+      .prepare(
+        "SELECT execution_generation FROM tickets WHERE project_id = ? AND id = ?",
+      )
+      .get(context.projectId, context.ticketId) as
+      | { execution_generation: number | null }
+      | undefined;
+    if (!row || row.execution_generation === null) {
+      return undefined;
+    }
+    return row.execution_generation;
   }
 
   /**

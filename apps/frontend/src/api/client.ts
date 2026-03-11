@@ -28,12 +28,65 @@ import type {
   UpdateWorkflowInput,
   DependencyTier,
   TicketDependency,
-  BlockedByEntry
+  BlockedByEntry,
+  TicketLifecycleConflictPayload,
+  StaleTicketInputPayload,
+  TicketLifecycleErrorPayload,
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
 
 const BASE_URL = ''
+
+type ApiErrorPayload = {
+  message?: string
+  error?: string
+  code?: string
+  [key: string]: unknown
+}
+
+export class ApiError extends Error {
+  status: number
+  code?: string
+  payload: ApiErrorPayload | null
+
+  constructor(status: number, message: string, code?: string, payload: ApiErrorPayload | null = null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+    this.payload = payload
+  }
+}
+
+export function isTicketLifecycleConflictPayload(
+  payload: unknown
+): payload is TicketLifecycleConflictPayload {
+  return (
+    !!payload &&
+    typeof payload === 'object' &&
+    (payload as { code?: string }).code === 'TICKET_LIFECYCLE_CONFLICT'
+  )
+}
+
+export function isStaleTicketInputPayload(
+  payload: unknown
+): payload is StaleTicketInputPayload {
+  return (
+    !!payload &&
+    typeof payload === 'object' &&
+    (payload as { code?: string }).code === 'STALE_TICKET_INPUT'
+  )
+}
+
+export function isTicketLifecycleErrorPayload(
+  payload: unknown
+): payload is TicketLifecycleErrorPayload {
+  return (
+    isTicketLifecycleConflictPayload(payload) ||
+    isStaleTicketInputPayload(payload)
+  )
+}
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${url}`, {
@@ -45,8 +98,17 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Request failed' }))
-    throw new Error(error.message || error.error || 'Request failed')
+    const bodyText = await response.text()
+    let payload: ApiErrorPayload | null = null
+    if (bodyText) {
+      try {
+        payload = JSON.parse(bodyText) as ApiErrorPayload
+      } catch {
+        payload = { error: bodyText }
+      }
+    }
+    const message = payload?.message || payload?.error || `Request failed (${response.status})`
+    throw new ApiError(response.status, message, payload?.code, payload)
   }
 
   // Handle empty responses (e.g., DELETE returning void)
@@ -229,10 +291,21 @@ export const api = {
   getTicketPending: (projectId: string, ticketId: string) =>
     request<TicketPendingResponse>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/pending`),
 
-  sendTicketInput: (projectId: string, ticketId: string, message: string) =>
+  sendTicketInput: (
+    projectId: string,
+    ticketId: string,
+    message: string,
+    identity?: { questionId?: string; ticketGeneration?: number }
+  ) =>
     request<void>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/input`, {
       method: 'POST',
-      body: JSON.stringify({ message })
+      body: JSON.stringify({
+        message,
+        ...(identity?.questionId ? { questionId: identity.questionId } : {}),
+        ...(typeof identity?.ticketGeneration === 'number'
+          ? { ticketGeneration: identity.ticketGeneration }
+          : {}),
+      })
     }),
 
   getTicketTasks: (projectId: string, ticketId: string, phase?: string) =>

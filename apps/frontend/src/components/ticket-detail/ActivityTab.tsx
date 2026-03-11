@@ -14,6 +14,11 @@ import { ViewSessionButton } from './ViewSessionButton'
 import type { Artifact, TicketHistoryEntry } from '@potato-cannon/shared'
 import { useSessionOutput, useTicketMessage, useSessionEnded } from '@/hooks/useSSE'
 import { useAppStore } from '@/stores/appStore'
+import {
+  ApiError,
+  isStaleTicketInputPayload,
+  isTicketLifecycleConflictPayload,
+} from '@/api/client'
 
 interface ActivityTabProps {
   projectId: string
@@ -34,6 +39,16 @@ interface ChatMessage {
     filename: string
     description?: string
   }
+}
+
+function buildLifecycleErrorText(error: ApiError): string {
+  if (isTicketLifecycleConflictPayload(error.payload)) {
+    return `Ticket changed while your action was processing. It is now in ${error.payload.currentPhase}. Please retry.`
+  }
+  if (isStaleTicketInputPayload(error.payload)) {
+    return 'Your reply is no longer valid for the current ticket state. Please respond to the latest question.'
+  }
+  return error.message || 'Failed to send message'
 }
 
 export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, currentPhase: propPhase, history, archived }: ActivityTabProps) {
@@ -64,15 +79,23 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
     },
   })
 
+  const { data: pendingState } = useQuery({
+    queryKey: ['ticket-pending', projectId, ticketId],
+    queryFn: () => api.getTicketPending(projectId, ticketId),
+  })
+
   // Derive pending options from last message
   const pendingOptions = useMemo(() => {
+    if (pendingState?.question?.options?.length) {
+      return pendingState.question.options
+    }
     if (!messages.length) return []
     const lastMessage = messages[messages.length - 1]
     if (lastMessage.type === 'question' && lastMessage.options) {
       return lastMessage.options
     }
     return []
-  }, [messages])
+  }, [messages, pendingState])
 
   // Subscribe to session output for streaming activity
   useSessionOutput(useCallback((data: { ticketId?: string; event?: { type?: string; message?: { content?: Array<{ type?: string; name?: string; input?: Record<string, unknown>; text?: string }> } } }) => {
@@ -187,9 +210,11 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
     setIsSubmitting(true)
 
     // Optimistically add user message
+    const optimisticConversationId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const optimisticMessage: ChatMessage = {
       type: 'user',
       text: messageText,
+      conversationId: optimisticConversationId,
       timestamp: new Date().toISOString()
     }
     queryClient.setQueryData<ChatMessage[]>(
@@ -198,13 +223,36 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
     )
 
     try {
-      await api.sendTicketInput(projectId, ticketId, messageText)
+      await api.sendTicketInput(projectId, ticketId, messageText, {
+        questionId: pendingState?.question?.questionId,
+        ticketGeneration: pendingState?.question?.ticketGeneration,
+      })
       setIsWaitingForResponse(true)
     } catch (error) {
+      const isLifecycleConflict =
+        error instanceof ApiError &&
+        (isTicketLifecycleConflictPayload(error.payload) ||
+          isStaleTicketInputPayload(error.payload))
+
+      if (isLifecycleConflict) {
+        queryClient.setQueryData<ChatMessage[]>(
+          ['ticket-messages', projectId, ticketId],
+          (old) => (old || []).filter((msg) => msg.conversationId !== optimisticConversationId)
+        )
+        queryClient.refetchQueries({ queryKey: ['ticket', projectId, ticketId] })
+        queryClient.refetchQueries({ queryKey: ['tickets', projectId] })
+        queryClient.refetchQueries({ queryKey: ['ticket-pending', projectId, ticketId] })
+      }
+
       // Add error message
       const errorMessage: ChatMessage = {
         type: 'error',
-        text: error instanceof Error ? error.message : 'Failed to send message'
+        text:
+          error instanceof ApiError
+            ? buildLifecycleErrorText(error)
+            : error instanceof Error
+              ? error.message
+              : 'Failed to send message'
       }
       queryClient.setQueryData<ChatMessage[]>(
         ['ticket-messages', projectId, ticketId],
@@ -214,7 +262,7 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
       setIsSubmitting(false)
       textareaRef.current?.focus()
     }
-  }, [projectId, ticketId, isSubmitting, queryClient])
+  }, [projectId, ticketId, isSubmitting, pendingState, queryClient])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

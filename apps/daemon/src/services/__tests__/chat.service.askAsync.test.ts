@@ -33,6 +33,7 @@ mock.module("../../stores/chat.store.js", {
     },
     writeResponse: async () => {},
     readResponse: async () => null,
+    readQuestion: async () => null,
     clearQuestion: async () => {},
     clearResponse: async () => {},
     waitForResponse: async () => "mocked response",

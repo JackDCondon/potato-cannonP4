@@ -63,11 +63,25 @@ import {
   getActiveSessionForBrainstorm,
   endAllOpenSessions,
 } from "../stores/session.store.js";
-import { scanPendingResponses, clearQuestion, clearResponse, readQuestion, getPendingQuestionsByProject } from "../stores/chat.store.js";
+import {
+  scanPendingResponses,
+  clearQuestion,
+  clearResponse,
+  clearPendingInteraction,
+  readQuestion,
+  readResponse,
+  getPendingQuestionsByProject,
+} from "../stores/chat.store.js";
 import { artifactChatStore } from "../stores/artifact-chat.store.js";
 import { SESSIONS_DIR, LOCK_FILE, PID_FILE, TASKS_DIR } from "../config/paths.js";
 import type { GlobalConfig, Project } from "../types/config.types.js";
-import { getWorkerState, clearWorkerState } from "../services/session/worker-state.js";
+import {
+  getWorkerState,
+  clearWorkerState,
+  hasMatchingExecutionGeneration,
+  isActiveWorkerStateRoot,
+  isSpawnPendingWorkerStateRoot,
+} from "../services/session/worker-state.js";
 import { getPhaseConfig } from "../services/session/phase-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -78,6 +92,10 @@ let sessionService: SessionService | null = null;
 let telegramProvider: TelegramProvider | null = null;
 let telegramMode = "none";
 let slackProvider: SlackProvider | null = null;
+let lifecycleHardeningFlags = {
+  strictStaleDrop: false,
+  strictStaleResume409: false,
+};
 
 /**
  * Acquire an exclusive lock to ensure only one daemon runs at a time.
@@ -111,10 +129,27 @@ async function loadConfig(): Promise<GlobalConfig> {
     await ensureGlobalDir();
     globalConfig = {
       telegram: { botToken: "", userId: "", mode: "auto" },
-      daemon: { port: DEFAULT_PORT },
+      daemon: {
+        port: DEFAULT_PORT,
+        lifecycleHardening: {
+          strictStaleDrop: false,
+          strictStaleResume409: false,
+        },
+      },
     };
     await saveGlobalConfig(globalConfig);
   }
+  lifecycleHardeningFlags = {
+    strictStaleDrop:
+      globalConfig.daemon.lifecycleHardening?.strictStaleDrop ?? false,
+    strictStaleResume409:
+      globalConfig.daemon.lifecycleHardening?.strictStaleResume409 ?? false,
+  };
+  process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP = lifecycleHardeningFlags.strictStaleDrop
+    ? "true"
+    : "false";
+  process.env.POTATO_LIFECYCLE_STRICT_STALE_RESUME_409 =
+    lifecycleHardeningFlags.strictStaleResume409 ? "true" : "false";
   return globalConfig;
 }
 
@@ -225,23 +260,62 @@ async function recoverPendingResponses(): Promise<void> {
           console.log(
             `[recovery] Ticket ${item.contextId} is in terminal phase ${ticket.phase}, cleaning up stale pending files`,
           );
-          await clearQuestion(item.projectId, item.contextId);
-          await clearResponse(item.projectId, item.contextId);
+          await clearPendingInteraction(item.projectId, item.contextId);
           continue;
         }
 
-        // Check if this was a suspended session (has both pending question and response)
-        if (item.question) {
+        const workerState = await getWorkerState(item.projectId, item.contextId);
+        const currentGeneration = ticket.executionGeneration ?? 0;
+        const providedGeneration = item.response.ticketGeneration;
+        const providedQuestionId = item.response.questionId;
+        const expectedQuestionId = item.question?.questionId;
+        const expectedGeneration = item.question?.ticketGeneration;
+
+        // Precedence 1: stale reject
+        const isStalePendingResponse =
+          typeof providedGeneration !== "number" ||
+          typeof providedQuestionId !== "string" ||
+          !item.question ||
+          typeof expectedQuestionId !== "string" ||
+          typeof expectedGeneration !== "number" ||
+          providedGeneration !== expectedGeneration ||
+          providedQuestionId !== expectedQuestionId ||
+          providedGeneration !== currentGeneration;
+
+        if (isStalePendingResponse && lifecycleHardeningFlags.strictStaleResume409) {
+          await clearPendingInteraction(item.projectId, item.contextId);
+          console.log(
+            `[recovery] Dropped stale ticket input for ${item.contextId} (current=${currentGeneration}, provided=${providedGeneration ?? "none"})`,
+          );
+          continue;
+        }
+        if (isStalePendingResponse) {
+          console.log(
+            `[recovery] Strict stale-resume enforcement disabled; allowing legacy recovery for ${item.contextId}`,
+          );
+        }
+
+        // Precedence 2: valid suspended resume
+        if (
+          item.question &&
+          typeof providedQuestionId === "string" &&
+          typeof providedGeneration === "number"
+        ) {
           // Suspended session — resume with --resume flag
           try {
             const newSessionId = await sessionService.resumeSuspendedTicket(
               item.projectId,
               item.contextId,
               item.response.answer,
+              {
+                questionId: providedQuestionId,
+                ticketGeneration: providedGeneration,
+              },
             );
             console.log(
               `[recovery] Resumed suspended session ${newSessionId} for ticket ${item.contextId}`,
             );
+            continue;
           } catch (err) {
             console.error(
               `[recovery] Failed to resume suspended ticket ${item.contextId}: ${(err as Error).message}`,
@@ -320,6 +394,12 @@ async function recoverInterruptedSessions(): Promise<void> {
 
     for (const ticketId of ticketDirs) {
       try {
+        // Pending responses are handled first by recoverPendingResponses.
+        const pendingResponse = await readResponse(projectId, ticketId);
+        if (pendingResponse) {
+          continue;
+        }
+
         // Check if ticket has worker state
         const workerState = await getWorkerState(projectId, ticketId);
         if (!workerState) continue;
@@ -344,6 +424,14 @@ async function recoverInterruptedSessions(): Promise<void> {
           continue;
         }
 
+        if (!hasMatchingExecutionGeneration(workerState, ticket.executionGeneration ?? 0)) {
+          console.log(
+            `[recovery] Ticket ${ticketId} worker state generation is stale, clearing`,
+          );
+          await clearWorkerState(projectId, ticketId);
+          continue;
+        }
+
         // Check if phase has workers (automation)
         const phaseConfig = await getPhaseConfig(projectId, ticket.phase);
         if (!phaseConfig?.workers || phaseConfig.workers.length === 0) {
@@ -357,6 +445,14 @@ async function recoverInterruptedSessions(): Promise<void> {
         // Check if ticket already has an active session
         if (getActiveSessionForTicket(ticketId)) {
           // Session might still be running or was already recovered
+          continue;
+        }
+
+        if (
+          !isActiveWorkerStateRoot(workerState) &&
+          !isSpawnPendingWorkerStateRoot(workerState)
+        ) {
+          await clearWorkerState(projectId, ticketId);
           continue;
         }
 
@@ -573,7 +669,7 @@ export async function main(): Promise<void> {
 
   // Register routes
   registerProjectRoutes(app, sessionService);
-  registerTicketRoutes(app, sessionService, getProjects);
+  registerTicketRoutes(app, sessionService, getProjects, () => lifecycleHardeningFlags);
   registerSessionRoutes(app, sessionService);
   registerBrainstormRoutes(app, sessionService, getProjects);
   registerTelegramRoutes(
@@ -678,11 +774,25 @@ export async function main(): Promise<void> {
                   const pendingQuestion = await readQuestion(context.projectId, context.ticketId);
 
                   if (pendingQuestion) {
+                    if (
+                      !pendingQuestion.questionId ||
+                      pendingQuestion.ticketGeneration === undefined
+                    ) {
+                      await clearPendingInteraction(context.projectId, context.ticketId);
+                      console.warn(
+                        `[Telegram] Dropped legacy pending question for ticket ${context.ticketId}`,
+                      );
+                      return handled;
+                    }
                     // Suspended session — resume with --resume flag
                     const newSessionId = await sessionService.resumeSuspendedTicket(
                       context.projectId,
                       context.ticketId,
                       answer,
+                      {
+                        questionId: pendingQuestion.questionId,
+                        ticketGeneration: pendingQuestion.ticketGeneration,
+                      },
                     );
                     console.log(
                       `[Telegram] Resumed suspended session ${newSessionId} for ticket ${context.ticketId}`,
@@ -777,10 +887,24 @@ export async function main(): Promise<void> {
                   const pendingQuestion = await readQuestion(context.projectId, context.ticketId);
 
                   if (pendingQuestion) {
+                    if (
+                      !pendingQuestion.questionId ||
+                      pendingQuestion.ticketGeneration === undefined
+                    ) {
+                      await clearPendingInteraction(context.projectId, context.ticketId);
+                      console.warn(
+                        `[Slack] Dropped legacy pending question for ticket ${context.ticketId}`,
+                      );
+                      return handled;
+                    }
                     const newSessionId = await sessionService.resumeSuspendedTicket(
                       context.projectId,
                       context.ticketId,
                       answer,
+                      {
+                        questionId: pendingQuestion.questionId,
+                        ticketGeneration: pendingQuestion.ticketGeneration,
+                      },
                     );
                     console.log(
                       `[Slack] Resumed suspended session ${newSessionId} for ticket ${context.ticketId}`,
@@ -828,11 +952,11 @@ export async function main(): Promise<void> {
       console.log(`[startup] Cleared ${staleSessions} stale session(s) from previous run`);
     }
 
+    // Recover pending responses first so ticket-input reconciliation happens before worker recovery.
+    await recoverPendingResponses();
+
     // Recover interrupted sessions (mid-execution with worker-state.json)
     await recoverInterruptedSessions();
-
-    // Recover any pending responses that need session resumption
-    await recoverPendingResponses();
   });
 
   process.on("SIGINT", shutdown);

@@ -48,8 +48,11 @@ Out of scope:
 - Modify: `apps/daemon/src/stores/migrations.ts`
 - Modify: `apps/daemon/src/stores/ticket.store.ts`
 - Modify: `apps/daemon/src/stores/session.store.ts`
+- Modify: `apps/daemon/src/types/session.types.ts`
+- Modify: `apps/daemon/src/services/session/types.ts`
 - Modify: `packages/shared/src/types/ticket.types.ts`
 - Modify: `packages/shared/src/types/session.types.ts`
+- Modify: `packages/shared/src/types/conversation.types.ts`
 - Test: `apps/daemon/src/stores/__tests__/migrations.test.ts` (or nearest migration test file)
 
 **Purpose:** Add durable, queryable generation data used for stale fencing.
@@ -71,6 +74,14 @@ Out of scope:
 - Ensure session create/read APIs always carry non-null generation when `ticket_id` is present for new rows.
 - Define legacy behavior explicitly:
   - `sessions.execution_generation IS NULL` is read as legacy-only and treated as stale for callback/recovery gating.
+- Thread generation through daemon callback surfaces:
+  - `CreateSessionInput`
+  - `StoredSession`
+  - `SessionMeta`
+  - in-memory `ActiveSession`
+- Ensure PTY exit callback has enough identity to enforce stale fencing deterministically:
+  - either pass `executionGeneration` directly
+  - or pass `sessionId` with required lookup contract
 
 ### Step 4: Run tests
 Run:
@@ -102,12 +113,19 @@ Expected:
   - legacy worker-state without generation is treated as stale/legacy-safe (cleared or re-init)
 
 ### Step 2: Implement model updates
-- Add `executionGeneration` to orchestration root state.
+- Replace ad-hoc root with discriminated union:
+  - `kind: "active"`
+  - `kind: "spawn_pending"`
+- Add `executionGeneration` to both root variants.
 - Initialize from ticket generation when phase starts.
 - Add strict parser/default handling for legacy state payloads with missing generation.
 
 ### Step 3: Add helper API
 - Add helper(s) to compare ticket generation and stored worker-state generation.
+- Add mandatory root-kind guards:
+  - `isActiveWorkerStateRoot`
+  - `isSpawnPendingWorkerStateRoot`
+- Enforce that generic executor traversal only accepts `kind: "active"`.
 
 ### Step 4: Run tests
 Run:
@@ -153,14 +171,16 @@ Expected:
     - write new phase
     - bump generation atomically
     - replace worker-state root with `executionGeneration`, `phaseId`, `pendingSpawn: true`, `spawnRequestedAt`
+    - logically close prior active ticket session row (if present)
   - non-DB idempotent side effects (outside transaction):
-    - terminate active session (`forceKilled` path)
     - cancel waits/pending chat state
     - clear pending question/response files
+    - terminate active PTY/process (`forceKilled` path)
   - return committed generation value and conflict status
 
 ### Step 3: Enforce transaction boundary
 - Ensure phase update + generation bump + invalidation writes execute in one DB transaction.
+- Ensure logical teardown side effects run before replacement spawn.
 - Ensure spawn is post-commit and uses committed generation.
 - On spawn failure, leave committed state intact with `pendingSpawn: true` and rely on recovery.
 - On successful session creation, clear `pendingSpawn`.
@@ -200,6 +220,10 @@ Expected:
 - Modify: `apps/daemon/src/server/server.ts`
 - Modify: `apps/daemon/src/server/routes/tickets.routes.ts`
 - Modify: `apps/daemon/src/stores/chat.store.ts`
+- Modify: `apps/daemon/src/providers/telegram/telegram.provider.ts` (if callback remains local)
+- Modify: `apps/daemon/src/providers/slack/slack.provider.ts` (if callback remains local)
+- Modify: `apps/daemon/src/types/session.types.ts`
+- Modify: `apps/daemon/src/services/session/types.ts`
 - Test: `apps/daemon/src/services/session/__tests__/session.service.test.ts`
 - Test: `apps/daemon/src/services/session/__tests__/worker-executor*.test.ts`
 - Test: `apps/daemon/src/server/__tests__/recovery*.test.ts` (or nearest)
@@ -219,6 +243,7 @@ Expected:
 - On agent completion and phase transitions, compare session generation against ticket generation.
 - If stale: no-op and log reason.
 - Explicitly no-op all side effects (task status, ralph feedback, ticket blocked/unblocked, worker-state writes, spawn triggers).
+- Ensure PTY exit handler passes generation/session identity into completion helper in a way that cannot be bypassed.
 
 ### Step 3: Implement stale fencing in recovery paths
 - In `recoverPendingResponses` and worker-state resume loops:
@@ -226,6 +251,16 @@ Expected:
   - require pending question/response generation + `questionId` pair match
   - process `pendingSpawn: true` before generic worker-state recovery
   - clear stale pending artifacts/state when needed
+- Add one shared ticket-response reconciliation helper and require all ticket entry points to call it:
+  - HTTP `/api/tickets/:project/:id/input`
+  - startup `recoverPendingResponses`
+  - Telegram response callback
+  - Slack response callback
+- Enforce one precedence order in that helper:
+  - stale mismatch reject/cleanup
+  - valid suspended resume
+  - `pendingSpawn` spawn/retry
+  - generic worker-state recovery
 
 ### Step 4: Harden resume endpoint behavior
 - In `/api/tickets/:project/:id/input` + `resumeSuspendedTicket`:
@@ -291,6 +326,7 @@ Expected:
 - Modify: `apps/frontend/src/components/ticket-detail/TicketDetailPanel.tsx`
 - Modify: `apps/frontend/src/hooks/queries.ts`
 - Modify: `apps/frontend/src/api/client.ts`
+- Modify: `packages/shared/src/types/conversation.types.ts` (if response/error envelope types are shared)
 - Test: `apps/frontend/src/components/ticket-detail/*.test.tsx`
 
 **Purpose:** Make cancellation/restart states understandable and reduce confusion during move/re-entry.
@@ -304,6 +340,13 @@ Expected:
 ### Step 2: Implement minimal UX updates
 - show clear message when a stale response is rejected due to phase/generation mismatch
 - ensure active-session indicators update quickly after move cancellation
+- implement typed 409 error transport in client layer:
+  - preserve `status`, `code`, `reason`, `currentPhase`, `currentGeneration`, `retryable`
+  - do not collapse lifecycle 409s into generic `Error(message)`
+- on `409` input submission:
+  - rollback optimistic user message
+  - refetch pending-question and ticket state
+  - show actionable conflict text ("ticket changed, retry")
 
 ### Step 3: Run tests
 Run:
@@ -322,6 +365,9 @@ Expected:
 **Files:**
 - Modify: `docs/plans/2026-03-11-ticket-session-lifecycle-hardening-design.md`
 - Modify: `docs/` operational runbook (choose existing path)
+- Modify: `apps/daemon/src/types/config.types.ts`
+- Modify: `apps/daemon/src/stores/config.store.ts`
+- Modify: `apps/daemon/src/server/server.ts` (config read path)
 - Test: daemon integration test suites
 
 **Purpose:** Reduce rollout risk with explicit scenario coverage and rollback strategy.
@@ -359,6 +405,12 @@ Expected:
 - define flags for:
   - strict stale callback drop enforcement
   - stale resume `409` enforcement
+- attach flags to existing daemon config surface (no second flag system):
+  - `GlobalConfig.daemon.lifecycleHardening.strictStaleDrop` (default `false`)
+  - `GlobalConfig.daemon.lifecycleHardening.strictStaleResume409` (default `false`)
+- define config load behavior:
+  - absent config => defaults above
+  - unknown keys ignored safely
 - document rollback steps and telemetry thresholds for disable/re-enable decisions
 
 ### Step 5: Commit

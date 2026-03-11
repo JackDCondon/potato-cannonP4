@@ -28,11 +28,18 @@ import {
 import { projectWorkflowGet } from "../../stores/project-workflow.store.js";
 import { getTemplateWithFullPhasesForProject, getWorkflowWithFullPhases } from "../../stores/template.store.js";
 import { DEFAULT_PHASES } from "../../types/index.js";
-import { readQuestion, writeResponse } from "../../stores/chat.store.js";
+import {
+  readQuestion,
+  writeResponse,
+  clearPendingInteraction,
+} from "../../stores/chat.store.js";
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
 import { getMessages } from "../../stores/conversation.store.js";
 import type { SessionService } from "../../services/session/index.js";
-import { TicketLifecycleConflictError } from "../../services/session/session.service.js";
+import {
+  TicketLifecycleConflictError,
+  StaleTicketInputError,
+} from "../../services/session/session.service.js";
 import type { Project } from "../../types/config.types.js";
 import type { Ticket, TicketPhase } from "../../types/ticket.types.js";
 import { resolveTargetPhase, getPhaseConfig } from "../../services/session/phase-config.js";
@@ -94,10 +101,46 @@ export function mapLifecycleConflict(error: unknown): {
   };
 }
 
+export function mapStaleTicketInput(error: unknown): {
+  status: 409;
+  body: {
+    code: "STALE_TICKET_INPUT";
+    message: string;
+    reason: string;
+    retryable: false;
+    currentGeneration: number;
+    providedGeneration?: number;
+    expectedQuestionId?: string;
+    providedQuestionId?: string;
+  };
+} | null {
+  if (!(error instanceof StaleTicketInputError)) {
+    return null;
+  }
+
+  return {
+    status: 409,
+    body: {
+      code: "STALE_TICKET_INPUT",
+      message: error.message,
+      reason: error.reason,
+      retryable: false,
+      currentGeneration: error.currentGeneration,
+      providedGeneration: error.providedGeneration,
+      expectedQuestionId: error.expectedQuestionId,
+      providedQuestionId: error.providedQuestionId,
+    },
+  };
+}
+
 export function registerTicketRoutes(
   app: Express,
   sessionService: SessionService,
   getProjects: () => Map<string, Project>,
+  getLifecycleFlags: () => {
+    strictStaleResume409: boolean;
+    strictStaleDrop: boolean;
+  } = () => ({ strictStaleResume409: true, strictStaleDrop: true }),
 ): void {
   // List tickets
   app.get("/api/tickets/:project", async (req: Request, res: Response) => {
@@ -590,14 +633,95 @@ export function registerTicketRoutes(
       try {
         const projectId = decodeURIComponent(req.params.project);
         const ticketId = req.params.id;
-        const { message } = req.body;
+        const { strictStaleResume409 } = getLifecycleFlags();
+        const { message, questionId, ticketGeneration } = req.body as {
+          message?: string;
+          questionId?: string;
+          ticketGeneration?: number;
+        };
 
         if (!message) {
           res.status(400).json({ error: "Missing message" });
           return;
         }
 
-        await writeResponse(projectId, ticketId, { answer: message });
+        const pendingQuestion = await readQuestion(projectId, ticketId);
+        const ticket = await getTicket(projectId, ticketId);
+        const currentGeneration = ticket.executionGeneration ?? 0;
+
+        if (
+          !pendingQuestion ||
+          !pendingQuestion.questionId ||
+          pendingQuestion.ticketGeneration === undefined
+        ) {
+          if (!strictStaleResume409) {
+            await writeResponse(projectId, ticketId, { answer: message });
+            res.json({ success: true });
+            return;
+          }
+          await clearPendingInteraction(projectId, ticketId);
+          const stale = mapStaleTicketInput(
+            new StaleTicketInputError(
+              "No pending lifecycle-aware question for this ticket",
+              currentGeneration,
+              ticketGeneration,
+              pendingQuestion?.questionId,
+              questionId,
+            ),
+          );
+          res.status(stale!.status).json(stale!.body);
+          return;
+        }
+
+        if (typeof questionId !== "string" || typeof ticketGeneration !== "number") {
+          if (!strictStaleResume409) {
+            await writeResponse(projectId, ticketId, { answer: message });
+            res.json({ success: true });
+            return;
+          }
+          await clearPendingInteraction(projectId, ticketId);
+          const stale = mapStaleTicketInput(
+            new StaleTicketInputError(
+              "Ticket input is missing question identity or generation",
+              currentGeneration,
+              ticketGeneration,
+              pendingQuestion.questionId,
+              questionId,
+            ),
+          );
+          res.status(stale!.status).json(stale!.body);
+          return;
+        }
+
+        if (
+          questionId !== pendingQuestion.questionId ||
+          ticketGeneration !== pendingQuestion.ticketGeneration ||
+          ticketGeneration !== currentGeneration
+        ) {
+          if (!strictStaleResume409) {
+            await writeResponse(projectId, ticketId, { answer: message });
+            res.json({ success: true });
+            return;
+          }
+          await clearPendingInteraction(projectId, ticketId);
+          const stale = mapStaleTicketInput(
+            new StaleTicketInputError(
+              "Ticket input no longer matches the active lifecycle",
+              currentGeneration,
+              ticketGeneration,
+              pendingQuestion.questionId,
+              questionId,
+            ),
+          );
+          res.status(stale!.status).json(stale!.body);
+          return;
+        }
+
+        await writeResponse(projectId, ticketId, {
+          answer: message,
+          questionId,
+          ticketGeneration,
+        });
 
         // Check if there's an active session for this ticket.
         // If not, this is a response to a suspended session — spawn a resumed session.
@@ -613,11 +737,20 @@ export function registerTicketRoutes(
                 projectId,
                 ticketId,
                 message,
+                {
+                  questionId,
+                  ticketGeneration,
+                },
               );
               console.log(`[input] Spawned resumed session ${newSessionId} for suspended ticket ${ticketId}`);
               res.json({ success: true, sessionId: newSessionId, resumed: true });
               return;
             } catch (err) {
+              const stale = mapStaleTicketInput(err);
+              if (stale) {
+                res.status(stale.status).json(stale.body);
+                return;
+              }
               console.error(`[input] Failed to resume suspended ticket: ${(err as Error).message}`);
               // Fall through — response is already written, blocking session may pick it up
             }

@@ -65,14 +65,19 @@ function getResponsePath(projectId: string, contextId: string): string {
 
 export interface PendingQuestion {
   conversationId: string;
+  questionId?: string;
   question: string;
   options: string[] | null;
   askedAt: string;
   phase?: string;
+  ticketGeneration?: number;
+  phaseAtAsk?: string;
 }
 
 export interface PendingResponse {
   answer: string;
+  questionId?: string;
+  ticketGeneration?: number;
 }
 
 export async function writeQuestion(

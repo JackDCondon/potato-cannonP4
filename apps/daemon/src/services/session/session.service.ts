@@ -50,6 +50,7 @@ import type { TaskContext } from "../../types/orchestration.types.js";
 import type {
   ActiveSession,
   RemoteControlState,
+  PhaseEntryContext,
 } from "./types.js";
 import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./phase-config.js";
 import { createVCSProvider } from "./vcs/factory.js";
@@ -80,6 +81,22 @@ export class TicketLifecycleConflictError extends Error {
   }
 }
 
+export class StaleTicketInputError extends Error {
+  readonly code = "STALE_TICKET_INPUT";
+  readonly retryable = false;
+
+  constructor(
+    public readonly reason: string,
+    public readonly currentGeneration: number,
+    public readonly providedGeneration?: number,
+    public readonly expectedQuestionId?: string,
+    public readonly providedQuestionId?: string,
+  ) {
+    super(reason);
+    this.name = "StaleTicketInputError";
+  }
+}
+
 interface InvalidateTicketLifecycleOptions {
   targetPhase: TicketPhase;
   expectedPhase?: TicketPhase;
@@ -89,6 +106,11 @@ interface InvalidateTicketLifecycleOptions {
 interface InvalidateTicketLifecycleResult {
   ticket: Awaited<ReturnType<typeof getTicket>>;
   executionGeneration: number;
+}
+
+interface ResumeTicketInputIdentity {
+  questionId: string;
+  ticketGeneration: number;
 }
 
 export class SessionService {
@@ -1040,7 +1062,8 @@ export class SessionService {
     projectPath: string,
     agentWorker: AgentWorker,
     taskContext?: TaskContext,
-    ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null }
+    ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null },
+    phaseEntryContext?: PhaseEntryContext,
   ): Promise<string> {
     console.log(`[spawnAgentWorker] Spawning ${agentWorker.source} for phase ${phase}`);
 
@@ -1102,7 +1125,8 @@ export class SessionService {
       agentWorker,
       images,
       undefined, // agentPrompt - we already have it
-      ralphContext
+      ralphContext,
+      phaseEntryContext,
     );
     prompt += `\n\n---\n\n${ticketContext}`;
 
@@ -1156,12 +1180,53 @@ export class SessionService {
     projectId: string,
     ticketId: string,
     userResponse: string,
+    identity: ResumeTicketInputIdentity,
   ): Promise<string> {
     console.log(`[resumeSuspendedTicket] Resuming suspended ticket ${ticketId}`);
 
     const ticket = await getTicket(projectId, ticketId);
+    const ticketGeneration = ticket.executionGeneration ?? 0;
     const project = getProjectById(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
+
+    const pendingQuestion = await readQuestion(projectId, ticketId);
+    if (!pendingQuestion) {
+      throw new StaleTicketInputError(
+        "No pending question to resume",
+        ticketGeneration,
+        identity.ticketGeneration,
+        undefined,
+        identity.questionId,
+      );
+    }
+
+    const expectedQuestionId = pendingQuestion.questionId;
+    const expectedGeneration = pendingQuestion.ticketGeneration;
+    if (!expectedQuestionId || expectedGeneration === undefined) {
+      await clearPendingInteraction(projectId, ticketId);
+      throw new StaleTicketInputError(
+        "Pending question is missing lifecycle identity",
+        ticketGeneration,
+        identity.ticketGeneration,
+        expectedQuestionId,
+        identity.questionId,
+      );
+    }
+
+    if (
+      identity.questionId !== expectedQuestionId ||
+      identity.ticketGeneration !== expectedGeneration ||
+      identity.ticketGeneration !== ticketGeneration
+    ) {
+      await clearPendingInteraction(projectId, ticketId);
+      throw new StaleTicketInputError(
+        "Ticket input no longer matches the active lifecycle",
+        ticketGeneration,
+        identity.ticketGeneration,
+        expectedQuestionId,
+        identity.questionId,
+      );
+    }
 
     // Safety: terminate any lingering session for this ticket
     await this.terminateExistingSession("ticket", ticketId);
@@ -1202,7 +1267,7 @@ export class SessionService {
     const storedSession = createStoredSession({
       projectId,
       ticketId,
-      executionGeneration: ticket.executionGeneration ?? 0,
+      executionGeneration: ticketGeneration,
       claudeSessionId,
       agentSource: "resume",
       phase: ticket.phase,
@@ -1229,7 +1294,7 @@ export class SessionService {
       projectId,
       ticketId,
       ticketTitle: ticket.title,
-      executionGeneration: ticket.executionGeneration ?? 0,
+      executionGeneration: ticketGeneration,
       phase: ticket.phase,
       worktreePath,
       branchName: workspaceLabel,

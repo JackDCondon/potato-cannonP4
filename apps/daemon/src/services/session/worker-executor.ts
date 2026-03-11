@@ -46,7 +46,7 @@ import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./p
 import { getTicket } from "../../stores/ticket.store.js";
 import { getProjectById } from "../../stores/project.store.js";
 import { readQuestion, clearQuestion } from "../../stores/chat.store.js";
-import { updateTaskStatus } from "../../stores/task.store.js";
+import { listTasks, updateTaskStatus } from "../../stores/task.store.js";
 import { logToDaemon } from "./ticket-logger.js";
 import {
   createRalphFeedback,
@@ -55,6 +55,7 @@ import {
   getRalphFeedbackForLoop,
 } from "../../stores/ralph-feedback.store.js";
 import type { SessionCallbackIdentity } from "./types.js";
+import type { PhaseEntryContext, PhaseEntryTaskSummary } from "./types.js";
 
 /**
  * Callbacks for spawning sessions and handling transitions
@@ -67,7 +68,8 @@ export interface ExecutorCallbacks {
     projectPath: string,
     agentWorker: AgentWorker,
     taskContext?: TaskContext,
-    ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null }
+    ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null },
+    phaseEntryContext?: PhaseEntryContext,
   ) => Promise<string>;
   onPhaseComplete: (
     projectId: string,
@@ -80,6 +82,34 @@ export interface ExecutorCallbacks {
     ticketId: string,
     reason: string
   ) => Promise<void>;
+}
+
+function buildPhaseEntryTaskSummary(
+  ticketId: string,
+  phase: TicketPhase,
+): PhaseEntryTaskSummary {
+  const phaseTasks = listTasks(ticketId, { phase });
+  const pendingCount = phaseTasks.filter((task) => task.status === "pending").length;
+  const inProgressCount = phaseTasks.filter((task) => task.status === "in_progress").length;
+  const failedCount = phaseTasks.filter((task) => task.status === "failed").length;
+  const completedCount = phaseTasks.filter((task) => task.status === "completed").length;
+  const cancelledCount = phaseTasks.filter((task) => task.status === "cancelled").length;
+  const actionableInPhase = pendingCount + inProgressCount + failedCount;
+
+  return {
+    totalInPhase: phaseTasks.length,
+    actionableInPhase,
+    pendingCount,
+    inProgressCount,
+    failedCount,
+    completedCount,
+    cancelledCount,
+    sampleTasks: phaseTasks.slice(0, 5).map((task) => ({
+      id: task.id,
+      description: task.description,
+      status: task.status,
+    })),
+  };
 }
 
 /**
@@ -379,8 +409,27 @@ async function executeNextWorker(
 
     // Get ralph context for feedback injection
     const ralphContext = getRalphContext(state, phase);
+    const isPhaseEntryWorker = state.workerIndex === 0 && !state.activeWorker;
+    const phaseEntrySummary = isPhaseEntryWorker
+      ? buildPhaseEntryTaskSummary(ticketId, phase)
+      : null;
+    const phaseEntryContext: PhaseEntryContext | undefined = phaseEntrySummary
+      ? {
+          mode: phaseEntrySummary.actionableInPhase > 0 ? "re_entry" : "fresh_entry",
+          taskSummary: phaseEntrySummary,
+        }
+      : undefined;
 
-    return callbacks.spawnAgent(projectId, ticketId, phase, projectPath, worker, taskContext, ralphContext);
+    return callbacks.spawnAgent(
+      projectId,
+      ticketId,
+      phase,
+      projectPath,
+      worker,
+      taskContext,
+      ralphContext,
+      phaseEntryContext,
+    );
   }
 
   if (isRalphLoopWorker(worker)) {
@@ -510,6 +559,36 @@ export async function handleAgentCompletion(
   callbacks: ExecutorCallbacks,
   callbackIdentity?: SessionCallbackIdentity,
 ): Promise<void> {
+  const strictStaleDrop =
+    process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP !== "false";
+  const currentTicket = getTicket(projectId, ticketId);
+  const ticketGeneration = currentTicket?.executionGeneration ?? 0;
+  const callbackGeneration = callbackIdentity?.executionGeneration;
+  const isStaleCallback =
+    callbackGeneration === undefined ||
+    callbackGeneration === null ||
+    callbackGeneration !== ticketGeneration;
+  if (isStaleCallback && strictStaleDrop) {
+    await logToDaemon(projectId, ticketId, `Dropping stale completion callback`, {
+      agentId,
+      callbackIdentity,
+      ticketGeneration,
+    });
+    return;
+  }
+  if (isStaleCallback) {
+    await logToDaemon(
+      projectId,
+      ticketId,
+      `Strict stale-drop disabled; allowing callback despite generation mismatch`,
+      {
+        agentId,
+        callbackIdentity,
+        ticketGeneration,
+      },
+    );
+  }
+
   const phaseConfig = await getPhaseConfig(projectId, phase);
   if (!phaseConfig) return;
 

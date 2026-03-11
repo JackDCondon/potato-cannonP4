@@ -139,6 +139,7 @@ await mock.module("../../../stores/chat.store.js", {
 
 await mock.module("../../../stores/task.store.js", {
   namedExports: {
+    listTasks: () => [],
     updateTaskStatus: () => {},
   },
 });

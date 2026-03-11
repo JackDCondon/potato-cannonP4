@@ -200,8 +200,23 @@ const DEFAULT_CONFIG: GlobalConfig = {
   },
   daemon: {
     port: 8443,
+    lifecycleHardening: {
+      strictStaleDrop: false,
+      strictStaleResume409: false,
+    },
   },
 };
+
+function normalizeDaemonConfig(config: GlobalConfig): void {
+  config.daemon = config.daemon || { port: 8443 };
+  config.daemon.lifecycleHardening = config.daemon.lifecycleHardening || {};
+  if (typeof config.daemon.lifecycleHardening.strictStaleDrop !== "boolean") {
+    config.daemon.lifecycleHardening.strictStaleDrop = false;
+  }
+  if (typeof config.daemon.lifecycleHardening.strictStaleResume409 !== "boolean") {
+    config.daemon.lifecycleHardening.strictStaleResume409 = false;
+  }
+}
 
 export async function ensureGlobalDir(): Promise<void> {
   await fs.mkdir(GLOBAL_DIR, { recursive: true });
@@ -226,6 +241,8 @@ export async function loadGlobalConfig(): Promise<GlobalConfig | null> {
       config.providers = config.providers || {};
       config.providers.slack = config.slack;
     }
+
+    normalizeDaemonConfig(config);
 
     return config;
   } catch {

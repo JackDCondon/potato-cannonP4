@@ -7,6 +7,26 @@ export interface SessionCallbackIdentity {
   executionGeneration?: number | null;
 }
 
+export interface PhaseEntryTaskSummary {
+  totalInPhase: number;
+  actionableInPhase: number;
+  pendingCount: number;
+  inProgressCount: number;
+  failedCount: number;
+  completedCount: number;
+  cancelledCount: number;
+  sampleTasks: Array<{
+    id: string;
+    description: string;
+    status: string;
+  }>;
+}
+
+export interface PhaseEntryContext {
+  mode: "fresh_entry" | "re_entry";
+  taskSummary: PhaseEntryTaskSummary;
+}
+
 export interface ActiveSession {
   process: IPty;
   meta: SessionMeta;

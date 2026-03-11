@@ -67,3 +67,26 @@ export interface ArtifactChatStartResponse {
   sessionId: string
   contextId: string
 }
+
+export interface TicketLifecycleConflictPayload {
+  code: 'TICKET_LIFECYCLE_CONFLICT'
+  message: string
+  currentPhase: string
+  currentGeneration: number
+  retryable: true
+}
+
+export interface StaleTicketInputPayload {
+  code: 'STALE_TICKET_INPUT'
+  message: string
+  reason?: string
+  currentGeneration: number
+  providedGeneration?: number
+  expectedQuestionId?: string
+  providedQuestionId?: string
+  retryable: false
+}
+
+export type TicketLifecycleErrorPayload =
+  | TicketLifecycleConflictPayload
+  | StaleTicketInputPayload

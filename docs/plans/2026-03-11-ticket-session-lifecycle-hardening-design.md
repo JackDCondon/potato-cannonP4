@@ -65,6 +65,10 @@ Relevant current code paths:
 - Worker 0 (task master / planner) always runs by policy.
 - It self-skips if durable task state indicates planning is already complete and actionable tasks exist.
 - No phase-specific bypass logic in orchestrator.
+- Executor passes a generic `phaseEntryContext` to entry workers:
+  - `mode: "fresh_entry" | "re_entry"`
+  - durable task summary for the phase (counts + sample task metadata)
+- Entry-worker prompts must consume this context and reconcile existing tasks before creating new planning artifacts.
 
 5. **Recovery and Resume Must Validate Current Intent**
 - Startup recovery only resumes if worker-state generation == ticket generation and phase still has automation.
@@ -206,7 +210,7 @@ Relevant current code paths:
 - phase mutation
 - generation bump
 - worker-state root replacement with `pendingSpawn`
- - logical close of prior active ticket session row (if present)
+- logical close of prior active ticket session row (if present)
 2. Non-DB actions are outside transaction and must be idempotent/retry-safe:
 - PTY/process termination
 - in-memory wait cancellation
@@ -275,6 +279,7 @@ Relevant current code paths:
 6. monitor logs/metrics for stale-drop counts, spawn churn, and `409` mismatch rates
 7. keep feature flags for strict stale-drop and stale-resume `409` until one release window passes cleanly
 8. monitor lifecycle conflict rate (`TICKET_LIFECYCLE_CONFLICT`) and retry success ratio
+9. follow operational controls in `docs/session-lifecycle-rollout-runbook.md`
 
 ## Open Questions
 

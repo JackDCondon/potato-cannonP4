@@ -4,6 +4,7 @@ import type {
   TicketPhase,
 } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
+import type { PhaseEntryContext } from "./types.js";
 import {
   getArtifactContent,
   listArtifacts,
@@ -129,6 +130,55 @@ function formatPreviousAttempts(
   return section;
 }
 
+function formatPhaseEntryContext(phaseEntryContext?: PhaseEntryContext): string {
+  if (!phaseEntryContext) {
+    return "";
+  }
+
+  const {
+    mode,
+    taskSummary: {
+      totalInPhase,
+      actionableInPhase,
+      pendingCount,
+      inProgressCount,
+      failedCount,
+      completedCount,
+      cancelledCount,
+      sampleTasks,
+    },
+  } = phaseEntryContext;
+
+  const sampleLines = sampleTasks.length
+    ? sampleTasks
+        .map((task) => `- ${task.id} [${task.status}]: ${task.description}`)
+        .join("\n")
+    : "- (none)";
+
+  const modeGuidance =
+    mode === "re_entry"
+      ? "This is a phase re-entry with existing actionable work. Reconcile and continue existing tasks instead of generating duplicate planning artifacts."
+      : "This is a fresh phase entry with no actionable tasks yet in this phase.";
+
+  return `
+## Phase Entry Context
+
+${modeGuidance}
+
+- entryMode: ${mode}
+- totalTasksInPhase: ${totalInPhase}
+- actionableTasksInPhase: ${actionableInPhase}
+- pending: ${pendingCount}
+- in_progress: ${inProgressCount}
+- failed: ${failedCount}
+- completed: ${completedCount}
+- cancelled: ${cancelledCount}
+
+Existing tasks (sample):
+${sampleLines}
+`;
+}
+
 /**
  * Build a full prompt for an agent, combining agent instructions with ticket context.
  * Agent instructions are passed directly via --print, not via --agents flag.
@@ -145,7 +195,8 @@ export async function buildAgentPrompt(
     phaseId: string;
     ralphLoopId: string;
     taskId: string | null;
-  }
+  },
+  phaseEntryContext?: PhaseEntryContext,
 ): Promise<string> {
   // AgentWorker doesn't have context.artifacts - this is now handled by agent-loader
   const contextArtifacts: string[] = [];
@@ -182,7 +233,7 @@ export async function buildAgentPrompt(
 ## Ticket Description
 
 ${ticket.description || "No description provided."}
-${dependencyHint}${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}Begin.`;
+${dependencyHint}${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}${formatPhaseEntryContext(phaseEntryContext)}Begin.`;
 
   // If agent instructions provided, prepend them to the context
   if (agentPrompt) {

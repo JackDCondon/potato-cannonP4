@@ -18,6 +18,10 @@ export interface ProvidersConfig {
 
 export interface DaemonConfig {
   port: number;
+  lifecycleHardening?: {
+    strictStaleDrop?: boolean;
+    strictStaleResume409?: boolean;
+  };
 }
 
 export interface GlobalConfig {

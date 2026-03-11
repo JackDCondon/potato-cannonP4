@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useLocation } from '@tanstack/react-router'
-import { Loader2, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Loader2, X, AlertCircle } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import {
   useTicket,
@@ -34,6 +35,7 @@ import { DetailsTab } from './DetailsTab'
 import { SettingsTab } from './SettingsTab'
 import { ActivityTab } from './ActivityTab'
 import type { TemplatePhase } from '@potato-cannon/shared'
+import { ApiError, isTicketLifecycleConflictPayload } from '@/api/client'
 
 /**
  * Checks if a phase has automation configured (workers array with items)
@@ -49,6 +51,7 @@ function phaseHasAutomation(phaseConfig: TemplatePhase | undefined): boolean {
  * and causes the main content area to shrink when open.
  */
 export function TicketDetailPanel() {
+  const queryClient = useQueryClient()
   const ticketSheetOpen = useAppStore((s) => s.ticketSheetOpen)
   const ticketSheetTicketId = useAppStore((s) => s.ticketSheetTicketId)
   const ticketSheetProjectId = useAppStore((s) => s.ticketSheetProjectId)
@@ -88,6 +91,7 @@ export function TicketDetailPanel() {
     open: boolean
     targetPhase: string
   } | null>(null)
+  const [phaseConflictNotice, setPhaseConflictNotice] = useState<string | null>(null)
 
   // Tab state - resets to phase-based default when ticket changes
   const [activeTab, setActiveTab] = useState<string>('details')
@@ -126,10 +130,23 @@ export function TicketDetailPanel() {
           projectId: currentProjectId,
           ticketId: ticketSheetTicketId,
           updates: { phase: newPhase }
+        }, {
+          onSuccess: () => {
+            setPhaseConflictNotice(null)
+          },
+          onError: (error) => {
+            if (error instanceof ApiError && isTicketLifecycleConflictPayload(error.payload)) {
+              setPhaseConflictNotice(
+                `Ticket changed while moving. It is currently in ${error.payload.currentPhase}. Please retry.`
+              )
+              queryClient.refetchQueries({ queryKey: ['ticket', currentProjectId, ticketSheetTicketId] })
+              queryClient.refetchQueries({ queryKey: ['tickets', currentProjectId] })
+            }
+          }
         })
       }
     },
-    [currentProjectId, ticketSheetTicketId, ticket?.phase, templateConfig, updateTicket]
+    [currentProjectId, queryClient, ticketSheetTicketId, ticket?.phase, templateConfig, updateTicket]
   )
 
   const handleConfirmMove = useCallback(() => {
@@ -139,10 +156,23 @@ export function TicketDetailPanel() {
       projectId: currentProjectId,
       ticketId: ticketSheetTicketId,
       updates: { phase: confirmDialog.targetPhase }
+    }, {
+      onSuccess: () => {
+        setPhaseConflictNotice(null)
+      },
+      onError: (error) => {
+        if (error instanceof ApiError && isTicketLifecycleConflictPayload(error.payload)) {
+          setPhaseConflictNotice(
+            `Ticket changed while moving. It is currently in ${error.payload.currentPhase}. Please retry.`
+          )
+          queryClient.refetchQueries({ queryKey: ['ticket', currentProjectId, ticketSheetTicketId] })
+          queryClient.refetchQueries({ queryKey: ['tickets', currentProjectId] })
+        }
+      }
     })
 
     setConfirmDialog(null)
-  }, [confirmDialog, currentProjectId, ticketSheetTicketId, updateTicket])
+  }, [confirmDialog, currentProjectId, queryClient, ticketSheetTicketId, updateTicket])
 
   const isOpen = ticketSheetOpen && isOnBoardView && isCorrectProject
 
@@ -220,6 +250,12 @@ export function TicketDetailPanel() {
                   <p className="text-xs text-text-muted mt-2">
                     Created {timeAgo(ticket.createdAt)} • Updated {timeAgo(ticket.updatedAt)}
                   </p>
+                  {phaseConflictNotice && (
+                    <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100 flex items-start gap-2">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>{phaseConflictNotice}</span>
+                    </div>
+                  )}
 
                   {/* Phase selector - mobile only */}
                   <div className="mt-4 flex items-center gap-2 sm:hidden">
