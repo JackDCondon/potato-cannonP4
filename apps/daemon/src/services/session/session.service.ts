@@ -617,6 +617,20 @@ export class SessionService {
     };
   }
 
+  private isLifecycleContinuityEnabled(): boolean {
+    try {
+      const daemonConfig = getConfigStore().getDaemonConfig();
+      const enabled = daemonConfig?.lifecycleContinuity?.enabled;
+      if (typeof enabled === "boolean") {
+        return enabled;
+      }
+    } catch {
+      // Some unit tests construct SessionService without initializing DB-backed config.
+      // Default behavior should still match runtime default continuity enablement.
+    }
+    return DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.enabled;
+  }
+
   private buildContinuitySummary(decision: ContinuityDecision): string {
     if (decision.mode === "handoff" && decision.packet) {
       return `handoff(${decision.scope ?? decision.packet.scope}): turns=${decision.packet.conversationTurns.length}, highlights=${decision.packet.sessionHighlights.length}, questions=${decision.packet.unresolvedQuestions.length}`;
@@ -638,6 +652,21 @@ export class SessionService {
       continuitySummary: this.buildContinuitySummary(decision),
       continuitySourceSessionId: decision.sourceSessionId,
       continuityCompatibility: compatibility,
+    };
+  }
+
+  private buildContinuityDecisionLogFields(
+    decision: ContinuityDecision,
+  ): Record<string, string> {
+    return {
+      continuity_mode: decision.mode,
+      continuity_reason: decision.reason,
+      continuity_scope: decision.scope ?? "none",
+      continuity_source_session_id: decision.sourceSessionId ?? "none",
+      continuity_resume_rejected:
+        decision.mode === "fresh" && decision.reason === "resume_not_allowed"
+          ? "true"
+          : "false",
     };
   }
 
@@ -722,6 +751,13 @@ export class SessionService {
   async decideContinuityForTicket(
     input: DecideContinuityForTicketInput,
   ): Promise<ContinuityDecision> {
+    if (!this.isLifecycleContinuityEnabled()) {
+      return {
+        mode: "fresh",
+        reason: "disabled",
+      };
+    }
+
     const restartSnapshot = this.takeRestartSnapshotForTicket(input.ticketId);
     const sameLifecyclePacket = await this.buildContinuityPacketForTicket({
       ticketId: input.ticketId,
@@ -1461,6 +1497,12 @@ export class SessionService {
       continuityDecision,
       compatibilityKey,
     );
+    logToDaemon(
+      projectId,
+      ticketId,
+      "Continuity decision for ticket spawn",
+      this.buildContinuityDecisionLogFields(continuityDecision),
+    ).catch(() => {});
     const resumeSessionId =
       continuityDecision.mode === "resume"
         ? continuityDecision.sourceSessionId ??
@@ -1694,6 +1736,12 @@ export class SessionService {
       continuityDecision,
       compatibilityKey,
     );
+    logToDaemon(
+      projectId,
+      ticketId,
+      "Continuity decision for suspended resume",
+      this.buildContinuityDecisionLogFields(continuityDecision),
+    ).catch(() => {});
 
     const storedSession = createStoredSession({
       projectId,

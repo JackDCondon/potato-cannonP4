@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 
 import {
+  buildContinuityDecisionLogFields,
   isStalePendingTicketInput,
   safeReadPendingResponse,
 } from "../recovery.utils.js";
@@ -53,5 +54,38 @@ describe("isStalePendingTicketInput", () => {
     });
 
     assert.strictEqual(stale, true);
+  });
+});
+
+describe("buildContinuityDecisionLogFields", () => {
+  it("formats structured continuity fields for fresh fallback when resume is rejected", () => {
+    const fields = buildContinuityDecisionLogFields({
+      mode: "fresh",
+      reason: "resume_not_allowed",
+    });
+
+    assert.deepStrictEqual(fields, {
+      continuity_mode: "fresh",
+      continuity_reason: "resume_not_allowed",
+      continuity_scope: "none",
+      continuity_source_session_id: "none",
+      continuity_resume_rejected: "true",
+    });
+  });
+
+  it("formats structured continuity fields for resume decisions", () => {
+    const fields = buildContinuityDecisionLogFields({
+      mode: "resume",
+      reason: "same_lifecycle_resume",
+      sourceSessionId: "claude_123",
+    });
+
+    assert.deepStrictEqual(fields, {
+      continuity_mode: "resume",
+      continuity_reason: "same_lifecycle_resume",
+      continuity_scope: "none",
+      continuity_source_session_id: "claude_123",
+      continuity_resume_rejected: "false",
+    });
   });
 });

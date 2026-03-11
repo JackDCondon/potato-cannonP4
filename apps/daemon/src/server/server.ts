@@ -33,7 +33,11 @@ import {
   getProjects,
 } from "./routes/index.js";
 import { registerSystemRoutes } from "./routes/system.routes.js";
-import { isStalePendingTicketInput, safeReadPendingResponse } from "./recovery.utils.js";
+import {
+  buildContinuityDecisionLogFields,
+  isStalePendingTicketInput,
+  safeReadPendingResponse,
+} from "./recovery.utils.js";
 import {
   loadGlobalConfig,
   saveGlobalConfig,
@@ -367,6 +371,13 @@ async function recoverPendingResponses(): Promise<void> {
             console.log(
               `[recovery] Resumed suspended session ${newSessionId} for ticket ${item.contextId}`,
             );
+            console.log(
+              `[recovery] continuity`,
+              buildContinuityDecisionLogFields({
+                mode: "resume",
+                reason: "suspended_session_resume",
+              }),
+            );
             continue;
           } catch (err) {
             console.error(
@@ -385,6 +396,13 @@ async function recoverPendingResponses(): Promise<void> {
           await updateTicket(item.projectId, item.contextId, { sessionId });
           console.log(
             `[recovery] Spawned session ${sessionId} for ticket ${item.contextId}`,
+          );
+          console.log(
+            `[recovery] continuity`,
+            buildContinuityDecisionLogFields({
+              mode: "fresh",
+              reason: "default_fallback",
+            }),
           );
         }
       } else {
@@ -523,6 +541,13 @@ async function recoverInterruptedSessions(): Promise<void> {
         // Session is tracked in sessions table, no need to update ticket
         console.log(
           `[recovery] Spawned session ${sessionId} to resume ticket ${ticketId}`,
+        );
+        console.log(
+          `[recovery] continuity`,
+          buildContinuityDecisionLogFields({
+            mode: "fresh",
+            reason: "default_fallback",
+          }),
         );
         recovered++;
       } catch (err) {

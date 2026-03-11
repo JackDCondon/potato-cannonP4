@@ -1039,4 +1039,32 @@ describe("SessionService decideContinuityForTicket", () => {
     assert.strictEqual(decision.scope, "same_lifecycle");
     assert.strictEqual(decision.packet?.conversationTurns.length, 1);
   });
+
+  it("falls back to fresh disabled mode when lifecycle continuity is turned off", async () => {
+    const service = new SessionService(new EventEmitter());
+    (service as any).isLifecycleContinuityEnabled = () => false;
+    (service as any).buildContinuityPacketForTicket = async () => {
+      throw new Error("should not build packet when continuity is disabled");
+    };
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+    });
+
+    assert.deepStrictEqual(decision, {
+      mode: "fresh",
+      reason: "disabled",
+    });
+  });
 });

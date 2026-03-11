@@ -44,3 +44,21 @@ export function isStalePendingTicketInput(
     args.providedGeneration !== args.currentGeneration
   );
 }
+
+export function buildContinuityDecisionLogFields(args: {
+  mode: "resume" | "handoff" | "fresh";
+  reason: string;
+  scope?: string;
+  sourceSessionId?: string;
+}): Record<string, string> {
+  return {
+    continuity_mode: args.mode,
+    continuity_reason: args.reason,
+    continuity_scope: args.scope ?? "none",
+    continuity_source_session_id: args.sourceSessionId ?? "none",
+    continuity_resume_rejected:
+      args.mode === "fresh" && args.reason === "resume_not_allowed"
+        ? "true"
+        : "false",
+  };
+}
