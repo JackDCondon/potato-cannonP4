@@ -579,6 +579,77 @@ describe("SessionService continuity compatibility key", () => {
   });
 });
 
+describe("SessionService continuity metadata persistence helpers", () => {
+  it("builds continuity metadata for session start from the selected decision", () => {
+    const service = new SessionService(new EventEmitter());
+    const compatibility = (service as any).buildContinuityCompatibilityKey({
+      ticketId: "POT-22",
+      phase: "Build",
+      agentSource: "agents/build.md",
+      executionGeneration: 3,
+      workflowId: "wf-main",
+      worktreePath: "/tmp/wt",
+      branchName: "potato/POT-22",
+      agentPrompt: "Build implementation",
+      mcpServerNames: ["potato-cannon"],
+      model: "sonnet",
+      disallowedTools: ["Skill(superpowers:*)"],
+    });
+
+    const metadata = (service as any).buildStoredSessionContinuityMetadata(
+      {
+        mode: "handoff",
+        reason: "packet_available",
+        scope: "same_lifecycle",
+        packet: {
+          scope: "same_lifecycle",
+          conversationTurns: [{ role: "user", text: "continue" }],
+          sessionHighlights: [{ summary: "added API skeleton" }],
+          unresolvedQuestions: ["confirm route naming"],
+        },
+      },
+      compatibility,
+    );
+
+    assert.strictEqual(metadata.continuityMode, "handoff");
+    assert.strictEqual(metadata.continuityReason, "packet_available");
+    assert.strictEqual(metadata.continuityScope, "same_lifecycle");
+    assert.ok(typeof metadata.continuitySummary === "string");
+    assert.strictEqual(metadata.continuitySourceSessionId, undefined);
+    assert.deepStrictEqual(metadata.continuityCompatibility, compatibility);
+  });
+
+  it("preserves continuity fields when deriving session_end meta from session_start meta", () => {
+    const startMeta = {
+      projectId: "proj-1",
+      ticketId: "POT-1",
+      startedAt: new Date().toISOString(),
+      status: "running" as const,
+      continuityMode: "handoff" as const,
+      continuityReason: "packet_available" as const,
+      continuityScope: "same_lifecycle" as const,
+      continuitySummary: "handoff(same_lifecycle): turns=1, highlights=1, questions=1",
+      continuitySourceSessionId: "claude_prev_1",
+    };
+
+    const endMeta = {
+      ...startMeta,
+      status: "completed" as const,
+      exitCode: 0,
+      endedAt: new Date().toISOString(),
+    };
+
+    assert.strictEqual(endMeta.continuityMode, startMeta.continuityMode);
+    assert.strictEqual(endMeta.continuityReason, startMeta.continuityReason);
+    assert.strictEqual(endMeta.continuityScope, startMeta.continuityScope);
+    assert.strictEqual(endMeta.continuitySummary, startMeta.continuitySummary);
+    assert.strictEqual(
+      endMeta.continuitySourceSessionId,
+      startMeta.continuitySourceSessionId,
+    );
+  });
+});
+
 describe("evaluateResumeEligibility", () => {
   const baseKey = {
     ticketId: "POT-1",

@@ -26,6 +26,19 @@ interface SessionRow {
   metadata: string | null;
 }
 
+function parseSessionMetadata(
+  metadata: string | null,
+): Record<string, unknown> | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(metadata) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface SessionContinuityFilter {
   phase?: string;
   agentSource?: string;
@@ -50,7 +63,7 @@ function rowToSession(row: SessionRow): StoredSession {
     endedAt: row.ended_at || undefined,
     exitCode: row.exit_code ?? undefined,
     phase: row.phase || undefined,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    metadata: parseSessionMetadata(row.metadata),
   };
 }
 

@@ -57,6 +57,7 @@ import type {
   ContinuityDecision,
   ContinuityPacket,
   ContinuityCompatibilityKey,
+  SessionContinuityMetadata,
 } from "./continuity.types.js";
 
 import type {
@@ -171,7 +172,12 @@ interface DecideContinuityForTicketInput {
   suspendedResumeSessionId?: string | null;
 }
 
-interface StoredSessionContinuityMetadata {
+interface StoredSessionContinuityMetadata extends Record<string, unknown> {
+  continuityMode?: SessionContinuityMetadata["continuityMode"];
+  continuityReason?: SessionContinuityMetadata["continuityReason"];
+  continuityScope?: SessionContinuityMetadata["continuityScope"];
+  continuitySummary?: SessionContinuityMetadata["continuitySummary"];
+  continuitySourceSessionId?: SessionContinuityMetadata["continuitySourceSessionId"];
   continuityCompatibility?: ContinuityCompatibilityKey;
 }
 
@@ -608,6 +614,30 @@ export class SessionService {
       maxPromptChars:
         lifecycleContinuity.maxPromptChars ??
         DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxPromptChars,
+    };
+  }
+
+  private buildContinuitySummary(decision: ContinuityDecision): string {
+    if (decision.mode === "handoff" && decision.packet) {
+      return `handoff(${decision.scope ?? decision.packet.scope}): turns=${decision.packet.conversationTurns.length}, highlights=${decision.packet.sessionHighlights.length}, questions=${decision.packet.unresolvedQuestions.length}`;
+    }
+    if (decision.mode === "resume") {
+      return `resume(${decision.reason})`;
+    }
+    return `fresh(${decision.reason})`;
+  }
+
+  private buildStoredSessionContinuityMetadata(
+    decision: ContinuityDecision,
+    compatibility: ContinuityCompatibilityKey,
+  ): StoredSessionContinuityMetadata {
+    return {
+      continuityMode: decision.mode,
+      continuityReason: decision.reason,
+      continuityScope: decision.scope,
+      continuitySummary: this.buildContinuitySummary(decision),
+      continuitySourceSessionId: decision.sourceSessionId,
+      continuityCompatibility: compatibility,
     };
   }
 
@@ -1427,8 +1457,16 @@ export class SessionService {
         lifecycleInvalidated: false,
       },
     });
+    const continuityMetadata = this.buildStoredSessionContinuityMetadata(
+      continuityDecision,
+      compatibilityKey,
+    );
     const resumeSessionId =
-      continuityDecision.mode === "resume" ? existingClaudeSessionId ?? undefined : undefined;
+      continuityDecision.mode === "resume"
+        ? continuityDecision.sourceSessionId ??
+          existingClaudeSessionId ??
+          undefined
+        : undefined;
     const handoffDecision =
       continuityDecision.mode === "handoff" ? continuityDecision : undefined;
 
@@ -1465,6 +1503,11 @@ export class SessionService {
       status: "running",
       agentType: agentWorker.source,
       stage: 0,
+      continuityMode: continuityMetadata.continuityMode,
+      continuityReason: continuityMetadata.continuityReason,
+      continuityScope: continuityMetadata.continuityScope,
+      continuitySummary: continuityMetadata.continuitySummary,
+      continuitySourceSessionId: continuityMetadata.continuitySourceSessionId,
     };
 
     const storedSession = createStoredSession({
@@ -1473,9 +1516,7 @@ export class SessionService {
       executionGeneration: ticket.executionGeneration ?? 0,
       agentSource: agentWorker.source,
       phase,
-      metadata: {
-        continuityCompatibility: compatibilityKey,
-      },
+      metadata: continuityMetadata,
     });
     const sessionId = storedSession.id;
 
@@ -1649,6 +1690,10 @@ export class SessionService {
     if (continuityDecision.mode !== "resume") {
       return this.spawnForTicket(projectId, ticketId, ticket.phase, project.path);
     }
+    const continuityMetadata = this.buildStoredSessionContinuityMetadata(
+      continuityDecision,
+      compatibilityKey,
+    );
 
     const storedSession = createStoredSession({
       projectId,
@@ -1657,9 +1702,7 @@ export class SessionService {
       claudeSessionId,
       agentSource: "resume",
       phase: ticket.phase,
-      metadata: {
-        continuityCompatibility: compatibilityKey,
-      },
+      metadata: continuityMetadata,
     });
 
     const meta: SessionMeta = {
@@ -1674,6 +1717,11 @@ export class SessionService {
       status: "running",
       agentType: "resume",
       stage: 0,
+      continuityMode: continuityMetadata.continuityMode,
+      continuityReason: continuityMetadata.continuityReason,
+      continuityScope: continuityMetadata.continuityScope,
+      continuitySummary: continuityMetadata.continuitySummary,
+      continuitySourceSessionId: continuityMetadata.continuitySourceSessionId,
     };
 
     // With --resume, Claude already has the full conversation context.

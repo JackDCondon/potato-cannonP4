@@ -153,6 +153,32 @@ describe("SessionStore", () => {
         disallowedTools: ["Skill(superpowers:*)"],
       });
     });
+
+    it("should persist continuity decision metadata fields", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Decision metadata ticket" });
+
+      const session = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        metadata: {
+          continuityMode: "handoff",
+          continuityReason: "packet_available",
+          continuityScope: "same_lifecycle",
+          continuitySummary: "handoff(same_lifecycle): turns=1, highlights=1, questions=1",
+          continuitySourceSessionId: "claude_prev_1",
+        },
+      });
+
+      assert.strictEqual((session.metadata as any)?.continuityMode, "handoff");
+      assert.strictEqual((session.metadata as any)?.continuityReason, "packet_available");
+      assert.strictEqual((session.metadata as any)?.continuityScope, "same_lifecycle");
+      assert.strictEqual(
+        (session.metadata as any)?.continuitySummary,
+        "handoff(same_lifecycle): turns=1, highlights=1, questions=1"
+      );
+      assert.strictEqual((session.metadata as any)?.continuitySourceSessionId, "claude_prev_1");
+    });
   });
 
   describe("getSession", () => {
