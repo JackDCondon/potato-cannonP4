@@ -81,10 +81,13 @@ export class ChatOrchestrator {
           continue;
         }
 
-        const nextItem = ready[0];
+        const nextItem = activeQuestion
+          ? ready.find((item) => item.kind !== "question")
+          : ready[0];
 
-        // Keep question lock globally serialized.
-        if (activeQuestion && nextItem.kind === "question") {
+        // Keep question lock globally serialized while allowing notifications
+        // to continue flowing if a question is currently awaiting a reply.
+        if (!nextItem) {
           shouldContinue = false;
           continue;
         }

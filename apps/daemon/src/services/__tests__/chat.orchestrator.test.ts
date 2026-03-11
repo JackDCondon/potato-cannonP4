@@ -135,6 +135,46 @@ describe("ChatOrchestrator", () => {
     assert.equal(queueStore.getActiveQuestion(), null);
   });
 
+  it("dispatches notification even when a queued question is blocked by active question lock", async () => {
+    const orchestrator = new ChatOrchestrator(
+      queueStore,
+      () => providers,
+      async (provider, _context, message) => {
+        sendCalls.push({ providerId: provider.id, text: message.text });
+      }
+    );
+
+    await orchestrator.enqueueQuestion(
+      { projectId, ticketId },
+      "q-active",
+      { text: "Active question" }
+    );
+    await orchestrator.enqueueQuestion(
+      { projectId, ticketId },
+      "q-blocked",
+      { text: "Blocked question" }
+    );
+    await orchestrator.enqueueNotification(
+      { projectId, ticketId },
+      { text: "Important notification", kind: "notification" }
+    );
+
+    const blocked = queueStore.getQueueItemByQuestionId("q-blocked");
+    assert.equal(blocked?.status, "queued");
+
+    const notification = db
+      .prepare(
+        "SELECT status FROM chat_queue_items WHERE kind = 'notification' ORDER BY created_at DESC LIMIT 1"
+      )
+      .get() as { status: string } | undefined;
+    assert.equal(notification?.status, "answered");
+
+    const notificationDeliveries = sendCalls.filter(
+      (call) => call.text === "Important notification"
+    );
+    assert.equal(notificationDeliveries.length, 2);
+  });
+
   it("fans out one logical question to both providers while keeping one active queue item", async () => {
     const orchestrator = new ChatOrchestrator(
       queueStore,
