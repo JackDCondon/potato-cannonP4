@@ -82,4 +82,16 @@ describe("TelegramProvider", () => {
 
     assert.equal(responsePayload, "answer:q-abc:1");
   });
+
+  it("ignores legacy DM route when forum mode is enabled", async () => {
+    const context: ChatContext = { projectId: "proj1", ticketId: "POT-1" };
+    (provider as any).threadCache.set("proj1:POT-1", {
+      providerId: "telegram",
+      threadId: "8390479307",
+      metadata: { chatId: "8390479307" },
+    });
+
+    const thread = await provider.getThread(context);
+    assert.equal(thread, null);
+  });
 });

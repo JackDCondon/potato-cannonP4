@@ -52,18 +52,26 @@ export class TelegramProvider implements ChatProvider {
   async loadThreadCache(): Promise<void> {
     const allThreads = await scanAllChatThreads();
     let count = 0;
+    let skipped = 0;
 
     for (const [key, { threads }] of allThreads) {
       const telegramThread = threads.find((t) => t.providerId === this.id);
-      if (telegramThread) {
+      if (telegramThread && this.isThreadCompatibleWithConfig(telegramThread)) {
         this.threadCache.set(key, telegramThread);
         count++;
+      } else if (telegramThread) {
+        skipped++;
       }
     }
 
     if (count > 0) {
       console.log(
         `[TelegramProvider] Loaded ${count} thread(s) from chat-threads files`,
+      );
+    }
+    if (skipped > 0) {
+      console.log(
+        `[TelegramProvider] Skipped ${skipped} incompatible legacy thread route(s)`,
       );
     }
   }
@@ -142,7 +150,11 @@ export class TelegramProvider implements ChatProvider {
     const cacheKey = this.getContextKey(context);
     const cached = this.threadCache.get(cacheKey);
     if (cached) {
+      if (!this.isThreadCompatibleWithConfig(cached)) {
+        this.threadCache.delete(cacheKey);
+      } else {
       return cached;
+      }
     }
 
     const store = this.getProviderChannelStore();
@@ -165,6 +177,9 @@ export class TelegramProvider implements ChatProvider {
       threadId: channel.channelId,
       metadata: channel.metadata,
     };
+    if (!this.isThreadCompatibleWithConfig(thread)) {
+      return null;
+    }
     this.threadCache.set(cacheKey, thread);
     return thread;
   }
@@ -414,6 +429,22 @@ export class TelegramProvider implements ChatProvider {
 
   private getContextKey(context: ChatContext): string {
     return `${context.projectId}:${context.ticketId || context.brainstormId}`;
+  }
+
+  private isThreadCompatibleWithConfig(thread: ProviderThreadInfo): boolean {
+    const meta = thread.metadata as TelegramThreadMetadata | undefined;
+    if (!meta?.chatId) {
+      return false;
+    }
+
+    if (this.config.forumGroupId) {
+      return (
+        meta.chatId === this.config.forumGroupId &&
+        typeof meta.messageThreadId === "number"
+      );
+    }
+
+    return meta.chatId === this.config.userId && !meta.messageThreadId;
   }
 
   private parseContextKey(key: string): ChatContext | null {
