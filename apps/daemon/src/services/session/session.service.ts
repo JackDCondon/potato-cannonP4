@@ -46,7 +46,10 @@ import type {
 import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
-import type { ContinuityPacket } from "./continuity.types.js";
+import type {
+  ContinuityPacket,
+  ContinuityCompatibilityKey,
+} from "./continuity.types.js";
 
 import type {
   ActiveSession,
@@ -122,6 +125,37 @@ export class SessionService {
 
   constructor(eventEmitter: EventEmitter) {
     this.eventEmitter = eventEmitter;
+  }
+
+  private buildContinuityCompatibilityKey(input: {
+    ticketId: string;
+    phase: string;
+    agentSource: string;
+    executionGeneration: number;
+    workflowId: string;
+    worktreePath: string;
+    branchName: string;
+    agentPrompt: string;
+    mcpServerNames: string[];
+    model: string;
+    disallowedTools: string[];
+  }): ContinuityCompatibilityKey {
+    return {
+      ticketId: input.ticketId,
+      phase: input.phase,
+      agentSource: input.agentSource,
+      executionGeneration: input.executionGeneration,
+      workflowId: input.workflowId,
+      worktreePath: input.worktreePath,
+      branchName: input.branchName,
+      agentDefinitionPromptHash: crypto
+        .createHash("sha256")
+        .update(input.agentPrompt)
+        .digest("hex"),
+      mcpServerNames: [...input.mcpServerNames].sort(),
+      model: input.model,
+      disallowedTools: [...input.disallowedTools].sort(),
+    };
   }
 
   generateSessionId(): string {
@@ -1073,18 +1107,7 @@ export class SessionService {
     // Terminate any existing session first (uses sessions table as lock)
     await this.terminateExistingSession('ticket', ticketId);
 
-    // Create stored session record in database for tracking
     const ticket = await getTicket(projectId, ticketId);
-    const storedSession = createStoredSession({
-      projectId,
-      ticketId,
-      executionGeneration: ticket.executionGeneration ?? 0,
-      agentSource: agentWorker.source,
-      phase,
-    });
-    // Use the stored session ID instead of the generated one
-    const sessionId = storedSession.id;
-
     const images = await listTicketImages(projectId, ticketId);
 
     const project = getProjectById(projectId);
@@ -1150,6 +1173,32 @@ export class SessionService {
     // Resolve model for this agent, using task complexity if available, else ticket complexity
     const taskComplexity = taskContext?.complexity ?? ticket.complexity;
     const resolvedModel = resolveModel(agentWorker.model, taskComplexity);
+    const disallowedTools = ["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])];
+    const compatibilityKey = this.buildContinuityCompatibilityKey({
+      ticketId,
+      phase,
+      agentSource: agentWorker.source,
+      executionGeneration: ticket.executionGeneration ?? 0,
+      workflowId: ticket.workflowId || "",
+      worktreePath,
+      branchName: workspaceLabel,
+      agentPrompt: agentDefinition.prompt,
+      mcpServerNames: ["potato-cannon", ...Object.keys(additionalMcpServers)],
+      model: resolvedModel ?? "default",
+      disallowedTools,
+    });
+
+    const storedSession = createStoredSession({
+      projectId,
+      ticketId,
+      executionGeneration: ticket.executionGeneration ?? 0,
+      agentSource: agentWorker.source,
+      phase,
+      metadata: {
+        continuityCompatibility: compatibilityKey,
+      },
+    });
+    const sessionId = storedSession.id;
 
     return this.spawnClaudeSession(
       sessionId,
@@ -1266,16 +1315,6 @@ export class SessionService {
       message: { type: "user", text: userResponse, timestamp: new Date().toISOString() },
     });
 
-    // Create stored session record
-    const storedSession = createStoredSession({
-      projectId,
-      ticketId,
-      executionGeneration: ticketGeneration,
-      claudeSessionId,
-      agentSource: "resume",
-      phase: ticket.phase,
-    });
-
     const provider = createVCSProvider(project);
 
     const needsIsolation = await phaseRequiresIsolation(projectId, ticket.phase, ticket.workflowId);
@@ -1292,6 +1331,31 @@ export class SessionService {
 
     const nodePath = resolveNode();
     const additionalMcpServers = provider.getMcpServers(nodePath, projectId, ticketId);
+    const compatibilityKey = this.buildContinuityCompatibilityKey({
+      ticketId,
+      phase: ticket.phase,
+      agentSource: "resume",
+      executionGeneration: ticketGeneration,
+      workflowId: ticket.workflowId || "",
+      worktreePath,
+      branchName: workspaceLabel,
+      agentPrompt: "resume",
+      mcpServerNames: ["potato-cannon", ...Object.keys(additionalMcpServers)],
+      model: "default",
+      disallowedTools: ["Skill(superpowers:*)"],
+    });
+
+    const storedSession = createStoredSession({
+      projectId,
+      ticketId,
+      executionGeneration: ticketGeneration,
+      claudeSessionId,
+      agentSource: "resume",
+      phase: ticket.phase,
+      metadata: {
+        continuityCompatibility: compatibilityKey,
+      },
+    });
 
     const meta: SessionMeta = {
       projectId,

@@ -114,6 +114,45 @@ describe("SessionStore", () => {
       assert.strictEqual(session.phase, "Refinement");
       assert.deepStrictEqual(session.metadata, { custom: "data" });
     });
+
+    it("should persist continuity compatibility metadata", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Compatibility ticket" });
+
+      const session = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        metadata: {
+          continuityCompatibility: {
+            ticketId: ticket.id,
+            phase: "Build",
+            agentSource: "agents/build.md",
+            executionGeneration: 2,
+            workflowId: "wf_1",
+            worktreePath: "D:/tmp/worktree",
+            branchName: "potato/POT-1",
+            agentDefinitionPromptHash: "abc123",
+            mcpServerNames: ["potato-cannon", "p4"],
+            model: "sonnet",
+            disallowedTools: ["Skill(superpowers:*)"],
+          },
+        },
+      });
+
+      assert.deepStrictEqual((session.metadata as any)?.continuityCompatibility, {
+        ticketId: ticket.id,
+        phase: "Build",
+        agentSource: "agents/build.md",
+        executionGeneration: 2,
+        workflowId: "wf_1",
+        worktreePath: "D:/tmp/worktree",
+        branchName: "potato/POT-1",
+        agentDefinitionPromptHash: "abc123",
+        mcpServerNames: ["potato-cannon", "p4"],
+        model: "sonnet",
+        disallowedTools: ["Skill(superpowers:*)"],
+      });
+    });
   });
 
   describe("getSession", () => {

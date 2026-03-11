@@ -548,3 +548,30 @@ describe("StaleTicketInputError", () => {
     assert.strictEqual(error.name, "StaleTicketInputError");
   });
 });
+
+describe("SessionService continuity compatibility key", () => {
+  it("normalizes list fields and hashes prompt text", () => {
+    const service = new SessionService(new EventEmitter());
+    const compatibility = (service as any).buildContinuityCompatibilityKey({
+      ticketId: "POT-22",
+      phase: "Build",
+      agentSource: "agents/build.md",
+      executionGeneration: 7,
+      workflowId: "wf_main",
+      worktreePath: "/tmp/worktree",
+      branchName: "potato/POT-22",
+      agentPrompt: "never persist this prompt raw",
+      mcpServerNames: ["zeta", "alpha", "potato-cannon"],
+      model: "sonnet",
+      disallowedTools: ["B", "A"],
+    });
+
+    assert.deepStrictEqual(compatibility.mcpServerNames, ["alpha", "potato-cannon", "zeta"]);
+    assert.deepStrictEqual(compatibility.disallowedTools, ["A", "B"]);
+    assert.notStrictEqual(
+      compatibility.agentDefinitionPromptHash,
+      "never persist this prompt raw",
+    );
+    assert.strictEqual(compatibility.agentDefinitionPromptHash.length, 64);
+  });
+});
