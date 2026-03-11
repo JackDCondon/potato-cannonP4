@@ -37,6 +37,7 @@ import {
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
 import { getMessages } from "../../stores/conversation.store.js";
 import type { SessionService } from "../../services/session/index.js";
+import { chatService } from "../../services/chat.service.js";
 import {
   TicketLifecycleConflictError,
   StaleTicketInputError,
@@ -720,6 +721,22 @@ export function registerTicketRoutes(
           !pendingQuestion.questionId ||
           pendingQuestion.ticketGeneration === undefined
         ) {
+          if (typeof questionId === "string") {
+            const reconciliation = await chatService.reconcileWebAnswer(
+              { projectId, ticketId },
+              questionId,
+              message,
+            );
+            if (reconciliation.found) {
+              res.json({
+                success: true,
+                idempotent: reconciliation.stale,
+                queueResolved: reconciliation.accepted,
+              });
+              return;
+            }
+          }
+
           if (!strictStaleResume409) {
             await writeResponse(projectId, ticketId, { answer: message });
             res.json({ success: true });
@@ -764,6 +781,20 @@ export function registerTicketRoutes(
           ticketGeneration !== pendingQuestion.ticketGeneration ||
           ticketGeneration !== currentGeneration
         ) {
+          const reconciliation = await chatService.reconcileWebAnswer(
+            { projectId, ticketId },
+            questionId,
+            message,
+          );
+          if (reconciliation.found) {
+            res.json({
+              success: true,
+              idempotent: reconciliation.stale,
+              queueResolved: reconciliation.accepted,
+            });
+            return;
+          }
+
           if (!strictStaleResume409) {
             await writeResponse(projectId, ticketId, { answer: message });
             res.json({ success: true });
@@ -788,6 +819,11 @@ export function registerTicketRoutes(
           questionId,
           ticketGeneration,
         });
+        const reconciliation = await chatService.reconcileWebAnswer(
+          { projectId, ticketId },
+          questionId,
+          message,
+        );
 
         // Check if there's an active session for this ticket.
         // If not, this is a response to a suspended session — spawn a resumed session.
@@ -809,7 +845,13 @@ export function registerTicketRoutes(
                 },
               );
               console.log(`[input] Spawned resumed session ${newSessionId} for suspended ticket ${ticketId}`);
-              res.json({ success: true, sessionId: newSessionId, resumed: true });
+              res.json({
+                success: true,
+                sessionId: newSessionId,
+                resumed: true,
+                queueResolved: reconciliation.accepted,
+                idempotent: reconciliation.stale,
+              });
               return;
             } catch (err) {
               const stale = mapStaleTicketInput(err);
@@ -823,7 +865,11 @@ export function registerTicketRoutes(
           }
         }
 
-        res.json({ success: true });
+        res.json({
+          success: true,
+          queueResolved: reconciliation.accepted,
+          idempotent: reconciliation.stale,
+        });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }

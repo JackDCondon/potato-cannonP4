@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 16;
+const CURRENT_SCHEMA_VERSION = 17;
 
 /**
  * Run database migrations.
@@ -72,6 +72,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 16) {
     migrateV16(db);
+  }
+
+  if (version < 17) {
+    migrateV17(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -667,5 +671,69 @@ function migrateV16(db: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_ticket_generation_active
     ON sessions(ticket_id, execution_generation)
     WHERE ended_at IS NULL AND ticket_id IS NOT NULL AND execution_generation IS NOT NULL
+  `);
+}
+
+/**
+ * V17: Add durable chat queue + delivery telemetry tables and provider route indexes.
+ */
+function migrateV17(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_queue_items (
+      id             TEXT PRIMARY KEY,
+      project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      ticket_id      TEXT REFERENCES tickets(id) ON DELETE CASCADE,
+      brainstorm_id  TEXT REFERENCES brainstorms(id) ON DELETE CASCADE,
+      kind           TEXT NOT NULL CHECK(kind IN ('question', 'notification')),
+      question_id    TEXT,
+      provider_scope TEXT NOT NULL DEFAULT 'all_active',
+      payload_json   TEXT NOT NULL,
+      status         TEXT NOT NULL CHECK(status IN ('queued', 'dispatching', 'awaiting_reply', 'answered', 'cancelled', 'stale', 'timed_out', 'failed', 'dead_letter')),
+      retry_count    INTEGER NOT NULL DEFAULT 0,
+      available_at   TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      sent_at        TEXT,
+      resolved_at    TEXT,
+      resolved_by    TEXT CHECK(resolved_by IN ('web', 'telegram', 'slack', 'system'))
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_delivery_events (
+      id            TEXT PRIMARY KEY,
+      queue_item_id TEXT NOT NULL REFERENCES chat_queue_items(id) ON DELETE CASCADE,
+      project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      ticket_id     TEXT REFERENCES tickets(id) ON DELETE CASCADE,
+      provider_id   TEXT NOT NULL,
+      event_type    TEXT NOT NULL CHECK(event_type IN ('sent', 'failed', 'retried', 'dead_letter', 'answered', 'cancelled')),
+      attempt       INTEGER NOT NULL DEFAULT 1,
+      error_text    TEXT,
+      created_at    TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chat_queue_ready
+      ON chat_queue_items(status, available_at, created_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_queue_ticket
+      ON chat_queue_items(ticket_id, created_at) WHERE ticket_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_chat_queue_question_id
+      ON chat_queue_items(question_id) WHERE question_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_chat_queue_active_question
+      ON chat_queue_items(status, created_at)
+      WHERE kind = 'question' AND status = 'awaiting_reply';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_queue_single_active_question
+      ON chat_queue_items(kind, status)
+      WHERE kind = 'question' AND status = 'awaiting_reply';
+
+    CREATE INDEX IF NOT EXISTS idx_chat_delivery_events_queue_item
+      ON chat_delivery_events(queue_item_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_delivery_events_provider
+      ON chat_delivery_events(provider_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_delivery_events_ticket
+      ON chat_delivery_events(ticket_id, created_at) WHERE ticket_id IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_provider_channels_route_thread_id
+      ON provider_channels(provider_id, channel_id, CAST(json_extract(metadata, '$.messageThreadId') AS TEXT))
+      WHERE metadata IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_provider_channels_route_slack_thread
+      ON provider_channels(provider_id, channel_id, CAST(json_extract(metadata, '$.threadTs') AS TEXT))
+      WHERE metadata IS NOT NULL;
   `);
 }

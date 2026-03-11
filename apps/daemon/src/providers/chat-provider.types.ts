@@ -15,6 +15,7 @@ export interface ChatContext {
 export interface OutboundMessage {
   text: string;
   options?: string[];
+  questionId?: string;
   phase?: string;
   kind?: "question" | "notification";
   contextLabel?: string;
@@ -54,6 +55,7 @@ export interface ChatProvider {
     title: string,
   ): Promise<ProviderThreadInfo>;
   getThread(context: ChatContext): Promise<ProviderThreadInfo | null>;
+  deleteThread?(thread: ProviderThreadInfo): Promise<void>;
 
   send(thread: ProviderThreadInfo, message: OutboundMessage): Promise<void>;
   notifyAnswered(thread: ProviderThreadInfo, answer: string): Promise<void>;

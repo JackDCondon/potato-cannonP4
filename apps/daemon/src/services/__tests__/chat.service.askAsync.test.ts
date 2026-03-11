@@ -26,6 +26,7 @@ let eventBusEmitCalls: Array<{ event: string; data: unknown }> = [];
 let addMessageCalls: Array<{ conversationId: string; input: unknown }> = [];
 let messageIdCounter = 0;
 let readQuestionResult: unknown = null;
+let enqueueQuestionCalls: Array<{ context: unknown; questionId: string; message: unknown }> = [];
 
 // Mock the external dependencies before importing ChatService
 mock.module("../../stores/chat.store.js", {
@@ -112,6 +113,22 @@ mock.module("../../stores/chat-threads.store.js", {
   },
 });
 
+mock.module("../chat/chat-orchestrator.js", {
+  namedExports: {
+    ChatOrchestrator: class {
+      async enqueueQuestion(context: unknown, questionId: string, message: unknown) {
+        enqueueQuestionCalls.push({ context, questionId, message });
+      }
+
+      async enqueueNotification(): Promise<void> {}
+
+      async resolveQuestion(): Promise<{ accepted: boolean; stale: boolean }> {
+        return { accepted: true, stale: false };
+      }
+    },
+  },
+});
+
 // Import ChatService after mocks are in place
 const { ChatService } = await import("../chat.service.js");
 
@@ -126,6 +143,7 @@ describe("ChatService.askAsync", () => {
     addMessageCalls = [];
     messageIdCounter = 0;
     readQuestionResult = null;
+    enqueueQuestionCalls = [];
 
     service = new ChatService();
   });
@@ -175,6 +193,7 @@ describe("ChatService.askAsync", () => {
     };
     assert.strictEqual(writtenQuestion.question, question);
     assert.deepStrictEqual(writtenQuestion.options, options);
+    assert.strictEqual(enqueueQuestionCalls.length, 1);
   });
 
   it("should emit brainstorm:message event", async () => {
@@ -233,15 +252,14 @@ describe("ChatService.askAsync", () => {
     assert.strictEqual(writeQuestionCalls[0].contextId, "POT-123");
   });
 
-  it("should return empty questionId when no conversation exists", async () => {
+  it("should return generated questionId when no conversation exists", async () => {
     const context = { projectId: "test-project", brainstormId: "brain_noconv" };
 
     // With our mock db returning null, there's no conversation
     const result = await service.askAsync(context, "Question without conversation");
 
     assert.strictEqual(result.status, "pending");
-    // When no conversation, questionId is empty string
-    assert.strictEqual(result.questionId, "");
+    assert.ok(result.questionId.startsWith("q_"));
   });
 
   it("should not add message when no conversationId", async () => {
@@ -339,5 +357,23 @@ describe("ChatService.askAsync", () => {
     assert.strictEqual(writeResponseCalls.length, 1);
     const written = writeResponseCalls[0].response as { answer: string };
     assert.strictEqual(written.answer, "Gamma");
+  });
+
+  it("should reject stale structured callback when questionId does not match", async () => {
+    const context = { projectId: "test-project", ticketId: "POT-102" };
+    readQuestionResult = {
+      questionId: "q-current",
+      options: ["A", "B"],
+      ticketGeneration: 4,
+    };
+
+    const handled = await service.handleResponse(
+      "telegram",
+      context,
+      "answer:q-old:1",
+    );
+
+    assert.strictEqual(handled, false);
+    assert.strictEqual(writeResponseCalls.length, 0);
   });
 });

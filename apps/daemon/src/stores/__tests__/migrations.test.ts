@@ -82,9 +82,29 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.equal(ticket.workflow_id, null, 'workflow_id should be null for pre-V13 tickets');
   });
 
-  it('schema version is 16', () => {
+  it('schema version is 17', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 16);
+    assert.equal(version, 17);
+  });
+});
+
+describe('V17 migration - chat queue and telemetry schema support', () => {
+  it('creates chat queue and telemetry tables', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const queueCols = db.pragma('table_info(chat_queue_items)') as Array<{ name: string }>;
+    const queueColNames = new Set(queueCols.map((col) => col.name));
+    assert.ok(queueColNames.has('id'));
+    assert.ok(queueColNames.has('question_id'));
+    assert.ok(queueColNames.has('payload_json'));
+    assert.ok(queueColNames.has('status'));
+
+    const eventsCols = db.pragma('table_info(chat_delivery_events)') as Array<{ name: string }>;
+    const eventColNames = new Set(eventsCols.map((col) => col.name));
+    assert.ok(eventColNames.has('queue_item_id'));
+    assert.ok(eventColNames.has('provider_id'));
+    assert.ok(eventColNames.has('event_type'));
   });
 });
 

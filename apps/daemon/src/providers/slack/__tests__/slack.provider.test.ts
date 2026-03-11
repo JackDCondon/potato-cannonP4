@@ -77,7 +77,7 @@ describe("SlackProvider", () => {
       assert.strictEqual(thread.providerId, "slack");
       assert.strictEqual(thread.threadId, "C_TEST_CHANNEL");
       assert.strictEqual((thread.metadata as any).channel, "C_TEST_CHANNEL");
-      assert.strictEqual((thread.metadata as any).thread_ts, "1234567890.123456");
+      assert.strictEqual((thread.metadata as any).threadTs, "1234567890.123456");
 
       // Should have posted a welcome message to the channel
       assert.strictEqual(mockApi.postMessage.mock.calls.length, 1);
@@ -114,7 +114,7 @@ describe("SlackProvider", () => {
         threadId: "C_CHANNEL",
         metadata: {
           channel: "C_CHANNEL",
-          thread_ts: "111.222",
+          threadTs: "111.222",
         },
       };
       const message: OutboundMessage = {
@@ -138,7 +138,7 @@ describe("SlackProvider", () => {
         threadId: "C_CHANNEL",
         metadata: {
           channel: "C_CHANNEL",
-          thread_ts: "111.222",
+          threadTs: "111.222",
         },
       };
 
@@ -161,6 +161,7 @@ describe("SlackProvider", () => {
       const context: ChatContext = { projectId: "proj1", ticketId: "T-1" };
       const thread = await provider.createThread(context, "Test");
       const threadTs = (thread.metadata as any).thread_ts;
+      const normalizedThreadTs = (thread.metadata as any).threadTs ?? threadTs;
 
       // Set up response callback
       let callbackArgs: any[] = [];
@@ -177,7 +178,7 @@ describe("SlackProvider", () => {
         channel: (thread.metadata as any).channel,
         channel_type: "channel",
         ts: "999.111",
-        thread_ts: threadTs,
+        thread_ts: normalizedThreadTs,
       });
 
       // Response callback should have been called with correct context

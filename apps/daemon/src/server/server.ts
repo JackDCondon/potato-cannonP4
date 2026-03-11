@@ -28,6 +28,7 @@ import {
   registerFolderRoutes,
   registerWorkflowRoutes,
   registerDependencyRoutes,
+  registerChatTelemetryRoutes,
   refreshProjects,
   getProjects,
 } from "./routes/index.js";
@@ -653,6 +654,57 @@ export async function main(): Promise<void> {
     },
   );
 
+  // Chat lifecycle cleanup hooks: avoid orphaned queue/routes on terminal events.
+  eventBus.on(
+    "ticket:moved",
+    async (data: { projectId: string; ticketId: string; to: string }) => {
+      if (!isTerminalPhase(data.to as any)) {
+        return;
+      }
+      try {
+        const cleanup = await chatService.cleanupTicketLifecycle(
+          data.projectId,
+          data.ticketId,
+        );
+        if (cleanup.queueCancelled > 0 || cleanup.routesRemoved > 0) {
+          console.log(
+            `[chat-lifecycle] cleaned ticket ${data.ticketId} on phase ${data.to}: cancelled=${cleanup.queueCancelled}, routes=${cleanup.routesRemoved}`,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `[chat-lifecycle] failed cleanup for ticket ${data.ticketId} on move: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+  );
+
+  eventBus.on(
+    "ticket:deleted",
+    async (data: { projectId: string; ticketId: string }) => {
+      try {
+        await chatService.cleanupTicketLifecycle(data.projectId, data.ticketId);
+      } catch (error) {
+        console.warn(
+          `[chat-lifecycle] failed cleanup for deleted ticket ${data.ticketId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+  );
+
+  eventBus.on(
+    "ticket:archived",
+    async (data: { projectId: string; ticketId: string }) => {
+      try {
+        await chatService.cleanupTicketLifecycle(data.projectId, data.ticketId);
+      } catch (error) {
+        console.warn(
+          `[chat-lifecycle] failed cleanup for archived ticket ${data.ticketId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+  );
+
   // Processing sync heartbeat - broadcasts currently processing sessions every 5 seconds
   // This ensures frontend stays in sync even if SSE events are missed
   setInterval(async () => {
@@ -770,6 +822,7 @@ export async function main(): Promise<void> {
   registerFolderRoutes(app);
   registerWorkflowRoutes(app);
   registerDependencyRoutes(app);
+  registerChatTelemetryRoutes(app);
   registerSystemRoutes(app);
 
   // SPA catch-all route - fallback to index.html for SPA routing
@@ -1057,6 +1110,9 @@ export async function main(): Promise<void> {
     if (staleSessions > 0) {
       console.log(`[startup] Cleared ${staleSessions} stale session(s) from previous run`);
     }
+
+    // Resume queued chat dispatch from durable queue state.
+    await chatService.recoverQueuedChat();
 
     // Recover pending responses first so ticket-input reconciliation happens before worker recovery.
     await recoverPendingResponses();

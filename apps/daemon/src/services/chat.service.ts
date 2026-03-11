@@ -4,13 +4,7 @@ import type {
   ChatProvider,
   ChatContext,
   OutboundMessage,
-  ProviderThreadInfo,
 } from "../providers/chat-provider.types.js";
-import {
-  getProviderThread,
-  setProviderThread,
-  getAllThreads,
-} from "../stores/chat-threads.store.js";
 import {
   writeQuestion,
   readResponse,
@@ -28,15 +22,23 @@ import {
   answerQuestion,
   getPendingQuestion,
 } from "../stores/conversation.store.js";
+import { createChatQueueStore } from "../stores/chat-queue.store.js";
+import { createProviderChannelStore } from "../stores/provider-channel.store.js";
 import { getDatabase } from "../stores/db.js";
+import { ChatOrchestrator } from "./chat/chat-orchestrator.js";
 
 export class ChatService {
   private providers: Map<string, ChatProvider> = new Map();
   private pendingOptions: Map<string, string[]> = new Map();
+  private orchestrator: ChatOrchestrator | null;
 
   // Idempotency cache to prevent duplicate question broadcasts
   private recentQuestions: Map<string, { hash: string; timestamp: number }> = new Map();
   private readonly IDEMPOTENCY_WINDOW_MS = 30000; // 30 seconds
+
+  constructor(orchestrator?: ChatOrchestrator) {
+    this.orchestrator = orchestrator ?? null;
+  }
 
   registerProvider(provider: ChatProvider): void {
     this.providers.set(provider.id, provider);
@@ -65,11 +67,10 @@ export class ChatService {
 
     const results = await Promise.allSettled(
       providers.map(async (provider) => {
-        const existing = await getProviderThread(context, provider.id);
+        const existing = await provider.getThread(context);
         if (existing) return existing;
 
         const thread = await provider.createThread(context, title);
-        await setProviderThread(context, thread);
         return thread;
       }),
     );
@@ -275,11 +276,12 @@ export class ChatService {
       });
       questionMessageId = message.id;
     }
+    const logicalQuestionId = questionMessageId || this.generateQuestionId();
 
     // Write pending question for IPC (allows session respawn to inject response)
     await writeQuestion(context.projectId, contextId, {
       conversationId: questionMessageId || this.generateConversationId(),
-      questionId: questionMessageId || undefined,
+      questionId: logicalQuestionId,
       question,
       options: options || null,
       askedAt: now,
@@ -311,26 +313,16 @@ export class ChatService {
       });
     }
 
-    // Broadcast to providers (Telegram, Slack, etc.)
-    const providers = this.getActiveProviders();
-    if (providers.length > 0) {
-      const message: OutboundMessage = { text: question, options, phase };
-      const results = await Promise.allSettled(
-        providers.map((p) => this.sendToProvider(p, context, message)),
-      );
-      for (let i = 0; i < results.length; i++) {
-        const r = results[i];
-        if (r.status === "rejected") {
-          console.warn(
-            `[ChatService] Failed to send question via ${providers[i].id}:`,
-            r.reason,
-          );
-        }
-      }
-    }
+    await this.getOrchestrator().enqueueQuestion(context, logicalQuestionId, {
+      text: question,
+      options,
+      questionId: logicalQuestionId,
+      phase,
+      kind: "question",
+    });
 
     // Return immediately - don't wait for response
-    return { status: 'pending', questionId: questionMessageId };
+    return { status: 'pending', questionId: logicalQuestionId };
   }
 
   async notify(context: ChatContext, message: string): Promise<void> {
@@ -361,29 +353,10 @@ export class ChatService {
       });
     }
 
-    const providers = this.getActiveProviders();
-
-    if (providers.length === 0) {
-      console.log(
-        "[ChatService] No providers configured, skipping notification",
-      );
-      return;
-    }
-
-    const outbound: OutboundMessage = { text: message };
-
-    const results = await Promise.allSettled(
-      providers.map((p) => this.sendToProvider(p, context, outbound)),
-    );
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      if (r.status === "rejected") {
-        console.warn(
-          `[ChatService] Failed to send notification via ${providers[i].id}:`,
-          r.reason,
-        );
-      }
-    }
+    await this.getOrchestrator().enqueueNotification(context, {
+      text: message,
+      kind: "notification",
+    });
   }
 
   async handleResponse(
@@ -406,16 +379,34 @@ export class ChatService {
       context.projectId,
       this.getContextId(context),
     );
+    const decodedAnswer = this.decodeStructuredAnswer(answer);
+    if (
+      decodedAnswer.questionId &&
+      pendingQuestion?.questionId &&
+      decodedAnswer.questionId !== pendingQuestion.questionId
+    ) {
+      return false;
+    }
+
     const mappedAnswer = this.mapAsyncResponseAnswer(
       this.getContextKey(context),
-      answer,
+      decodedAnswer.answer,
       pendingQuestion?.options ?? null,
+      decodedAnswer.optionIndex,
     );
     await writeResponse(context.projectId, this.getContextId(context), {
       answer: mappedAnswer,
       questionId: pendingQuestion?.questionId,
       ticketGeneration: pendingQuestion?.ticketGeneration,
     });
+    if (pendingQuestion?.questionId) {
+      await this.getOrchestrator().resolveQuestion(
+        pendingQuestion.questionId,
+        mappedAnswer,
+        providerId as "telegram" | "slack",
+        context,
+      );
+    }
 
     // All contexts use async askAsync flow — save user message to conversation store here.
     const conversationId = this.getConversationId(context);
@@ -451,7 +442,7 @@ export class ChatService {
     );
     await Promise.allSettled(
       providers.map(async (p) => {
-        const thread = await getProviderThread(context, p.id);
+        const thread = await p.getThread(context);
         if (thread) {
           await p.notifyAnswered(thread, mappedAnswer);
         }
@@ -461,11 +452,80 @@ export class ChatService {
     return true;
   }
 
+  async reconcileWebAnswer(
+    context: ChatContext,
+    questionId: string,
+    answer: string,
+  ): Promise<{ accepted: boolean; stale: boolean; found: boolean }> {
+    const result = await this.getOrchestrator().resolveQuestion(
+      questionId,
+      answer,
+      "web",
+      context,
+    );
+    return { accepted: result.accepted, stale: result.stale, found: !!result.item };
+  }
+
+  async cleanupTicketLifecycle(
+    projectId: string,
+    ticketId: string,
+  ): Promise<{ queueCancelled: number; routesRemoved: number }> {
+    const db = getDatabase();
+    const queueStore = createChatQueueStore(db);
+    const channelStore = createProviderChannelStore(db);
+
+    const queueCancelled = queueStore.cancelOpenItemsForTicket(
+      projectId,
+      ticketId,
+      "system",
+    );
+
+    const channels = channelStore.listChannels({ ticketId });
+    for (const channel of channels) {
+      const provider = this.getProvider(channel.providerId);
+      if (provider?.deleteThread) {
+        try {
+          await provider.deleteThread({
+            providerId: channel.providerId,
+            threadId: channel.channelId,
+            metadata: channel.metadata,
+          });
+        } catch (error) {
+          console.warn(
+            `[ChatService] Failed provider thread cleanup for ${channel.providerId}/${channel.channelId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
+
+    const routesRemoved = channelStore.deleteChannelsForTicket(ticketId);
+
+    if (queueCancelled > 0) {
+      await this.getOrchestrator().tickQueue();
+    }
+
+    return { queueCancelled, routesRemoved };
+  }
+
+  async recoverQueuedChat(): Promise<void> {
+    await this.getOrchestrator().tickQueue();
+  }
+
   private mapAsyncResponseAnswer(
     contextKey: string,
     answer: string,
     pendingOptions: string[] | null,
+    optionIndex?: number,
   ): string {
+    if (
+      typeof optionIndex === "number" &&
+      pendingOptions &&
+      optionIndex >= 0 &&
+      optionIndex < pendingOptions.length
+    ) {
+      return pendingOptions[optionIndex];
+    }
+
     const callbackMatch = answer.match(/^answer_(\d+)$/);
     if (callbackMatch && pendingOptions && pendingOptions.length > 0) {
       const index = parseInt(callbackMatch[1], 10);
@@ -490,13 +550,12 @@ export class ChatService {
     message: OutboundMessage,
   ): Promise<void> {
     const contextId = context.ticketId || context.brainstormId || "unknown";
-    let thread = await getProviderThread(context, provider.id);
+    let thread = await provider.getThread(context);
 
     if (!thread) {
       const title = context.ticketId || context.brainstormId || "Chat";
       console.log(`[ChatService] Creating ${provider.id} thread for ${contextId}`);
       thread = await provider.createThread(context, title);
-      await setProviderThread(context, thread);
       console.log(`[ChatService] Created ${provider.id} thread for ${contextId}`);
     }
 
@@ -565,6 +624,30 @@ export class ChatService {
     return null;
   }
 
+  private generateQuestionId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `q_${timestamp}_${random}`;
+  }
+
+  private decodeStructuredAnswer(answer: string): {
+    answer: string;
+    questionId?: string;
+    optionIndex?: number;
+  } {
+    const structuredMatch = answer.match(/^answer:([^:]+):(\d+)$/);
+    if (!structuredMatch) {
+      return { answer };
+    }
+
+    const optionIndex = Number.parseInt(structuredMatch[2], 10);
+    return {
+      answer,
+      questionId: structuredMatch[1],
+      optionIndex: Number.isNaN(optionIndex) ? undefined : optionIndex,
+    };
+  }
+
   private getTicketGeneration(context: ChatContext): number | undefined {
     if (!context.ticketId) return undefined;
     const db = getDatabase();
@@ -579,6 +662,20 @@ export class ChatService {
       return undefined;
     }
     return row.execution_generation;
+  }
+
+  private getOrchestrator(): ChatOrchestrator {
+    if (this.orchestrator) {
+      return this.orchestrator;
+    }
+
+    this.orchestrator = new ChatOrchestrator(
+      createChatQueueStore(getDatabase()),
+      () => this.getActiveProviders(),
+      (provider, context, message) =>
+        this.sendToProvider(provider, context, message),
+    );
+    return this.orchestrator;
   }
 
   /**

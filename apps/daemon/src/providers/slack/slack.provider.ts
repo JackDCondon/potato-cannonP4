@@ -11,10 +11,12 @@ import type { SlackSocket, SlackMessageEvent } from "./slack.socket.js";
 import type { SlackConfig } from "../../types/config.types.js";
 import { toSlackMrkdwn } from "./mrkdwn.js";
 import { scanAllChatThreads } from "../../stores/chat-threads.store.js";
+import { createProviderChannelStore, type ProviderChannelStore } from "../../stores/provider-channel.store.js";
+import { getDatabase } from "../../stores/db.js";
 
 interface SlackThreadMetadata {
   channel: string;
-  thread_ts: string;
+  threadTs: string;
   userId?: string;
   [key: string]: unknown;
 }
@@ -33,6 +35,7 @@ export class SlackProvider implements ChatProvider {
   private responseCallback: ResponseCallback | null = null;
   private threadCache: Map<string, ProviderThreadInfo> = new Map();
   private channelId: string | null = null;
+  private providerChannelStore: ProviderChannelStore | null = null;
 
   // Overridable for testing
   private scanThreadsFn: typeof scanAllChatThreads = scanAllChatThreads;
@@ -121,17 +124,55 @@ export class SlackProvider implements ChatProvider {
       threadId: this.channelId,
       metadata: {
         channel: this.channelId,
-        thread_ts: threadTs,
+        threadTs,
       } as SlackThreadMetadata,
     };
 
     this.threadCache.set(cacheKey, thread);
+    this.persistRoute(context, thread);
     return thread;
   }
 
   async getThread(context: ChatContext): Promise<ProviderThreadInfo | null> {
     const cacheKey = this.getContextKey(context);
-    return this.threadCache.get(cacheKey) || null;
+    const cached = this.threadCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const store = this.getProviderChannelStore();
+    if (!store) {
+      return null;
+    }
+    const channel = context.ticketId
+      ? store.getChannelForTicket(context.ticketId, this.id)
+      : context.brainstormId
+      ? store.getChannelForBrainstorm(context.brainstormId, this.id)
+      : null;
+    if (!channel) {
+      return null;
+    }
+
+    const thread: ProviderThreadInfo = {
+      providerId: this.id,
+      threadId: channel.channelId,
+      metadata: channel.metadata,
+    };
+    this.threadCache.set(cacheKey, thread);
+    return thread;
+  }
+
+  async deleteThread(thread: ProviderThreadInfo): Promise<void> {
+    // Slack thread deletion is not available for this bot flow.
+    // We still clear cache to avoid stale reverse lookups.
+    for (const [key, value] of this.threadCache.entries()) {
+      if (
+        value.providerId === thread.providerId &&
+        value.threadId === thread.threadId
+      ) {
+        this.threadCache.delete(key);
+      }
+    }
   }
 
   async send(
@@ -143,7 +184,8 @@ export class SlackProvider implements ChatProvider {
     const text = toSlackMrkdwn(message.text);
 
     await this.api.postMessage(meta.channel, text, {
-      thread_ts: meta.thread_ts,
+      thread_ts: (meta as { threadTs?: string; thread_ts?: string }).threadTs
+        ?? (meta as { threadTs?: string; thread_ts?: string }).thread_ts,
     });
   }
 
@@ -156,7 +198,10 @@ export class SlackProvider implements ChatProvider {
     await this.api.postMessage(
       meta.channel,
       `Already answered: "${answer}"`,
-      { thread_ts: meta.thread_ts },
+      {
+        thread_ts: (meta as { threadTs?: string; thread_ts?: string }).threadTs
+          ?? (meta as { threadTs?: string; thread_ts?: string }).thread_ts,
+      },
     );
   }
 
@@ -202,11 +247,71 @@ export class SlackProvider implements ChatProvider {
   ): ChatContext | null {
     for (const [key, thread] of this.threadCache.entries()) {
       const meta = thread.metadata as unknown as SlackThreadMetadata;
-      if (meta.channel === channel && meta.thread_ts === thread_ts) {
+      const cachedThreadTs = (meta as { threadTs?: string; thread_ts?: string }).threadTs
+        ?? (meta as { threadTs?: string; thread_ts?: string }).thread_ts;
+      if (meta.channel === channel && cachedThreadTs === thread_ts) {
         return this.parseContextKey(key);
       }
     }
+
+    const store = this.getProviderChannelStore();
+    if (store) {
+      const route = store.findChannelByProviderRoute(this.id, channel, thread_ts);
+      if (route?.ticketId) {
+        const row = getDatabase()
+          .prepare("SELECT project_id FROM tickets WHERE id = ?")
+          .get(route.ticketId) as { project_id: string } | undefined;
+        if (row?.project_id) {
+          return { projectId: row.project_id, ticketId: route.ticketId };
+        }
+      }
+      if (route?.brainstormId) {
+        const row = getDatabase()
+          .prepare("SELECT project_id FROM brainstorms WHERE id = ?")
+          .get(route.brainstormId) as { project_id: string } | undefined;
+        if (row?.project_id) {
+          return { projectId: row.project_id, brainstormId: route.brainstormId };
+        }
+      }
+    }
     return null;
+  }
+
+  private getProviderChannelStore(): ProviderChannelStore | null {
+    if (this.providerChannelStore) {
+      return this.providerChannelStore;
+    }
+    try {
+      this.providerChannelStore = createProviderChannelStore(getDatabase());
+      return this.providerChannelStore;
+    } catch {
+      return null;
+    }
+  }
+
+  private persistRoute(context: ChatContext, thread: ProviderThreadInfo): void {
+    const store = this.getProviderChannelStore();
+    if (!store) {
+      return;
+    }
+
+    const existing = context.ticketId
+      ? store.getChannelForTicket(context.ticketId, this.id)
+      : context.brainstormId
+      ? store.getChannelForBrainstorm(context.brainstormId, this.id)
+      : null;
+
+    if (existing?.id) {
+      store.deleteChannel(existing.id);
+    }
+
+    store.createChannel({
+      ticketId: context.ticketId,
+      brainstormId: context.brainstormId,
+      providerId: this.id,
+      channelId: (thread.metadata as SlackThreadMetadata).channel,
+      metadata: thread.metadata,
+    });
   }
 
   private getContextKey(context: ChatContext): string {

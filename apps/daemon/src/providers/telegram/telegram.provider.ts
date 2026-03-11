@@ -11,6 +11,8 @@ import type {
 import { TelegramApi, type TelegramConfig } from "./telegram.api.js";
 import { TelegramPoller } from "./telegram.poller.js";
 import { scanAllChatThreads } from "../../stores/chat-threads.store.js";
+import { createProviderChannelStore, type ProviderChannelStore } from "../../stores/provider-channel.store.js";
+import { getDatabase } from "../../stores/db.js";
 
 interface TelegramThreadMetadata {
   chatId: string;
@@ -32,6 +34,7 @@ export class TelegramProvider implements ChatProvider {
   private poller: TelegramPoller | null = null;
   private responseCallback: ResponseCallback | null = null;
   private threadCache: Map<string, ProviderThreadInfo> = new Map();
+  private providerChannelStore: ProviderChannelStore | null = null;
 
   async initialize(config: TelegramConfig): Promise<void> {
     this.config = config;
@@ -39,6 +42,7 @@ export class TelegramProvider implements ChatProvider {
 
     // Load thread cache from all existing chat-threads.json files
     await this.loadThreadCache();
+    await this.validateSetup();
   }
 
   /**
@@ -100,7 +104,7 @@ export class TelegramProvider implements ChatProvider {
 
       const thread: ProviderThreadInfo = {
         providerId: this.id,
-        threadId: topic.message_thread_id.toString(),
+        threadId: this.config.forumGroupId,
         metadata: {
           chatId: this.config.forumGroupId,
           messageThreadId: topic.message_thread_id,
@@ -108,6 +112,7 @@ export class TelegramProvider implements ChatProvider {
       };
 
       this.threadCache.set(cacheKey, thread);
+      this.persistRoute(context, thread);
 
       // Send welcome message
       await this.api.sendMessage(
@@ -129,12 +134,53 @@ export class TelegramProvider implements ChatProvider {
     };
 
     this.threadCache.set(cacheKey, thread);
+    this.persistRoute(context, thread);
     return thread;
   }
 
   async getThread(context: ChatContext): Promise<ProviderThreadInfo | null> {
     const cacheKey = this.getContextKey(context);
-    return this.threadCache.get(cacheKey) || null;
+    const cached = this.threadCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const store = this.getProviderChannelStore();
+    if (!store) {
+      return null;
+    }
+
+    const channel = context.ticketId
+      ? store.getChannelForTicket(context.ticketId, this.id)
+      : context.brainstormId
+      ? store.getChannelForBrainstorm(context.brainstormId, this.id)
+      : null;
+
+    if (!channel) {
+      return null;
+    }
+
+    const thread: ProviderThreadInfo = {
+      providerId: this.id,
+      threadId: channel.channelId,
+      metadata: channel.metadata,
+    };
+    this.threadCache.set(cacheKey, thread);
+    return thread;
+  }
+
+  async deleteThread(thread: ProviderThreadInfo): Promise<void> {
+    const meta = thread.metadata as TelegramThreadMetadata;
+    if (!meta.chatId || !meta.messageThreadId) {
+      return;
+    }
+    try {
+      await this.api.deleteForumTopic(meta.chatId, meta.messageThreadId);
+    } catch (error) {
+      console.warn(
+        `[TelegramProvider] Failed to delete topic ${meta.messageThreadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   async send(
@@ -152,7 +198,12 @@ export class TelegramProvider implements ChatProvider {
     if (message.options && message.options.length > 0) {
       options.replyMarkup = {
         inline_keyboard: message.options.map((opt, idx) => [
-          { text: opt, callback_data: `answer_${idx}` },
+          {
+            text: opt,
+            callback_data: message.questionId
+              ? `answer:${message.questionId}:${idx}`
+              : `answer_${idx}`,
+          },
         ]),
       };
     }
@@ -211,7 +262,8 @@ export class TelegramProvider implements ChatProvider {
     if (!chatId || !data || !this.responseCallback) return;
 
     const match = data.match(/^answer_(\d+)$/);
-    if (!match) return;
+    const structuredMatch = data.match(/^answer:([^:]+):(\d+)$/);
+    if (!match && !structuredMatch) return;
 
     // Find context from thread cache
     const context = this.findContextByThread(
@@ -262,7 +314,102 @@ export class TelegramProvider implements ChatProvider {
         }
       }
     }
+
+    const store = this.getProviderChannelStore();
+    if (store) {
+      const channel = store.findChannelByProviderRoute(
+        this.id,
+        chatId,
+        messageThreadId,
+      );
+      if (channel?.ticketId) {
+        const row = getDatabase()
+          .prepare("SELECT project_id FROM tickets WHERE id = ?")
+          .get(channel.ticketId) as { project_id: string } | undefined;
+        if (row?.project_id) {
+          return { projectId: row.project_id, ticketId: channel.ticketId };
+        }
+      }
+      if (channel?.brainstormId) {
+        const row = getDatabase()
+          .prepare("SELECT project_id FROM brainstorms WHERE id = ?")
+          .get(channel.brainstormId) as { project_id: string } | undefined;
+        if (row?.project_id) {
+          return {
+            projectId: row.project_id,
+            brainstormId: channel.brainstormId,
+          };
+        }
+      }
+    }
     return null;
+  }
+
+  private getProviderChannelStore(): ProviderChannelStore | null {
+    if (this.providerChannelStore) {
+      return this.providerChannelStore;
+    }
+    try {
+      this.providerChannelStore = createProviderChannelStore(getDatabase());
+      return this.providerChannelStore;
+    } catch {
+      return null;
+    }
+  }
+
+  private persistRoute(context: ChatContext, thread: ProviderThreadInfo): void {
+    const store = this.getProviderChannelStore();
+    if (!store) {
+      return;
+    }
+
+    const existing = context.ticketId
+      ? store.getChannelForTicket(context.ticketId, this.id)
+      : context.brainstormId
+      ? store.getChannelForBrainstorm(context.brainstormId, this.id)
+      : null;
+
+    if (existing?.id) {
+      store.deleteChannel(existing.id);
+    }
+
+    store.createChannel({
+      ticketId: context.ticketId,
+      brainstormId: context.brainstormId,
+      providerId: this.id,
+      channelId: (thread.metadata as TelegramThreadMetadata)?.chatId ?? thread.threadId,
+      metadata: thread.metadata,
+    });
+  }
+
+  private async validateSetup(): Promise<void> {
+    if (!this.config.forumGroupId) {
+      return;
+    }
+
+    try {
+      const chat = await this.api.getChat(this.config.forumGroupId);
+      if (!chat.is_forum) {
+        console.warn(
+          `[TelegramProvider] forumGroupId ${this.config.forumGroupId} is not forum-enabled`,
+        );
+      }
+
+      const bot = await this.api.getMe();
+      const membership = await this.api.getChatMember(
+        this.config.forumGroupId,
+        bot.id,
+      );
+      if (!["administrator", "creator"].includes(membership.status)) {
+        console.warn(
+          `[TelegramProvider] Bot lacks admin rights in forum group ${this.config.forumGroupId}`,
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `[TelegramProvider] Setup validation warning: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private getContextKey(context: ChatContext): string {
@@ -277,5 +424,18 @@ export class TelegramProvider implements ChatProvider {
       return { projectId, brainstormId: id };
     }
     return { projectId, ticketId: id };
+  }
+
+  // Test helpers
+  _setConfigForTest(config: TelegramConfig): void {
+    this.config = config;
+  }
+
+  _injectApiForTest(api: TelegramApi): void {
+    this.api = api;
+  }
+
+  async _handleUpdateForTest(update: unknown): Promise<void> {
+    await this.handleUpdate(update);
   }
 }

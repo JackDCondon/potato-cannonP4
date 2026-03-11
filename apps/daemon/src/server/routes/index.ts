@@ -15,3 +15,4 @@ export { registerArtifactChatRoutes } from './artifact-chat.routes.js';
 export { registerFolderRoutes } from "./folders.routes.js";
 export { registerWorkflowRoutes } from "./workflows.routes.js";
 export { registerDependencyRoutes } from "./dependencies.routes.js";
+export { registerChatTelemetryRoutes } from "./chat-telemetry.routes.js";

@@ -28,7 +28,7 @@ The database uses WAL (Write-Ahead Logging) mode for better concurrency. Multipl
 
 Migrations use SQLite's `user_version` pragma. Each migration checks the version and applies changes if needed.
 
-**Current schema version:** 13
+**Current schema version:** 17
 
 **Adding a new migration:**
 
@@ -60,6 +60,10 @@ if (version < 6) {
 | V11 | Add `p4_mcp_server_path` column to projects |
 | V12 | Add `complexity` column to tickets and tasks (default 'standard'; CHECK constraint: simple/standard/complex) |
 | V13 | Add `project_workflows` table + `workflow_id` FK on tickets; backfill default workflow per project |
+| V14 | Add `ticket_dependencies` table and `workflow_id` FK on brainstorms |
+| V15 | Add `metadata` field to `ticket_history` |
+| V16 | Add `execution_generation` fields and active session uniqueness fencing |
+| V17 | Add `chat_queue_items` and `chat_delivery_events`; add provider route metadata indexes |
 
 ## Tables
 

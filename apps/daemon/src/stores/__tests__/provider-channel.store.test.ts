@@ -323,6 +323,52 @@ describe("ProviderChannelStore", () => {
     });
   });
 
+  describe("findChannelByProviderRoute", () => {
+    it("should resolve route using thread-aware metadata", () => {
+      const otherTicket = ticketStore.createTicket(projectId, { title: "Other Ticket" });
+
+      const channelA = channelStore.createChannel({
+        ticketId,
+        providerId: "telegram",
+        channelId: "shared-chat",
+        metadata: { messageThreadId: 111 },
+      });
+
+      const channelB = channelStore.createChannel({
+        ticketId: otherTicket.id,
+        providerId: "telegram",
+        channelId: "shared-chat",
+        metadata: { messageThreadId: 222 },
+      });
+
+      const foundA = channelStore.findChannelByProviderRoute("telegram", "shared-chat", 111);
+      const foundB = channelStore.findChannelByProviderRoute("telegram", "shared-chat", 222);
+
+      assert.ok(foundA);
+      assert.ok(foundB);
+      assert.strictEqual(foundA?.id, channelA.id);
+      assert.strictEqual(foundB?.id, channelB.id);
+    });
+
+    it("should resolve Slack route using threadTs metadata", () => {
+      const created = channelStore.createChannel({
+        ticketId,
+        providerId: "slack",
+        channelId: "C123456",
+        metadata: { threadTs: "1740501936.123456" },
+      });
+
+      const found = channelStore.findChannelByProviderRoute(
+        "slack",
+        "C123456",
+        "1740501936.123456"
+      );
+
+      assert.ok(found);
+      assert.strictEqual(found?.id, created.id);
+    });
+  });
+
   describe("listChannels", () => {
     it("should return empty array when no channels exist", () => {
       const channels = channelStore.listChannels();
@@ -405,6 +451,23 @@ describe("ProviderChannelStore", () => {
     it("should return false for non-existent channel", () => {
       const deleted = channelStore.deleteChannel("non-existent");
       assert.strictEqual(deleted, false);
+    });
+
+    it("should delete all channels for a ticket", () => {
+      channelStore.createChannel({
+        ticketId,
+        providerId: "telegram",
+        channelId: "chat-1",
+      });
+      channelStore.createChannel({
+        ticketId,
+        providerId: "slack",
+        channelId: "channel-1",
+      });
+
+      const removed = channelStore.deleteChannelsForTicket(ticketId);
+      assert.equal(removed, 2);
+      assert.equal(channelStore.listChannels({ ticketId }).length, 0);
     });
   });
 

@@ -134,11 +134,44 @@ export class ProviderChannelStore {
     providerId: string,
     channelId: string
   ): ProviderChannel | null {
+    return this.findChannelByProviderRoute(providerId, channelId);
+  }
+
+  /**
+   * Reverse lookup by provider route identity.
+   * If externalThreadId is provided, route resolution includes thread/topic metadata.
+   */
+  findChannelByProviderRoute(
+    providerId: string,
+    channelId: string,
+    externalThreadId?: string | number
+  ): ProviderChannel | null {
+    if (externalThreadId === undefined || externalThreadId === null) {
+      const row = this.db
+        .prepare(
+          "SELECT * FROM provider_channels WHERE provider_id = ? AND channel_id = ? ORDER BY created_at DESC LIMIT 1"
+        )
+        .get(providerId, channelId) as ChannelRow | undefined;
+
+      return row ? rowToChannel(row) : null;
+    }
+
+    const threadText = String(externalThreadId);
     const row = this.db
       .prepare(
-        "SELECT * FROM provider_channels WHERE provider_id = ? AND channel_id = ?"
+        `SELECT * FROM provider_channels
+         WHERE provider_id = ? AND channel_id = ?
+           AND (
+             CAST(json_extract(metadata, '$.messageThreadId') AS TEXT) = ?
+             OR CAST(json_extract(metadata, '$.threadTs') AS TEXT) = ?
+             OR CAST(json_extract(metadata, '$.externalThreadId') AS TEXT) = ?
+           )
+         ORDER BY created_at DESC
+         LIMIT 1`
       )
-      .get(providerId, channelId) as ChannelRow | undefined;
+      .get(providerId, channelId, threadText, threadText, threadText) as
+      | ChannelRow
+      | undefined;
 
     return row ? rowToChannel(row) : null;
   }
@@ -173,6 +206,13 @@ export class ProviderChannelStore {
       .prepare("DELETE FROM provider_channels WHERE id = ?")
       .run(id);
     return result.changes > 0;
+  }
+
+  deleteChannelsForTicket(ticketId: string): number {
+    const result = this.db
+      .prepare("DELETE FROM provider_channels WHERE ticket_id = ?")
+      .run(ticketId);
+    return result.changes;
   }
 }
 
@@ -221,9 +261,21 @@ export function findProviderChannelByProviderChannel(
   providerId: string,
   channelId: string
 ): ProviderChannel | null {
-  return new ProviderChannelStore(getDatabase()).findChannelByProviderChannel(
+  return new ProviderChannelStore(getDatabase()).findChannelByProviderRoute(
     providerId,
     channelId
+  );
+}
+
+export function findProviderChannelByProviderRoute(
+  providerId: string,
+  channelId: string,
+  externalThreadId?: string | number
+): ProviderChannel | null {
+  return new ProviderChannelStore(getDatabase()).findChannelByProviderRoute(
+    providerId,
+    channelId,
+    externalThreadId
   );
 }
 
@@ -235,4 +287,8 @@ export function listProviderChannels(
 
 export function deleteProviderChannel(id: string): boolean {
   return new ProviderChannelStore(getDatabase()).deleteChannel(id);
+}
+
+export function deleteProviderChannelsForTicket(ticketId: string): number {
+  return new ProviderChannelStore(getDatabase()).deleteChannelsForTicket(ticketId);
 }
