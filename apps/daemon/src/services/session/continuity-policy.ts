@@ -1,4 +1,8 @@
-import type { ContinuityCompatibilityKey } from "./continuity.types.js";
+import type {
+  ContinuityCompatibilityKey,
+  ContinuityDecision,
+  ContinuityPacket,
+} from "./continuity.types.js";
 
 export interface ResumeEligibilityInput {
   stored?: ContinuityCompatibilityKey;
@@ -87,4 +91,72 @@ export function evaluateResumeEligibility(
   }
 
   return { eligible: true, reason: "eligible" };
+}
+
+export interface ContinuityDecisionInput {
+  suspendedResumeSessionId?: string | null;
+  restartSnapshot?: ContinuityPacket | null;
+  resumeEligibility: ResumeEligibilityInput;
+  sameLifecyclePacket?: ContinuityPacket | null;
+}
+
+export function decideContinuityMode(
+  input: ContinuityDecisionInput,
+): ContinuityDecision {
+  // 1) Suspended question/answer resume is highest priority.
+  if (isNonEmptyString(input.suspendedResumeSessionId)) {
+    return {
+      mode: "resume",
+      reason: "suspended_session_resume",
+      sourceSessionId: input.suspendedResumeSessionId,
+    };
+  }
+
+  // 2) Explicit restart snapshot takes precedence over same-lifecycle checks.
+  if (input.restartSnapshot) {
+    return {
+      mode: "handoff",
+      reason: "restart_snapshot",
+      scope: input.restartSnapshot.scope,
+      packet: input.restartSnapshot,
+      sourceSessionId:
+        input.restartSnapshot.conversationTurns.at(-1)?.sourceSessionId ??
+        input.restartSnapshot.sessionHighlights.at(-1)?.sourceSessionId,
+    };
+  }
+
+  // 3) Same-lifecycle resume only when the full contract still matches.
+  const eligibility = evaluateResumeEligibility(input.resumeEligibility);
+  if (eligibility.eligible) {
+    return {
+      mode: "resume",
+      reason: "same_lifecycle_resume",
+      sourceSessionId: input.resumeEligibility.claudeSessionId ?? undefined,
+    };
+  }
+
+  // 4) If resume is unsafe, use bounded handoff packet when available.
+  if (input.sameLifecyclePacket) {
+    return {
+      mode: "handoff",
+      reason: "packet_available",
+      scope: input.sameLifecyclePacket.scope,
+      packet: input.sameLifecyclePacket,
+      sourceSessionId:
+        input.sameLifecyclePacket.conversationTurns.at(-1)?.sourceSessionId ??
+        input.sameLifecyclePacket.sessionHighlights.at(-1)?.sourceSessionId,
+    };
+  }
+
+  // 5) Fall back to fresh.
+  return {
+    mode: "fresh",
+    reason:
+      eligibility.reason === "missing_claude_session_id" ||
+      eligibility.reason === "missing_compatibility_key" ||
+      eligibility.reason === "compatibility_mismatch" ||
+      eligibility.reason === "lifecycle_invalidated"
+        ? "resume_not_allowed"
+        : "packet_unavailable",
+  };
 }

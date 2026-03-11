@@ -54,6 +54,7 @@ import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
 import type {
+  ContinuityDecision,
   ContinuityPacket,
   ContinuityCompatibilityKey,
 } from "./continuity.types.js";
@@ -79,7 +80,11 @@ import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 import { createSpawnPendingWorkerState } from "./worker-state.js";
 import { consumeSpawnPendingContinuitySnapshot } from "./worker-state.js";
-import { evaluateResumeEligibility } from "./continuity-policy.js";
+import {
+  decideContinuityMode,
+  evaluateResumeEligibility,
+  type ResumeEligibilityInput,
+} from "./continuity-policy.js";
 import {
   buildBoundedContinuityPacket,
   type ContinuityPacketLimits,
@@ -156,6 +161,15 @@ interface BuildRestartSnapshotInput {
   targetPhase: string;
   executionGeneration: number;
   conversationId?: string;
+}
+
+interface DecideContinuityForTicketInput {
+  ticketId: string;
+  conversationId?: string;
+  filter: ContinuityPacketFilter;
+  limits: ContinuityPacketLimits;
+  resumeEligibility: ResumeEligibilityInput;
+  suspendedResumeSessionId?: string | null;
 }
 
 export class SessionService {
@@ -651,6 +665,26 @@ export class SessionService {
     }
     this.consumedRestartSnapshots.delete(ticketId);
     return snapshot;
+  }
+
+  async decideContinuityForTicket(
+    input: DecideContinuityForTicketInput,
+  ): Promise<ContinuityDecision> {
+    const restartSnapshot = this.takeRestartSnapshotForTicket(input.ticketId);
+    const sameLifecyclePacket = await this.buildContinuityPacketForTicket({
+      ticketId: input.ticketId,
+      conversationId: input.conversationId,
+      filter: input.filter,
+      limits: input.limits,
+      scope: "same_lifecycle",
+    });
+
+    return decideContinuityMode({
+      suspendedResumeSessionId: input.suspendedResumeSessionId,
+      restartSnapshot,
+      resumeEligibility: input.resumeEligibility,
+      sameLifecyclePacket,
+    });
   }
 
   /**

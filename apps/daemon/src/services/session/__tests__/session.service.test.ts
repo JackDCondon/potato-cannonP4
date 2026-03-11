@@ -7,7 +7,7 @@ import {
   TicketLifecycleConflictError,
   StaleTicketInputError,
 } from "../session.service.js";
-import { evaluateResumeEligibility } from "../continuity-policy.js";
+import { decideContinuityMode, evaluateResumeEligibility } from "../continuity-policy.js";
 import { SESSIONS_DIR } from "../../../config/paths.js";
 
 /**
@@ -673,6 +673,108 @@ describe("evaluateResumeEligibility", () => {
     assert.deepStrictEqual(result, {
       eligible: false,
       reason: "lifecycle_invalidated",
+    });
+  });
+});
+
+describe("decideContinuityMode", () => {
+  const baseKey = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/build.md",
+    executionGeneration: 4,
+    workflowId: "wf-main",
+    worktreePath: "/tmp/wt",
+    branchName: "potato/POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["potato-cannon", "p4"],
+    model: "sonnet",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+
+  it("prioritizes suspended resume over all other continuity options", () => {
+    const decision = decideContinuityMode({
+      suspendedResumeSessionId: "claude_suspended_1",
+      restartSnapshot: {
+        scope: "safe_user_context_only",
+        conversationTurns: [],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+      sameLifecyclePacket: {
+        scope: "same_lifecycle",
+        conversationTurns: [{ role: "user", text: "context" }],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+    });
+
+    assert.deepStrictEqual(decision, {
+      mode: "resume",
+      reason: "suspended_session_resume",
+      sourceSessionId: "claude_suspended_1",
+    });
+  });
+
+  it("chooses restart snapshot handoff before same-lifecycle resume checks", () => {
+    const decision = decideContinuityMode({
+      restartSnapshot: {
+        scope: "safe_user_context_only",
+        conversationTurns: [{ role: "user", text: "restart context" }],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+      sameLifecyclePacket: null,
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "restart_snapshot");
+    assert.strictEqual(decision.scope, "safe_user_context_only");
+  });
+
+  it("chooses same-lifecycle handoff when resume is unsafe but packet exists", () => {
+    const decision = decideContinuityMode({
+      resumeEligibility: {
+        stored: baseKey,
+        current: { ...baseKey, phase: "Refinement" },
+        claudeSessionId: "claude_resume_1",
+      },
+      sameLifecyclePacket: {
+        scope: "same_lifecycle",
+        conversationTurns: [{ role: "user", text: "handoff context" }],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "packet_available");
+  });
+
+  it("falls back to fresh when resume is stale and no packet is available", () => {
+    const decision = decideContinuityMode({
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+        lifecycleInvalidated: true,
+      },
+      sameLifecyclePacket: null,
+    });
+
+    assert.deepStrictEqual(decision, {
+      mode: "fresh",
+      reason: "resume_not_allowed",
     });
   });
 });
