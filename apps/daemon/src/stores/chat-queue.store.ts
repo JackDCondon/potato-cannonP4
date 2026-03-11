@@ -246,6 +246,37 @@ export class ChatQueueStore {
     return rows.map(rowToQueueItem);
   }
 
+  listOpenQueueItems(filters?: {
+    projectId?: string;
+    ticketId?: string;
+    limit?: number;
+  }): ChatQueueItem[] {
+    const where: string[] = ["status IN ('queued', 'dispatching', 'awaiting_reply')"];
+    const params: unknown[] = [];
+
+    if (filters?.projectId) {
+      where.push("project_id = ?");
+      params.push(filters.projectId);
+    }
+
+    if (filters?.ticketId) {
+      where.push("ticket_id = ?");
+      params.push(filters.ticketId);
+    }
+
+    const limit = filters?.limit ?? 500;
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM chat_queue_items
+         WHERE ${where.join(" AND ")}
+         ORDER BY created_at ASC
+         LIMIT ?`
+      )
+      .all(...params, limit) as QueueItemRow[];
+
+    return rows.map(rowToQueueItem);
+  }
+
   markDispatching(id: string): ChatQueueItem | null {
     return this.updateStatus(id, "dispatching");
   }
@@ -404,4 +435,12 @@ export function getActiveQuestion(): ChatQueueItem | null {
 
 export function listReadyQueueItems(limit = 10, atTime?: string): ChatQueueItem[] {
   return new ChatQueueStore(getDatabase()).listReadyQueueItems(limit, atTime);
+}
+
+export function listOpenQueueItems(filters?: {
+  projectId?: string;
+  ticketId?: string;
+  limit?: number;
+}): ChatQueueItem[] {
+  return new ChatQueueStore(getDatabase()).listOpenQueueItems(filters);
 }

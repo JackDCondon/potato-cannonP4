@@ -22,8 +22,22 @@ interface ResolveResult {
   item?: ChatQueueItem;
 }
 
+interface ChatOrchestratorLogger {
+  warn(message: string): void;
+}
+
+interface ChatOrchestratorOptions {
+  activeQuestionTimeoutMs?: number;
+  logger?: ChatOrchestratorLogger;
+  now?: () => number;
+}
+
 export class ChatOrchestrator {
   private dispatchLoopRunning = false;
+  private readonly activeQuestionTimeoutMs: number;
+  private readonly logger: ChatOrchestratorLogger;
+  private readonly now: () => number;
+  private lastBlockedLogKey: string | null = null;
 
   constructor(
     private queueStore: ChatQueueStore = createChatQueueStore(getDatabase()),
@@ -32,8 +46,14 @@ export class ChatOrchestrator {
       provider: ChatProvider,
       context: ChatContext,
       message: OutboundMessage
-    ) => Promise<void>
-  ) {}
+    ) => Promise<void>,
+    options: ChatOrchestratorOptions = {},
+  ) {
+    this.activeQuestionTimeoutMs =
+      options.activeQuestionTimeoutMs ?? 30 * 60 * 1000;
+    this.logger = options.logger ?? console;
+    this.now = options.now ?? (() => Date.now());
+  }
 
   async enqueueQuestion(
     context: ChatContext,
@@ -75,10 +95,36 @@ export class ChatOrchestrator {
       let shouldContinue = true;
       while (shouldContinue) {
         const activeQuestion = this.queueStore.getActiveQuestion();
+        if (
+          activeQuestion &&
+          this.activeQuestionTimeoutMs > 0 &&
+          this.isQuestionTimedOut(activeQuestion)
+        ) {
+          const timedOutAt = activeQuestion.sentAt ?? activeQuestion.createdAt;
+          this.queueStore.markTimedOut(activeQuestion.id, "system");
+          this.lastBlockedLogKey = null;
+          this.logger.warn(
+            `[ChatOrchestrator] Timed out stuck active question ${activeQuestion.questionId ?? activeQuestion.id} for ${this.describeItemContext(activeQuestion)} after waiting since ${timedOutAt}`,
+          );
+          continue;
+        }
+
         const ready = this.queueStore.listReadyQueueItems(25);
         if (ready.length === 0) {
+          this.lastBlockedLogKey = null;
           shouldContinue = false;
           continue;
+        }
+
+        if (activeQuestion) {
+          const blockedQuestion = ready.find((item) => item.kind === "question");
+          if (blockedQuestion) {
+            this.logBlockedQuestion(activeQuestion, blockedQuestion);
+          } else {
+            this.lastBlockedLogKey = null;
+          }
+        } else {
+          this.lastBlockedLogKey = null;
         }
 
         const nextItem = activeQuestion
@@ -207,5 +253,35 @@ export class ChatOrchestrator {
     } else {
       this.queueStore.markAnswered(item.id, "system");
     }
+  }
+
+  private isQuestionTimedOut(item: ChatQueueItem): boolean {
+    const baseline = item.sentAt ?? item.createdAt;
+    const baselineMs = Date.parse(baseline);
+    if (Number.isNaN(baselineMs)) {
+      return false;
+    }
+    return this.now() - baselineMs >= this.activeQuestionTimeoutMs;
+  }
+
+  private logBlockedQuestion(activeQuestion: ChatQueueItem, blockedQuestion: ChatQueueItem): void {
+    const logKey = `${activeQuestion.id}:${blockedQuestion.id}`;
+    if (this.lastBlockedLogKey === logKey) {
+      return;
+    }
+    this.lastBlockedLogKey = logKey;
+    this.logger.warn(
+      `[ChatOrchestrator] Question ${blockedQuestion.questionId ?? blockedQuestion.id} for ${this.describeItemContext(blockedQuestion)} is queued behind active question ${activeQuestion.questionId ?? activeQuestion.id} for ${this.describeItemContext(activeQuestion)}`,
+    );
+  }
+
+  private describeItemContext(item: ChatQueueItem): string {
+    if (item.ticketId) {
+      return `ticket ${item.ticketId}`;
+    }
+    if (item.brainstormId) {
+      return `brainstorm ${item.brainstormId}`;
+    }
+    return `project ${item.projectId}`;
   }
 }

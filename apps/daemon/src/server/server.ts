@@ -338,6 +338,14 @@ async function recoverPendingResponses(): Promise<void> {
         const providedQuestionId = item.response.questionId;
         const expectedQuestionId = item.question?.questionId;
         const expectedGeneration = item.question?.ticketGeneration;
+        const resumeQuestionId =
+          typeof providedQuestionId === "string"
+            ? providedQuestionId
+            : expectedQuestionId;
+        const resumeGeneration =
+          typeof providedGeneration === "number"
+            ? providedGeneration
+            : expectedGeneration;
 
         // Precedence 1: stale reject
         const isStalePendingResponse = isStalePendingTicketInput({
@@ -360,13 +368,21 @@ async function recoverPendingResponses(): Promise<void> {
           console.log(
             `[recovery] Strict stale-resume enforcement disabled; allowing legacy recovery for ${item.contextId}`,
           );
+          if (
+            typeof providedQuestionId !== "string" ||
+            typeof providedGeneration !== "number"
+          ) {
+            console.log(
+              `[recovery] Legacy ticket input for ${item.contextId}; inferring resume identity from pending question metadata`,
+            );
+          }
         }
 
         // Precedence 2: valid suspended resume
         if (
           item.question &&
-          typeof providedQuestionId === "string" &&
-          typeof providedGeneration === "number"
+          typeof resumeQuestionId === "string" &&
+          typeof resumeGeneration === "number"
         ) {
           // Suspended session — resume with --resume flag
           try {
@@ -375,8 +391,8 @@ async function recoverPendingResponses(): Promise<void> {
               item.contextId,
               item.response.answer,
               {
-                questionId: providedQuestionId,
-                ticketGeneration: providedGeneration,
+                questionId: resumeQuestionId,
+                ticketGeneration: resumeGeneration,
               },
             );
             console.log(
@@ -676,6 +692,22 @@ export async function main(): Promise<void> {
         eventBus.emit("ticket:updated", { projectId, ticket });
       } catch {
         // Ignore
+      }
+
+      try {
+        const cleanup = await chatService.pruneTicketQueueAfterSessionEnd(
+          projectId,
+          ticketId,
+        );
+        if (cleanup.cancelled > 0) {
+          console.log(
+            `[chat-lifecycle] pruned ${cleanup.cancelled} stale queue item(s) for ${ticketId} after session end`,
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `[chat-lifecycle] failed session-end queue prune for ${ticketId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     },
   );
@@ -1135,6 +1167,15 @@ export async function main(): Promise<void> {
     const staleSessions = endAllOpenSessions();
     if (staleSessions > 0) {
       console.log(`[startup] Cleared ${staleSessions} stale session(s) from previous run`);
+    }
+
+    const queuePrune = await chatService.pruneIrrelevantTicketQueue({
+      preservePendingInteraction: true,
+    });
+    if (queuePrune.cancelled > 0) {
+      console.log(
+        `[startup] Pruned ${queuePrune.cancelled} stale chat queue item(s) out of ${queuePrune.checked} checked`,
+      );
     }
 
     // Resume queued chat dispatch from durable queue state.

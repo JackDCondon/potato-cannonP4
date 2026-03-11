@@ -218,4 +218,42 @@ describe("ChatQueueStore", () => {
     assert.equal(queuedAfter?.status, "cancelled");
     assert.equal(awaitingAfter?.status, "cancelled");
   });
+
+  it("lists only open queue items and supports ticket filtering", () => {
+    const q1 = queueStore.enqueueQuestion({
+      projectId,
+      ticketId,
+      questionId: "q-open",
+      payload: { text: "open question" },
+    });
+    queueStore.enqueueNotification({
+      projectId,
+      ticketId,
+      payload: { text: "open notification" },
+    });
+    const answered = queueStore.enqueueQuestion({
+      projectId,
+      ticketId,
+      questionId: "q-answered",
+      payload: { text: "answered question" },
+    });
+    queueStore.markAnswered(answered.id, "system");
+
+    const ticket2 = ticketStore.createTicket(projectId, { title: "Queue Ticket 2" });
+    queueStore.enqueueQuestion({
+      projectId,
+      ticketId: ticket2.id,
+      questionId: "q-other",
+      payload: { text: "other question" },
+    });
+
+    const openForTicket = queueStore.listOpenQueueItems({ projectId, ticketId });
+    assert.equal(openForTicket.length, 2);
+    assert.ok(openForTicket.every((item) => item.ticketId === ticketId));
+
+    const allOpen = queueStore.listOpenQueueItems({ projectId });
+    assert.equal(allOpen.length, 3);
+    assert.ok(allOpen.some((item) => item.id === q1.id));
+    assert.ok(allOpen.every((item) => item.status !== "answered"));
+  });
 });

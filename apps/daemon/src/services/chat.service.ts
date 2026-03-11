@@ -30,6 +30,8 @@ import type {
   ConversationMessageMetadata,
   ConversationMessageOrigin,
 } from "../types/conversation.types.js";
+import { getActiveSessionForTicket } from "../stores/session.store.js";
+import { TERMINAL_PHASES } from "@potato-cannon/shared";
 
 export class ChatService {
   private providers: Map<string, ChatProvider> = new Map();
@@ -39,6 +41,7 @@ export class ChatService {
   // Idempotency cache to prevent duplicate question broadcasts
   private recentQuestions: Map<string, { hash: string; timestamp: number }> = new Map();
   private readonly IDEMPOTENCY_WINDOW_MS = 30000; // 30 seconds
+  private readonly terminalPhases = new Set<string>(TERMINAL_PHASES as readonly string[]);
 
   constructor(orchestrator?: ChatOrchestrator) {
     this.orchestrator = orchestrator ?? null;
@@ -541,6 +544,81 @@ export class ChatService {
 
   async recoverQueuedChat(): Promise<void> {
     await this.getOrchestrator().tickQueue();
+  }
+
+  async pruneTicketQueueAfterSessionEnd(
+    projectId: string,
+    ticketId: string,
+  ): Promise<{ checked: number; cancelled: number }> {
+    if (getActiveSessionForTicket(ticketId)) {
+      return { checked: 0, cancelled: 0 };
+    }
+
+    return this.pruneIrrelevantTicketQueue({
+      projectId,
+      ticketId,
+      preservePendingInteraction: true,
+    });
+  }
+
+  async pruneIrrelevantTicketQueue(filters?: {
+    projectId?: string;
+    ticketId?: string;
+    preservePendingInteraction?: boolean;
+  }): Promise<{ checked: number; cancelled: number }> {
+    const db = getDatabase();
+    const queueStore = createChatQueueStore(db);
+    const candidates = queueStore.listOpenQueueItems({
+      projectId: filters?.projectId,
+      ticketId: filters?.ticketId,
+    });
+
+    let checked = 0;
+    let cancelled = 0;
+    for (const item of candidates) {
+      if (!item.ticketId) {
+        continue;
+      }
+      checked++;
+      const ticketRow = db
+        .prepare(
+          "SELECT id, phase, archived_at FROM tickets WHERE id = ? AND project_id = ?",
+        )
+        .get(item.ticketId, item.projectId) as
+        | { id: string; phase: string; archived_at: string | null }
+        | undefined;
+
+      if (!ticketRow) {
+        queueStore.markCancelled(item.id, "system");
+        cancelled++;
+        continue;
+      }
+
+      if (ticketRow.archived_at || this.terminalPhases.has(ticketRow.phase)) {
+        queueStore.markCancelled(item.id, "system");
+        cancelled++;
+        continue;
+      }
+
+      if (filters?.preservePendingInteraction ?? true) {
+        const [pendingQuestion, pendingResponse] = await Promise.all([
+          readQuestion(item.projectId, item.ticketId),
+          readResponse(item.projectId, item.ticketId),
+        ]);
+        if (pendingQuestion || pendingResponse) {
+          continue;
+        }
+      }
+
+      queueStore.markCancelled(item.id, "system");
+      cancelled++;
+    }
+
+    if (cancelled > 0) {
+      await this.getOrchestrator().tickQueue();
+    }
+
+    return { checked, cancelled };
   }
 
   private mapAsyncResponseAnswer(

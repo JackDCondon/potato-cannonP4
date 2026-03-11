@@ -228,4 +228,89 @@ describe("ChatOrchestrator", () => {
     assert.equal(post?.status, "answered");
     assert.equal(post?.resolvedBy, "web");
   });
+
+  it("logs when a question is queued behind an active question lock", async () => {
+    const warnings: string[] = [];
+    const orchestrator = new ChatOrchestrator(
+      queueStore,
+      () => providers,
+      async () => {},
+      {
+        logger: {
+          warn(message: string) {
+            warnings.push(message);
+          },
+        },
+      },
+    );
+
+    await orchestrator.enqueueQuestion(
+      { projectId, ticketId },
+      "q-active",
+      { text: "Active question" }
+    );
+    await orchestrator.enqueueQuestion(
+      { projectId, ticketId },
+      "q-queued",
+      { text: "Queued question" }
+    );
+
+    const blockedWarning = warnings.find((entry) =>
+      entry.includes("queued behind active question")
+    );
+    assert.ok(blockedWarning);
+    assert.match(blockedWarning ?? "", /q-queued/);
+    assert.match(blockedWarning ?? "", /q-active/);
+  });
+
+  it("times out stale active questions so queued questions can dispatch", async () => {
+    const warnings: string[] = [];
+    let fakeNow = Date.parse("2026-03-11T00:00:00.000Z");
+    const orchestrator = new ChatOrchestrator(
+      queueStore,
+      () => providers,
+      async () => {},
+      {
+        activeQuestionTimeoutMs: 1_000,
+        now: () => fakeNow,
+        logger: {
+          warn(message: string) {
+            warnings.push(message);
+          },
+        },
+      },
+    );
+
+    await orchestrator.enqueueQuestion(
+      { projectId, ticketId },
+      "q-active",
+      { text: "Active question" }
+    );
+    await orchestrator.enqueueQuestion(
+      { projectId, ticketId },
+      "q-queued",
+      { text: "Queued question" }
+    );
+
+    const active = queueStore.getQueueItemByQuestionId("q-active");
+    assert.ok(active);
+    db.prepare("UPDATE chat_queue_items SET sent_at = ? WHERE id = ?").run(
+      new Date(fakeNow - 5_000).toISOString(),
+      active?.id,
+    );
+
+    fakeNow += 5_000;
+    await orchestrator.tickQueue();
+
+    const activeAfter = queueStore.getQueueItemByQuestionId("q-active");
+    const queuedAfter = queueStore.getQueueItemByQuestionId("q-queued");
+    assert.equal(activeAfter?.status, "timed_out");
+    assert.equal(queuedAfter?.status, "awaiting_reply");
+
+    const timeoutWarning = warnings.find((entry) =>
+      entry.includes("Timed out stuck active question")
+    );
+    assert.ok(timeoutWarning);
+    assert.match(timeoutWarning ?? "", /q-active/);
+  });
 });

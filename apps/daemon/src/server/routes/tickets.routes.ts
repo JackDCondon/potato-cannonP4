@@ -407,6 +407,8 @@ export function registerTicketRoutes(
       try {
         const projectId = decodeURIComponent(req.params.project);
         const ticketId = req.params.id;
+        await sessionService.terminateTicketSession(ticketId);
+        await chatService.cleanupTicketLifecycle(projectId, ticketId);
         await deleteTicket(projectId, ticketId);
         eventBus.emit("ticket:deleted", { projectId, ticketId });
         res.json({ ok: true });
@@ -758,7 +760,11 @@ export function registerTicketRoutes(
 
         if (typeof questionId !== "string" || typeof ticketGeneration !== "number") {
           if (!strictStaleResume409) {
-            await writeResponse(projectId, ticketId, { answer: message });
+            await writeResponse(projectId, ticketId, {
+              answer: message,
+              questionId: pendingQuestion.questionId,
+              ticketGeneration: pendingQuestion.ticketGeneration,
+            });
             res.json({ success: true });
             return;
           }

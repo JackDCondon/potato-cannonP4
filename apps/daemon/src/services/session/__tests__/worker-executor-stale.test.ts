@@ -2,6 +2,7 @@ import { describe, it, mock, beforeEach } from "node:test";
 import assert from "node:assert";
 
 let ticketGeneration = 2;
+let throwTicketNotFound = false;
 let saveCalls = 0;
 let blockedCalls = 0;
 const phaseConfigCalls: Array<[string, string, string | undefined]> = [];
@@ -63,10 +64,15 @@ await mock.module("../phase-config.js", {
 
 await mock.module("../../../stores/ticket.store.js", {
   namedExports: {
-    getTicket: () => ({
-      executionGeneration: ticketGeneration,
-      workflowId: "wf-custom",
-    }),
+    getTicket: () => {
+      if (throwTicketNotFound) {
+        throw new Error("Ticket POT-1 not found");
+      }
+      return {
+        executionGeneration: ticketGeneration,
+        workflowId: "wf-custom",
+      };
+    },
   },
 });
 
@@ -142,6 +148,7 @@ const callbacks = {
 describe("worker-executor stale callback fencing", () => {
   beforeEach(() => {
     ticketGeneration = 2;
+    throwTicketNotFound = false;
     saveCalls = 0;
     blockedCalls = 0;
     phaseConfigCalls.length = 0;
@@ -235,5 +242,26 @@ describe("worker-executor stale callback fencing", () => {
 
     assert.ok(phaseConfigCalls.length > 0);
     assert.deepStrictEqual(phaseConfigCalls[0], ["proj-1", "Build", "wf-custom"]);
+  });
+
+  it("returns gracefully when ticket is deleted before completion callback runs", async () => {
+    throwTicketNotFound = true;
+
+    await assert.doesNotReject(async () => {
+      await handleAgentCompletion(
+        "proj-1",
+        "POT-1",
+        "Build",
+        "D:/tmp/project",
+        0,
+        "agent-1",
+        { approved: true },
+        callbacks,
+        { sessionId: "sess-current", executionGeneration: 2 },
+      );
+    });
+
+    assert.strictEqual(saveCalls, 0);
+    assert.strictEqual(blockedCalls, 0);
   });
 });

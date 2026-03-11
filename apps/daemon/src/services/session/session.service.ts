@@ -1063,6 +1063,10 @@ export class SessionService {
     return false;
   }
 
+  async terminateTicketSession(ticketId: string): Promise<void> {
+    await this.terminateExistingSession("ticket", ticketId);
+  }
+
   /**
    * Internal helper for unit tests: simulate the cleanup that proc.onExit performs
    * for a session registered in the sessions map (without spawning a real PTY).

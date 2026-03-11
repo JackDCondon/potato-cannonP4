@@ -72,6 +72,16 @@ describe("SessionService.terminateExistingSession", () => {
     assert.strictEqual(service.isActive("sess_1"), true);
     assert.strictEqual(service.isActive("sess_2"), false);
   });
+
+  it("terminateTicketSession delegates to ticket termination flow", async () => {
+    const calls: Array<{ contextType: string; contextId: string }> = [];
+    (service as any).terminateExistingSession = async (contextType: string, contextId: string) => {
+      calls.push({ contextType, contextId });
+    };
+
+    await service.terminateTicketSession("POT-123");
+    assert.deepStrictEqual(calls, [{ contextType: "ticket", contextId: "POT-123" }]);
+  });
 });
 
 describe("SessionService model resolution", () => {

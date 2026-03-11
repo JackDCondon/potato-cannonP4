@@ -123,9 +123,11 @@ export class TelegramProvider implements ChatProvider {
       this.persistRoute(context, thread);
 
       // Send welcome message
+      const ticketLabel = context.ticketId ? `${title} ${context.ticketId}` : title;
+
       await this.api.sendMessage(
         this.config.forumGroupId,
-        `*Potato Cannon*\n\nStarting work on: *${title}*\n\nI'll ask questions here as I work.`,
+        `*Potato Cannon*\n\nStarting work on: *${ticketLabel}*\n\nI'll ask questions here as I work- once we are done i will clean up this thread.`,
         { messageThreadId: topic.message_thread_id },
       );
 

@@ -205,4 +205,67 @@ describe("ticket input route queue reconciliation", () => {
     });
     assert.equal(writeResponseCalls.length, 0);
   });
+
+  it("persists lifecycle identity for legacy web answer when strict stale enforcement is disabled", async () => {
+    pendingQuestion = {
+      questionId: "q-live",
+      ticketGeneration: 7,
+    };
+
+    let inputHandler: ((req: any, res: any) => Promise<void>) | null = null;
+    const app = {
+      get: () => {},
+      post: (path: string, handler: any) => {
+        if (path === "/api/tickets/:project/:id/input") {
+          inputHandler = handler;
+        }
+      },
+      put: () => {},
+      patch: () => {},
+      delete: () => {},
+      use: () => {},
+    };
+
+    registerTicketRoutes(
+      app as any,
+      { resumeSuspendedTicket: async () => "sess-1", spawnForTicket: async () => "sess-2" } as any,
+      () => new Map([["proj-1", { path: "/tmp/proj-1" } as any]]),
+      () => ({ strictStaleResume409: false, strictStaleDrop: false }),
+    );
+
+    assert.ok(inputHandler, "input route should be registered");
+
+    const req = {
+      params: { project: "proj-1", id: "POT-1" },
+      body: { message: "legacy answer without ids" },
+    };
+
+    const responseBody: any = { status: 200, json: null };
+    const res = {
+      status(code: number) {
+        responseBody.status = code;
+        return this;
+      },
+      json(payload: unknown) {
+        responseBody.json = payload;
+        return this;
+      },
+    };
+
+    const handler = inputHandler as unknown as (req: unknown, res: unknown) => Promise<void>;
+    await handler(req, res);
+
+    assert.equal(responseBody.status, 200);
+    assert.deepStrictEqual(responseBody.json, { success: true });
+    assert.equal(writeResponseCalls.length, 1);
+    assert.deepStrictEqual(writeResponseCalls[0], [
+      "proj-1",
+      "POT-1",
+      {
+        answer: "legacy answer without ids",
+        questionId: "q-live",
+        ticketGeneration: 7,
+      },
+    ]);
+  });
 });

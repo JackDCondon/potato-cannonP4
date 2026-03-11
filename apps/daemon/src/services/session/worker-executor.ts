@@ -562,7 +562,14 @@ export async function handleAgentCompletion(
 ): Promise<void> {
   const strictStaleDrop =
     process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP !== "false";
-  const currentTicket = getTicket(projectId, ticketId);
+  const currentTicket = getTicketIfPresent(projectId, ticketId);
+  if (!currentTicket) {
+    await logToDaemon(projectId, ticketId, "Skipping completion callback because ticket no longer exists", {
+      agentId,
+      callbackIdentity,
+    });
+    return;
+  }
   const ticketGeneration = currentTicket?.executionGeneration ?? 0;
   const workflowId = currentTicket?.workflowId;
   const callbackGeneration = callbackIdentity?.executionGeneration;
@@ -608,7 +615,14 @@ export async function handleAgentCompletion(
         questionConversationId: pendingQuestion.conversationId,
       });
       // Emit event so frontend knows ticket is waiting
-      const ticket = getTicket(projectId, ticketId);
+      const ticket = getTicketIfPresent(projectId, ticketId);
+      if (!ticket) {
+        await logToDaemon(projectId, ticketId, "Skipping suspended-session ticket update because ticket was deleted", {
+          agentId,
+          callbackIdentity,
+        });
+        return;
+      }
       const { eventBus } = await import("../../utils/event-bus.js");
       eventBus.emit("ticket:updated", { projectId, ticket });
       return; // Critical: return without advancing worker state
@@ -637,6 +651,17 @@ export async function handleAgentCompletion(
   if (newState) {
     await saveWorkerState(projectId, ticketId, newState);
     await executeNextWorker(projectId, ticketId, phase, projectPath, phaseConfig, newState, callbacks);
+  }
+}
+
+function getTicketIfPresent(projectId: string, ticketId: string): ReturnType<typeof getTicket> | null {
+  try {
+    return getTicket(projectId, ticketId);
+  } catch (error) {
+    if (error instanceof Error && /not found/i.test(error.message)) {
+      return null;
+    }
+    throw error;
   }
 }
 
