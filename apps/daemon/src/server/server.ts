@@ -29,6 +29,7 @@ import {
   registerWorkflowRoutes,
   registerDependencyRoutes,
   registerChatTelemetryRoutes,
+  registerConfigRoutes,
   refreshProjects,
   getProjects,
 } from "./routes/index.js";
@@ -104,6 +105,20 @@ let lifecycleHardeningFlags = {
   strictStaleResume409: false,
 };
 
+function applyRuntimeConfig(config: GlobalConfig): void {
+  lifecycleHardeningFlags = {
+    strictStaleDrop: config.daemon.lifecycleHardening?.strictStaleDrop ?? false,
+    strictStaleResume409:
+      config.daemon.lifecycleHardening?.strictStaleResume409 ?? false,
+  };
+  process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP = lifecycleHardeningFlags.strictStaleDrop
+    ? "true"
+    : "false";
+  process.env.POTATO_LIFECYCLE_STRICT_STALE_RESUME_409 =
+    lifecycleHardeningFlags.strictStaleResume409 ? "true" : "false";
+  process.env.POTATO_P4_MCP_SERVER_PATH = config.daemon.perforce?.mcpServerPath?.trim() || "";
+}
+
 /**
  * Acquire an exclusive lock to ensure only one daemon runs at a time.
  * Exits with error if another daemon is already running.
@@ -172,17 +187,7 @@ async function loadConfig(): Promise<GlobalConfig> {
     };
     await saveGlobalConfig(globalConfig);
   }
-  lifecycleHardeningFlags = {
-    strictStaleDrop:
-      globalConfig.daemon.lifecycleHardening?.strictStaleDrop ?? false,
-    strictStaleResume409:
-      globalConfig.daemon.lifecycleHardening?.strictStaleResume409 ?? false,
-  };
-  process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP = lifecycleHardeningFlags.strictStaleDrop
-    ? "true"
-    : "false";
-  process.env.POTATO_LIFECYCLE_STRICT_STALE_RESUME_409 =
-    lifecycleHardeningFlags.strictStaleResume409 ? "true" : "false";
+  applyRuntimeConfig(globalConfig);
   return globalConfig;
 }
 
@@ -870,6 +875,16 @@ export async function main(): Promise<void> {
     async (config: GlobalConfig) => {
       globalConfig = config;
       await saveGlobalConfig(config);
+      applyRuntimeConfig(config);
+    },
+  );
+  registerConfigRoutes(
+    app,
+    () => globalConfig,
+    async (config: GlobalConfig) => {
+      globalConfig = config;
+      await saveGlobalConfig(config);
+      applyRuntimeConfig(config);
     },
   );
   registerMcpRoutes(app);

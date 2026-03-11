@@ -36,6 +36,11 @@ import type {
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
 export type TicketSessionResponse = SessionMeta
+export interface GlobalConfigResponse {
+  perforce: {
+    mcpServerPath: string
+  }
+}
 
 const BASE_URL = ''
 
@@ -118,6 +123,17 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // ============ Global Config ============
+
+  getGlobalConfig: () =>
+    request<GlobalConfigResponse>('/api/config/global'),
+
+  updatePerforceGlobalConfig: (mcpServerPath: string) =>
+    request<{ ok: boolean; perforce: { mcpServerPath: string } }>('/api/config/global/perforce', {
+      method: 'PUT',
+      body: JSON.stringify({ mcpServerPath }),
+    }),
+
   // ============ Projects ============
 
   getProjects: () =>

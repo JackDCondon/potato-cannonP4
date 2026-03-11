@@ -1,5 +1,5 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { LayoutDashboard, SlidersHorizontal } from 'lucide-react'
+import { LayoutDashboard, SlidersHorizontal, Cog } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -40,6 +40,23 @@ export function ViewTabs() {
         <TooltipContent>An AI Assisted Kanban board</TooltipContent>
       </Tooltip>
       <div className="flex-1" />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to="/global-configure"
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+              location.pathname === '/global-configure'
+                ? 'bg-bg-tertiary text-text-primary'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+            )}
+          >
+            <Cog className="h-4 w-4" />
+            <span>Global</span>
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent>Global Settings</TooltipContent>
+      </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
           <Link

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SessionsRouteImport } from './routes/sessions'
 import { Route as LogsRouteImport } from './routes/logs'
+import { Route as GlobalConfigureRouteImport } from './routes/global-configure'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 import { Route as TemplatesNameRouteImport } from './routes/templates/$name'
@@ -27,6 +28,11 @@ const SessionsRoute = SessionsRouteImport.update({
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GlobalConfigureRoute = GlobalConfigureRouteImport.update({
+  id: '/global-configure',
+  path: '/global-configure',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -70,6 +76,7 @@ const ProjectsProjectIdWorkflowsWorkflowIdBoardRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/global-configure': typeof GlobalConfigureRoute
   '/logs': typeof LogsRoute
   '/sessions': typeof SessionsRoute
   '/templates/$name': typeof TemplatesNameRoute
@@ -81,6 +88,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/global-configure': typeof GlobalConfigureRoute
   '/logs': typeof LogsRoute
   '/sessions': typeof SessionsRoute
   '/templates/$name': typeof TemplatesNameRoute
@@ -93,6 +101,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/global-configure': typeof GlobalConfigureRoute
   '/logs': typeof LogsRoute
   '/sessions': typeof SessionsRoute
   '/templates/$name': typeof TemplatesNameRoute
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/global-configure'
     | '/logs'
     | '/sessions'
     | '/templates/$name'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/global-configure'
     | '/logs'
     | '/sessions'
     | '/templates/$name'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/global-configure'
     | '/logs'
     | '/sessions'
     | '/templates/$name'
@@ -140,6 +152,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GlobalConfigureRoute: typeof GlobalConfigureRoute
   LogsRoute: typeof LogsRoute
   SessionsRoute: typeof SessionsRoute
   TemplatesNameRoute: typeof TemplatesNameRoute
@@ -164,6 +177,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/logs'
       preLoaderRoute: typeof LogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/global-configure': {
+      id: '/global-configure'
+      path: '/global-configure'
+      fullPath: '/global-configure'
+      preLoaderRoute: typeof GlobalConfigureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -220,6 +240,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GlobalConfigureRoute: GlobalConfigureRoute,
   LogsRoute: LogsRoute,
   SessionsRoute: SessionsRoute,
   TemplatesNameRoute: TemplatesNameRoute,

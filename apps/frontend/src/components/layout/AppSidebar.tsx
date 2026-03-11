@@ -1,6 +1,6 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Plus, FolderPlus } from "lucide-react";
+import { Plus, FolderPlus, Settings } from "lucide-react";
 import {
   DndContext,
   DragEndEvent,
@@ -135,6 +135,7 @@ export function AppSidebar() {
   const location = useLocation();
   const openAddProjectModal = useAppStore((s) => s.openAddProjectModal);
   const openCreateFolderModal = useAppStore((s) => s.openCreateFolderModal);
+  const navigate = useNavigate();
   const processingTickets = useAppStore((s) => s.processingTickets);
   const collapsedFolders = useAppStore((s) => s.collapsedFolders);
   const expandFolder = useAppStore((s) => s.expandFolder);
@@ -282,6 +283,10 @@ export function AppSidebar() {
                     <FolderPlus className="h-4 w-4 mr-2" />
                     Create Folder
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate({ to: '/global-configure' })}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Global Settings
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>
@@ -305,6 +310,10 @@ export function AppSidebar() {
                   <DropdownMenuItem onClick={openCreateFolderModal}>
                     <FolderPlus className="h-4 w-4 mr-2" />
                     Create Folder
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate({ to: '/global-configure' })}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Global Settings
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

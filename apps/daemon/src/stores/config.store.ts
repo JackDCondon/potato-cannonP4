@@ -207,6 +207,9 @@ const DEFAULT_CONFIG: GlobalConfig = {
   },
   daemon: {
     port: 8443,
+    perforce: {
+      mcpServerPath: "",
+    },
     chatFlow: {
       maxPendingPerContext: 1,
       maxPendingGlobal: 2,
@@ -316,6 +319,10 @@ function normalizeTelegramConfig(config: GlobalConfig): void {
 
 function normalizeDaemonConfig(config: GlobalConfig): void {
   config.daemon = config.daemon || { port: 8443 };
+  config.daemon.perforce = config.daemon.perforce || {};
+  if (typeof config.daemon.perforce.mcpServerPath !== "string") {
+    config.daemon.perforce.mcpServerPath = "";
+  }
   config.daemon.chatFlow = config.daemon.chatFlow || {};
   if (
     typeof config.daemon.chatFlow.maxPendingPerContext !== "number" ||

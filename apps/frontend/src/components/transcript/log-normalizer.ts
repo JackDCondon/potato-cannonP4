@@ -2,6 +2,17 @@ import stripAnsi from 'strip-ansi'
 import type { SessionLogEntry } from '@potato-cannon/shared'
 
 const NOISY_KEYS = new Set(['signature'])
+const KNOWN_ENTRY_TYPES = new Set([
+  'session_start',
+  'session_end',
+  'assistant',
+  'user',
+  'system',
+  'rate_limit_event',
+  'result',
+  'raw',
+  'output',
+])
 
 function stripNoisyFields<T>(value: T): T {
   if (Array.isArray(value)) {
@@ -22,8 +33,8 @@ function stripNoisyFields<T>(value: T): T {
 
 function cleanRawContent(content: string): string {
   const withoutAnsi = stripAnsi(content)
-  // Keep newlines/spaces needed for JSON chunk reconstruction, drop low control bytes.
-  return withoutAnsi.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+  // Drop all control bytes from PTY chunks (including CR) before JSON reconstruction.
+  return withoutAnsi.replace(/[\u0000-\u001F\u007F]/g, '')
 }
 
 function hasNonWhitespace(text: string): boolean {
@@ -108,7 +119,7 @@ function toSessionLogEntry(
   parsed: Record<string, unknown>,
   fallbackTimestamp?: string,
 ): SessionLogEntry | null {
-  if (typeof parsed.type !== 'string') return null
+  if (typeof parsed.type !== 'string' || !KNOWN_ENTRY_TYPES.has(parsed.type)) return null
   const cleanedUnknown = stripNoisyFields(parsed) as Record<string, unknown>
   if (typeof cleanedUnknown.type !== 'string') return null
   const cleaned = cleanedUnknown as unknown as SessionLogEntry

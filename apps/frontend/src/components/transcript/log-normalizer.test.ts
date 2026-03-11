@@ -25,6 +25,40 @@ describe('normalizeTranscriptEntries', () => {
     expect(normalized[0].message?.content[0]?.text).toBe('Hello world')
   })
 
+  it('reconstructs wrapped assistant/user/result envelopes from ANSI-split PTY chunks', () => {
+    const rawEntries: SessionLogEntry[] = [
+      {
+        type: 'raw',
+        timestamp: '2026-03-10T06:37:10.696Z',
+        content:
+          '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"src/app.ts"}}]},"conte\r',
+      },
+      {
+        type: 'raw',
+        timestamp: '2026-03-10T06:37:10.697Z',
+        content: '\u001b[39;120Hxt_management":null}',
+      },
+      {
+        type: 'raw',
+        timestamp: '2026-03-10T06:37:10.700Z',
+        content:
+          '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok","is_error":false}]}}\r',
+      },
+      {
+        type: 'raw',
+        timestamp: '2026-03-10T06:37:10.710Z',
+        content:
+          '{"type":"result","subtype":"success","is_error":false,"result":"done"}',
+      },
+    ]
+
+    const normalized = normalizeTranscriptEntries(rawEntries)
+    expect(normalized.map((e) => e.type)).toEqual(['assistant', 'user', 'result'])
+    expect(normalized[0].message?.content[0]?.type).toBe('tool_use')
+    expect(normalized[1].message?.content[0]?.type).toBe('tool_result')
+    expect(normalized.some((e) => e.type === 'tool_use' || e.type === 'text')).toBe(false)
+  })
+
   it('removes thinking signatures from parsed payloads', () => {
     const rawEntries: SessionLogEntry[] = [
       {

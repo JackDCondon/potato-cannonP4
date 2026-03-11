@@ -6,6 +6,7 @@
  */
 
 import { execSync, spawnSync } from "child_process";
+import { existsSync } from "fs";
 import * as fs from "fs/promises";
 import { createRequire } from "module";
 import * as path from "path";
@@ -250,6 +251,10 @@ export class P4Provider implements IVCSProvider {
   /**
    * Return additional MCP servers to inject for P4 sessions.
    *
+   * Resolution order:
+   * 1) POTATO_P4_MCP_SERVER_PATH runtime override
+   * 2) Installed package `perforce-p4-mcp/dist/index.js`
+   *
    * Resolves the `perforce-p4-mcp` package via `createRequire`.
    * If the package is not installed, logs a warning and returns {}.
    */
@@ -260,17 +265,33 @@ export class P4Provider implements IVCSProvider {
   ): Record<string, McpServerConfig> {
     const workspaceName = this.workspaceName(ticketId);
 
-    const require = createRequire(import.meta.url);
     let p4McpPath: string | null = null;
+
+    const configuredPath = process.env.POTATO_P4_MCP_SERVER_PATH?.trim();
+    if (configuredPath) {
+      if (existsSync(configuredPath)) {
+        p4McpPath = configuredPath;
+      } else {
+        console.warn(
+          `[P4Provider] POTATO_P4_MCP_SERVER_PATH does not exist: ${configuredPath}`
+        );
+      }
+    }
+
+    const require = createRequire(import.meta.url);
     try {
-      p4McpPath = require.resolve("perforce-p4-mcp/dist/index.js");
+      if (!p4McpPath) {
+        p4McpPath = require.resolve("perforce-p4-mcp/dist/index.js");
+      }
     } catch {
-      p4McpPath = null;
+      if (!p4McpPath) {
+        p4McpPath = null;
+      }
     }
 
     if (!p4McpPath) {
       console.warn(
-        "[P4Provider] perforce-p4-mcp not found; P4 MCP tools unavailable for session"
+        "[P4Provider] perforce-p4-mcp not found and no global path configured; P4 MCP tools unavailable for session"
       );
       return {};
     }

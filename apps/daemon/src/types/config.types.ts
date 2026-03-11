@@ -24,6 +24,9 @@ export interface ProvidersConfig {
 
 export interface DaemonConfig {
   port: number;
+  perforce?: {
+    mcpServerPath?: string;
+  };
   chatFlow?: {
     maxPendingPerContext?: number;
     maxPendingGlobal?: number;
