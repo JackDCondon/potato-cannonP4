@@ -172,6 +172,10 @@ interface DecideContinuityForTicketInput {
   suspendedResumeSessionId?: string | null;
 }
 
+interface StoredSessionContinuityMetadata {
+  continuityCompatibility?: ContinuityCompatibilityKey;
+}
+
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private remoteControlState: Map<string, RemoteControlState> = new Map();
@@ -587,6 +591,25 @@ export class SessionService {
       pendingResponse,
       limits,
     });
+  }
+
+  private getLifecycleContinuityLimits(): ContinuityPacketLimits {
+    const daemonConfig = getConfigStore().getDaemonConfig();
+    const lifecycleContinuity = daemonConfig?.lifecycleContinuity ?? {};
+    return {
+      maxConversationTurns:
+        lifecycleContinuity.maxConversationTurns ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxConversationTurns,
+      maxSessionEvents:
+        lifecycleContinuity.maxSessionEvents ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxSessionEvents,
+      maxCharsPerItem:
+        lifecycleContinuity.maxCharsPerItem ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxCharsPerItem,
+      maxPromptChars:
+        lifecycleContinuity.maxPromptChars ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxPromptChars,
+    };
   }
 
   isActive(sessionId: string): boolean {
@@ -1417,6 +1440,30 @@ export class SessionService {
       model: resolvedModel ?? "default",
       disallowedTools,
     });
+    const existingClaudeSessionId = getLatestClaudeSessionIdForTicket(ticketId);
+    const priorSessions = getSessionsByTicket(ticketId);
+    const latestSession = priorSessions.length > 0 ? priorSessions[priorSessions.length - 1] : null;
+    const storedCompatibility = latestSession?.metadata
+      ? (latestSession.metadata as StoredSessionContinuityMetadata).continuityCompatibility
+      : undefined;
+    const continuityDecision = await this.decideContinuityForTicket({
+      ticketId,
+      conversationId: ticket.conversationId,
+      filter: {
+        phase,
+        agentSource: agentWorker.source,
+        executionGeneration: ticket.executionGeneration ?? 0,
+      },
+      limits: this.getLifecycleContinuityLimits(),
+      resumeEligibility: {
+        stored: storedCompatibility,
+        current: compatibilityKey,
+        claudeSessionId: existingClaudeSessionId,
+        lifecycleInvalidated: false,
+      },
+    });
+    const resumeSessionId =
+      continuityDecision.mode === "resume" ? existingClaudeSessionId ?? undefined : undefined;
 
     const storedSession = createStoredSession({
       projectId,
@@ -1445,7 +1492,7 @@ export class SessionService {
       0,
       agentWorker.disallowTools,
       resolvedModel ?? undefined,
-      undefined,
+      resumeSessionId,
       additionalMcpServers,
     );
   }

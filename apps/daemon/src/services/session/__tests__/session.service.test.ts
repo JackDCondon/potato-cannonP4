@@ -848,3 +848,55 @@ describe("SessionService restart snapshot cache", () => {
     assert.strictEqual(second, null);
   });
 });
+
+describe("SessionService decideContinuityForTicket", () => {
+  const baseKey = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/build.md",
+    executionGeneration: 4,
+    workflowId: "wf-main",
+    worktreePath: "/tmp/wt",
+    branchName: "potato/POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["potato-cannon", "p4"],
+    model: "sonnet",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+
+  it("prefers consumed restart snapshots over same-lifecycle packets", async () => {
+    const service = new SessionService(new EventEmitter());
+    const cache = (service as any).consumedRestartSnapshots as Map<string, unknown>;
+    cache.set("POT-1", {
+      scope: "safe_user_context_only",
+      conversationTurns: [{ role: "user", text: "restart snapshot" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+    (service as any).buildContinuityPacketForTicket = async () => ({
+      scope: "same_lifecycle",
+      conversationTurns: [{ role: "user", text: "same lifecycle" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "restart_snapshot");
+  });
+});
