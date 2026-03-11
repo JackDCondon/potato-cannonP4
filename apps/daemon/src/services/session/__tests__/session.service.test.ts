@@ -1,12 +1,14 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert";
 import { EventEmitter } from "events";
+import fs from "fs/promises";
 import {
   SessionService,
   TicketLifecycleConflictError,
   StaleTicketInputError,
 } from "../session.service.js";
 import { evaluateResumeEligibility } from "../continuity-policy.js";
+import { SESSIONS_DIR } from "../../../config/paths.js";
 
 /**
  * Tests for SessionService.terminateExistingSession
@@ -672,5 +674,55 @@ describe("evaluateResumeEligibility", () => {
       eligible: false,
       reason: "lifecycle_invalidated",
     });
+  });
+});
+
+describe("SessionService transcript highlights", () => {
+  it("parses structured assistant/tool entries and excludes raw lines", async () => {
+    const service = new SessionService(new EventEmitter());
+    const sessionId = `sess_highlight_${Date.now()}`;
+    const logPath = service.getSessionLogPath(sessionId);
+    await fs.mkdir(SESSIONS_DIR, { recursive: true });
+
+    await fs.writeFile(
+      logPath,
+      [
+        JSON.stringify({
+          type: "assistant",
+          timestamp: "2026-03-11T00:00:00.000Z",
+          message: { content: [{ type: "text", text: "assistant summary" }] },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          timestamp: "2026-03-11T00:00:01.000Z",
+          message: {
+            content: [{ type: "tool_use", name: "chat_ask" }],
+          },
+        }),
+        JSON.stringify({
+          type: "output",
+          timestamp: "2026-03-11T00:00:02.000Z",
+          tool_name: "chat_ask",
+          tool_result: "ok",
+        }),
+        JSON.stringify({
+          type: "raw",
+          timestamp: "2026-03-11T00:00:03.000Z",
+          content: "raw PTY bytes",
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const highlights = await service.getTranscriptHighlightsForContinuity(sessionId, 10);
+
+    assert.strictEqual(highlights.length, 3);
+    assert.deepStrictEqual(
+      highlights.map((h) => h.kind),
+      ["assistant", "assistant", "tool"],
+    );
+    assert.ok(highlights.every((h) => !h.summary.includes("raw PTY")));
+
+    await fs.unlink(logPath);
   });
 });

@@ -120,6 +120,13 @@ interface ResumeTicketInputIdentity {
   ticketGeneration: number;
 }
 
+export interface SessionTranscriptHighlight {
+  sourceSessionId: string;
+  kind: "assistant" | "tool";
+  summary: string;
+  timestamp?: string;
+}
+
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private remoteControlState: Map<string, RemoteControlState> = new Map();
@@ -398,6 +405,73 @@ export class SessionService {
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as SessionLogEntry);
+  }
+
+  async getTranscriptHighlightsForContinuity(
+    sessionId: string,
+    maxEvents: number = 20
+  ): Promise<SessionTranscriptHighlight[]> {
+    const entries = await this.getSessionLog(sessionId);
+    const highlights: SessionTranscriptHighlight[] = [];
+
+    for (const entry of entries) {
+      const entryAny = entry as unknown as Record<string, unknown>;
+      if (entryAny.type === "raw") {
+        continue;
+      }
+
+      if (typeof entryAny.tool_name === "string") {
+        const resultText =
+          typeof entryAny.tool_result === "string" ? entryAny.tool_result : "";
+        highlights.push({
+          sourceSessionId: sessionId,
+          kind: "tool",
+          summary: `${entryAny.tool_name}: ${resultText}`.trim().slice(0, 240),
+          timestamp: entry.timestamp,
+        });
+        continue;
+      }
+
+      const message = entryAny.message as
+        | { content?: Array<Record<string, unknown>> }
+        | undefined;
+      if (entryAny.type === "assistant" && Array.isArray(message?.content)) {
+        const textSummary = message.content
+          .map((block: Record<string, unknown>) => {
+            if (block.type === "text" && typeof block.text === "string") {
+              return block.text;
+            }
+            if (block.type === "tool_use" && block.name) {
+              return `tool_use:${block.name}`;
+            }
+            if (block.type === "tool_result") {
+              if (typeof block.content === "string") {
+                return `tool_result:${block.content}`;
+              }
+              return "tool_result";
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 240);
+
+        if (textSummary.length > 0) {
+          highlights.push({
+            sourceSessionId: sessionId,
+            kind: "assistant",
+            summary: textSummary,
+            timestamp: entry.timestamp,
+          });
+        }
+      }
+    }
+
+    const bounded = Number.isFinite(maxEvents) && maxEvents > 0 ? Math.floor(maxEvents) : 1;
+    if (highlights.length <= bounded) {
+      return highlights;
+    }
+    return highlights.slice(highlights.length - bounded);
   }
 
   isActive(sessionId: string): boolean {

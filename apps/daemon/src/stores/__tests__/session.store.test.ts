@@ -436,4 +436,92 @@ describe("SessionStore", () => {
       assert.strictEqual(result, "claude_sess_new");
     });
   });
+
+  describe("getRecentSessionsForContinuity", () => {
+    it("filters by ticket, phase, agent source, and execution generation", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Continuity ticket" });
+      const otherTicket = ticketStore.createTicket(projectId, { title: "Other ticket" });
+
+      const first = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        agentSource: "agents/build.md",
+        executionGeneration: 5,
+      });
+      sessionStore.endSession(first.id);
+      const second = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        agentSource: "agents/review.md",
+        executionGeneration: 5,
+      });
+      sessionStore.endSession(second.id);
+      const third = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Refinement",
+        agentSource: "agents/build.md",
+        executionGeneration: 5,
+      });
+      sessionStore.endSession(third.id);
+      sessionStore.createSession({
+        projectId,
+        ticketId: otherTicket.id,
+        phase: "Build",
+        agentSource: "agents/build.md",
+        executionGeneration: 5,
+      });
+
+      const sessions = sessionStore.getRecentSessionsForContinuity(
+        ticket.id,
+        {
+          phase: "Build",
+          agentSource: "agents/build.md",
+          executionGeneration: 5,
+        },
+        10
+      );
+
+      assert.strictEqual(sessions.length, 1);
+      assert.strictEqual(sessions[0].ticketId, ticket.id);
+      assert.strictEqual(sessions[0].phase, "Build");
+      assert.strictEqual(sessions[0].agentSource, "agents/build.md");
+      assert.strictEqual(sessions[0].executionGeneration, 5);
+    });
+
+    it("returns most-recent sessions first with bounded limit", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Ordering ticket" });
+      const first = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+      });
+      sessionStore.endSession(first.id);
+      const second = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+      });
+
+      db.prepare("UPDATE sessions SET started_at = ? WHERE id = ?").run(
+        "2026-03-11T00:00:01.000Z",
+        first.id
+      );
+      db.prepare("UPDATE sessions SET started_at = ? WHERE id = ?").run(
+        "2026-03-11T00:00:02.000Z",
+        second.id
+      );
+
+      const sessions = sessionStore.getRecentSessionsForContinuity(
+        ticket.id,
+        { phase: "Build" },
+        1
+      );
+
+      assert.strictEqual(sessions.length, 1);
+      assert.strictEqual(sessions[0].id, second.id);
+    });
+  });
 });
