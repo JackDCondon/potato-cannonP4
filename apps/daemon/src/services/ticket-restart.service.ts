@@ -112,7 +112,11 @@ export async function restartToPhase(
   // 8. Auto-spawn session if target phase has automation (workers defined)
   let sessionSpawned = false;
   if (project) {
-    const phaseConfig = await getPhaseConfig(projectId, targetPhase);
+    const phaseConfig = await getPhaseConfig(
+      projectId,
+      targetPhase,
+      updatedTicket.workflowId ?? ticket.workflowId,
+    );
     const hasAutomation = phaseConfig?.workers && phaseConfig.workers.length > 0;
 
     if (hasAutomation) {

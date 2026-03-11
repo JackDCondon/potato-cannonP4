@@ -73,7 +73,7 @@ describe('TableView - Pending Badge', () => {
   it('should show amber ? badge for pending tickets', () => {
     render(<TableView projectId="proj-1" />)
 
-    const badges = screen.getAllByText('?')
+    const badges = screen.getAllByLabelText('Waiting for human input')
     expect(badges.length).toBe(1)
     expect(badges[0].className).toContain('text-amber-400')
   })
@@ -82,8 +82,8 @@ describe('TableView - Pending Badge', () => {
     // POT-2 is not pending per our mock
     render(<TableView projectId="proj-1" />)
 
-    // Only one ? badge should exist (for POT-1)
-    const badges = screen.getAllByText('?')
+    // Only one badge should exist (for POT-1)
+    const badges = screen.getAllByLabelText('Waiting for human input')
     expect(badges.length).toBe(1)
   })
 })

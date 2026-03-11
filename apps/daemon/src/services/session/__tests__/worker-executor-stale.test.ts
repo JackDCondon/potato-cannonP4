@@ -3,6 +3,16 @@ import assert from "node:assert";
 
 let ticketGeneration = 2;
 let saveCalls = 0;
+let blockedCalls = 0;
+const phaseConfigCalls: Array<[string, string, string | undefined]> = [];
+let mockedWorkerState: Record<string, unknown> = {
+  kind: "active",
+  phaseId: "Build",
+  executionGeneration: ticketGeneration,
+  workerIndex: 0,
+  activeWorker: null,
+  updatedAt: new Date().toISOString(),
+};
 
 await mock.module("fs", {
   defaultExport: {},
@@ -16,22 +26,15 @@ await mock.module("child_process", {
 
 await mock.module("../../../types/template.types.js", {
   namedExports: {
-    isAgentWorker: (worker: { type?: string }) => worker?.type === "agent",
-    isRalphLoopWorker: (worker: { type?: string }) => worker?.type === "ralphLoop",
-    isTaskLoopWorker: (worker: { type?: string }) => worker?.type === "taskLoop",
+    isAgentWorker: (worker: { type: string }) => worker.type === "agent",
+    isRalphLoopWorker: (worker: { type: string }) => worker.type === "ralphLoop",
+    isTaskLoopWorker: (worker: { type: string }) => worker.type === "taskLoop",
   },
 });
 
 await mock.module("../worker-state.js", {
   namedExports: {
-    getWorkerState: () => ({
-      kind: "active",
-      phaseId: "Build",
-      executionGeneration: ticketGeneration,
-      workerIndex: 0,
-      activeWorker: null,
-      updatedAt: new Date().toISOString(),
-    }),
+    getWorkerState: () => mockedWorkerState,
     saveWorkerState: () => {
       saveCalls++;
     },
@@ -45,7 +48,14 @@ await mock.module("../worker-state.js", {
 
 await mock.module("../phase-config.js", {
   namedExports: {
-    getPhaseConfig: async () => ({ id: "Build", workers: [{ id: "agent-1", type: "agent" }] }),
+    getPhaseConfig: async (
+      projectId: string,
+      phase: string,
+      workflowId?: string,
+    ) => {
+      phaseConfigCalls.push([projectId, phase, workflowId]);
+      return { id: "Build", workers: [{ id: "agent-1", type: "agent" }] };
+    },
     getNextEnabledPhase: async () => null,
     phaseRequiresIsolation: async () => false,
   },
@@ -53,7 +63,10 @@ await mock.module("../phase-config.js", {
 
 await mock.module("../../../stores/ticket.store.js", {
   namedExports: {
-    getTicket: () => ({ executionGeneration: ticketGeneration }),
+    getTicket: () => ({
+      executionGeneration: ticketGeneration,
+      workflowId: "wf-custom",
+    }),
   },
 });
 
@@ -121,13 +134,25 @@ const { handleAgentCompletion } = await import("../worker-executor.js");
 const callbacks = {
   spawnAgent: async () => "",
   onPhaseComplete: async () => {},
-  onTicketBlocked: async () => {},
+  onTicketBlocked: async () => {
+    blockedCalls++;
+  },
 };
 
 describe("worker-executor stale callback fencing", () => {
   beforeEach(() => {
     ticketGeneration = 2;
     saveCalls = 0;
+    blockedCalls = 0;
+    phaseConfigCalls.length = 0;
+    mockedWorkerState = {
+      kind: "active",
+      phaseId: "Build",
+      executionGeneration: ticketGeneration,
+      workerIndex: 0,
+      activeWorker: null,
+      updatedAt: new Date().toISOString(),
+    };
   });
 
   it("drops stale callback generations before mutating worker state", async () => {
@@ -160,5 +185,55 @@ describe("worker-executor stale callback fencing", () => {
     );
 
     assert.strictEqual(saveCalls, 1);
+  });
+
+  it("blocks gracefully when worker state points to a missing worker definition", async () => {
+    mockedWorkerState = {
+      kind: "active",
+      phaseId: "Build",
+      executionGeneration: ticketGeneration,
+      workerIndex: 99,
+      activeWorker: {
+        id: "loop-1",
+        type: "ralphLoop",
+        workerIndex: 0,
+        iteration: 1,
+        activeWorker: null,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    await assert.doesNotReject(async () => {
+      await handleAgentCompletion(
+        "proj-1",
+        "POT-1",
+        "Build",
+        "D:/tmp/project",
+        0,
+        "agent-1",
+        { approved: true },
+        callbacks,
+        { sessionId: "sess-current", executionGeneration: 2 },
+      );
+    });
+
+    assert.strictEqual(blockedCalls, 1);
+  });
+
+  it("passes ticket workflowId into phase config resolution", async () => {
+    await handleAgentCompletion(
+      "proj-1",
+      "POT-1",
+      "Build",
+      "D:/tmp/project",
+      0,
+      "agent-1",
+      { approved: true },
+      callbacks,
+      { sessionId: "sess-current", executionGeneration: 2 },
+    );
+
+    assert.ok(phaseConfigCalls.length > 0);
+    assert.deepStrictEqual(phaseConfigCalls[0], ["proj-1", "Build", "wf-custom"]);
   });
 });

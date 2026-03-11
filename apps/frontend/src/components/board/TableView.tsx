@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Clock } from 'lucide-react'
+import { Clock, MessageCircleQuestion } from 'lucide-react'
 import {
   useTickets,
   useProjectPhases,
@@ -302,8 +302,12 @@ export function TableView({ projectId, workflowId }: TableViewProps) {
                         <span className="inline-block w-2 h-2 bg-accent rounded-full animate-pulse flex-shrink-0" />
                       )}
                       {isPending && (
-                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex-shrink-0">
-                          ?
+                        <span
+                          aria-label="Waiting for human input"
+                          title="Waiting for human input"
+                          className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex-shrink-0"
+                        >
+                          <MessageCircleQuestion className="h-3.5 w-3.5" />
                         </span>
                       )}
                     </div>

@@ -32,6 +32,7 @@ import {
   getProjects,
 } from "./routes/index.js";
 import { registerSystemRoutes } from "./routes/system.routes.js";
+import { safeReadPendingResponse } from "./recovery.utils.js";
 import {
   loadGlobalConfig,
   saveGlobalConfig,
@@ -128,9 +129,25 @@ async function loadConfig(): Promise<GlobalConfig> {
     console.log("First run detected. Creating default config...");
     await ensureGlobalDir();
     globalConfig = {
-      telegram: { botToken: "", userId: "", mode: "auto" },
+      telegram: {
+        botToken: "",
+        userId: "",
+        mode: "auto",
+        threadedWorkflow: false,
+        includeTicketContext: true,
+        flowControl: {
+          maxPendingPerTicket: 1,
+          maxPendingGlobal: 2,
+        },
+      },
       daemon: {
         port: DEFAULT_PORT,
+        chatFlow: {
+          maxPendingPerContext: 1,
+          maxPendingGlobal: 2,
+          includeContextInMessages: true,
+          preferProviderThreads: true,
+        },
         lifecycleHardening: {
           strictStaleDrop: false,
           strictStaleResume409: false,
@@ -235,7 +252,11 @@ async function getStalePendingQuestionReason(
     return `phase ${ticket.phase} is terminal`;
   }
 
-  const phaseConfig = await getPhaseConfig(projectId, ticket.phase);
+  const phaseConfig = await getPhaseConfig(
+    projectId,
+    ticket.phase,
+    ticket.workflowId,
+  );
   if (!phaseConfig?.workers || phaseConfig.workers.length === 0) {
     return `phase ${ticket.phase} has no workers`;
   }
@@ -426,9 +447,14 @@ async function recoverInterruptedSessions(): Promise<void> {
     for (const ticketId of ticketDirs) {
       try {
         // Pending responses are handled first by recoverPendingResponses.
-        const pendingResponse = typeof readResponse === "function"
-          ? await readResponse(projectId, ticketId)
-          : null;
+        const pendingResponse = await safeReadPendingResponse(
+          async () =>
+            typeof readResponse === "function"
+              ? await readResponse(projectId, ticketId)
+              : null,
+          projectId,
+          ticketId,
+        );
         if (pendingResponse) {
           continue;
         }
@@ -466,7 +492,11 @@ async function recoverInterruptedSessions(): Promise<void> {
         }
 
         // Check if phase has workers (automation)
-        const phaseConfig = await getPhaseConfig(projectId, ticket.phase);
+        const phaseConfig = await getPhaseConfig(
+          projectId,
+          ticket.phase,
+          ticket.workflowId,
+        );
         if (!phaseConfig?.workers || phaseConfig.workers.length === 0) {
           console.log(
             `[recovery] Ticket ${ticketId} phase ${ticket.phase} has no workers, clearing stale worker state`,

@@ -197,9 +197,21 @@ const DEFAULT_CONFIG: GlobalConfig = {
     userId: "",
     forumGroupId: "",
     mode: "auto",
+    threadedWorkflow: false,
+    includeTicketContext: true,
+    flowControl: {
+      maxPendingPerTicket: 1,
+      maxPendingGlobal: 2,
+    },
   },
   daemon: {
     port: 8443,
+    chatFlow: {
+      maxPendingPerContext: 1,
+      maxPendingGlobal: 2,
+      includeContextInMessages: true,
+      preferProviderThreads: true,
+    },
     lifecycleHardening: {
       strictStaleDrop: false,
       strictStaleResume409: false,
@@ -207,8 +219,53 @@ const DEFAULT_CONFIG: GlobalConfig = {
   },
 };
 
+function normalizeTelegramConfig(config: GlobalConfig): void {
+  config.telegram = config.telegram || {
+    botToken: "",
+    userId: "",
+    forumGroupId: "",
+    mode: "auto",
+  };
+  if (typeof config.telegram.threadedWorkflow !== "boolean") {
+    config.telegram.threadedWorkflow = false;
+  }
+  if (typeof config.telegram.includeTicketContext !== "boolean") {
+    config.telegram.includeTicketContext = true;
+  }
+  config.telegram.flowControl = config.telegram.flowControl || {};
+  const perTicket = config.telegram.flowControl.maxPendingPerTicket;
+  const global = config.telegram.flowControl.maxPendingGlobal;
+  if (typeof perTicket !== "number" || !Number.isFinite(perTicket) || perTicket < 1) {
+    config.telegram.flowControl.maxPendingPerTicket = 1;
+  }
+  if (typeof global !== "number" || !Number.isFinite(global) || global < 1) {
+    config.telegram.flowControl.maxPendingGlobal = 2;
+  }
+}
+
 function normalizeDaemonConfig(config: GlobalConfig): void {
   config.daemon = config.daemon || { port: 8443 };
+  config.daemon.chatFlow = config.daemon.chatFlow || {};
+  if (
+    typeof config.daemon.chatFlow.maxPendingPerContext !== "number" ||
+    !Number.isFinite(config.daemon.chatFlow.maxPendingPerContext) ||
+    config.daemon.chatFlow.maxPendingPerContext < 1
+  ) {
+    config.daemon.chatFlow.maxPendingPerContext = 1;
+  }
+  if (
+    typeof config.daemon.chatFlow.maxPendingGlobal !== "number" ||
+    !Number.isFinite(config.daemon.chatFlow.maxPendingGlobal) ||
+    config.daemon.chatFlow.maxPendingGlobal < 1
+  ) {
+    config.daemon.chatFlow.maxPendingGlobal = 2;
+  }
+  if (typeof config.daemon.chatFlow.includeContextInMessages !== "boolean") {
+    config.daemon.chatFlow.includeContextInMessages = true;
+  }
+  if (typeof config.daemon.chatFlow.preferProviderThreads !== "boolean") {
+    config.daemon.chatFlow.preferProviderThreads = true;
+  }
   config.daemon.lifecycleHardening = config.daemon.lifecycleHardening || {};
   if (typeof config.daemon.lifecycleHardening.strictStaleDrop !== "boolean") {
     config.daemon.lifecycleHardening.strictStaleDrop = false;
@@ -243,6 +300,7 @@ export async function loadGlobalConfig(): Promise<GlobalConfig | null> {
     }
 
     normalizeDaemonConfig(config);
+    normalizeTelegramConfig(config);
 
     return config;
   } catch {

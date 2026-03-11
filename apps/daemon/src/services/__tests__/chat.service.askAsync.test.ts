@@ -17,9 +17,15 @@ let writeQuestionCalls: Array<{
   contextId: string;
   question: unknown;
 }> = [];
+let writeResponseCalls: Array<{
+  projectId: string;
+  contextId: string;
+  response: unknown;
+}> = [];
 let eventBusEmitCalls: Array<{ event: string; data: unknown }> = [];
 let addMessageCalls: Array<{ conversationId: string; input: unknown }> = [];
 let messageIdCounter = 0;
+let readQuestionResult: unknown = null;
 
 // Mock the external dependencies before importing ChatService
 mock.module("../../stores/chat.store.js", {
@@ -31,9 +37,15 @@ mock.module("../../stores/chat.store.js", {
     ) => {
       writeQuestionCalls.push({ projectId, contextId, question });
     },
-    writeResponse: async () => {},
+    writeResponse: async (
+      projectId: string,
+      contextId: string,
+      response: unknown
+    ) => {
+      writeResponseCalls.push({ projectId, contextId, response });
+    },
     readResponse: async () => null,
-    readQuestion: async () => null,
+    readQuestion: async () => readQuestionResult,
     clearQuestion: async () => {},
     clearResponse: async () => {},
     waitForResponse: async () => "mocked response",
@@ -109,9 +121,11 @@ describe("ChatService.askAsync", () => {
   beforeEach(() => {
     // Reset mock call tracking
     writeQuestionCalls = [];
+    writeResponseCalls = [];
     eventBusEmitCalls = [];
     addMessageCalls = [];
     messageIdCounter = 0;
+    readQuestionResult = null;
 
     service = new ChatService();
   });
@@ -293,5 +307,37 @@ describe("ChatService.askAsync", () => {
       options: string[] | null;
     };
     assert.strictEqual(writtenQuestion.options, null);
+  });
+
+  it("should map telegram callback token to selected option in handleResponse", async () => {
+    const context = { projectId: "test-project", ticketId: "POT-100" };
+    readQuestionResult = {
+      questionId: "q-1",
+      options: ["Yes", "No", "Maybe"],
+      ticketGeneration: 2,
+    };
+
+    const handled = await service.handleResponse("telegram", context, "answer_1");
+
+    assert.strictEqual(handled, true);
+    assert.strictEqual(writeResponseCalls.length, 1);
+    const written = writeResponseCalls[0].response as { answer: string };
+    assert.strictEqual(written.answer, "No");
+  });
+
+  it("should map numbered reply to selected option in handleResponse", async () => {
+    const context = { projectId: "test-project", ticketId: "POT-101" };
+    readQuestionResult = {
+      questionId: "q-2",
+      options: ["Alpha", "Beta", "Gamma"],
+      ticketGeneration: 3,
+    };
+
+    const handled = await service.handleResponse("telegram", context, "3");
+
+    assert.strictEqual(handled, true);
+    assert.strictEqual(writeResponseCalls.length, 1);
+    const written = writeResponseCalls[0].response as { answer: string };
+    assert.strictEqual(written.answer, "Gamma");
   });
 });

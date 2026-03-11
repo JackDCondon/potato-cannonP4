@@ -406,8 +406,13 @@ export class ChatService {
       context.projectId,
       this.getContextId(context),
     );
-    await writeResponse(context.projectId, this.getContextId(context), {
+    const mappedAnswer = this.mapAsyncResponseAnswer(
+      this.getContextKey(context),
       answer,
+      pendingQuestion?.options ?? null,
+    );
+    await writeResponse(context.projectId, this.getContextId(context), {
+      answer: mappedAnswer,
       questionId: pendingQuestion?.questionId,
       ticketGeneration: pendingQuestion?.ticketGeneration,
     });
@@ -420,21 +425,21 @@ export class ChatService {
         answerQuestion(pendingQuestion.id);
         addMessage(conversationId, {
           type: "user",
-          text: answer,
+          text: mappedAnswer,
         });
 
         if (context.brainstormId) {
           eventBus.emit("brainstorm:message", {
             projectId: context.projectId,
             brainstormId: context.brainstormId,
-            message: { type: "user", text: answer, timestamp: new Date().toISOString() },
+            message: { type: "user", text: mappedAnswer, timestamp: new Date().toISOString() },
           });
         }
         if (context.ticketId) {
           eventBus.emit("ticket:message", {
             projectId: context.projectId,
             ticketId: context.ticketId,
-            message: { type: "user", text: answer, timestamp: new Date().toISOString() },
+            message: { type: "user", text: mappedAnswer, timestamp: new Date().toISOString() },
           });
         }
       }
@@ -448,12 +453,35 @@ export class ChatService {
       providers.map(async (p) => {
         const thread = await getProviderThread(context, p.id);
         if (thread) {
-          await p.notifyAnswered(thread, answer);
+          await p.notifyAnswered(thread, mappedAnswer);
         }
       }),
     );
 
     return true;
+  }
+
+  private mapAsyncResponseAnswer(
+    contextKey: string,
+    answer: string,
+    pendingOptions: string[] | null,
+  ): string {
+    const callbackMatch = answer.match(/^answer_(\d+)$/);
+    if (callbackMatch && pendingOptions && pendingOptions.length > 0) {
+      const index = parseInt(callbackMatch[1], 10);
+      if (!Number.isNaN(index) && index >= 0 && index < pendingOptions.length) {
+        return pendingOptions[index];
+      }
+    }
+
+    if (pendingOptions && pendingOptions.length > 0) {
+      const numeric = parseInt(answer.trim(), 10);
+      if (!Number.isNaN(numeric) && numeric >= 1 && numeric <= pendingOptions.length) {
+        return pendingOptions[numeric - 1];
+      }
+    }
+
+    return this.mapNumberedResponse(contextKey, answer);
   }
 
   private async sendToProvider(

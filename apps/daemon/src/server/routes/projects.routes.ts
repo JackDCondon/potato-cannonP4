@@ -86,7 +86,11 @@ async function migrateTicketsFromDisabledPhase(
   // Move tickets sequentially
   for (const ticket of tickets) {
     try {
-      const targetPhase = await resolveTargetPhase(projectId, disabledPhase);
+      const targetPhase = await resolveTargetPhase(
+        projectId,
+        disabledPhase,
+        ticket.workflowId,
+      );
       await updateTicket(projectId, ticket.id, {
         phase: targetPhase as TicketPhase,
       });
@@ -96,7 +100,11 @@ async function migrateTicketsFromDisabledPhase(
       );
 
       // Queue automation if target phase has it and ticket has no active session
-      const targetConfig = await getPhaseConfig(projectId, targetPhase);
+      const targetConfig = await getPhaseConfig(
+        projectId,
+        targetPhase,
+        ticket.workflowId,
+      );
       const hasAutomation =
         targetConfig &&
         targetConfig.workers &&

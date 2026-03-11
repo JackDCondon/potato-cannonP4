@@ -3,6 +3,12 @@ export interface TelegramConfig {
   userId: string;
   forumGroupId?: string;
   mode: 'auto' | 'webhook' | 'polling';
+  threadedWorkflow?: boolean;
+  includeTicketContext?: boolean;
+  flowControl?: {
+    maxPendingPerTicket?: number;
+    maxPendingGlobal?: number;
+  };
 }
 
 export interface SlackConfig {
@@ -18,6 +24,12 @@ export interface ProvidersConfig {
 
 export interface DaemonConfig {
   port: number;
+  chatFlow?: {
+    maxPendingPerContext?: number;
+    maxPendingGlobal?: number;
+    includeContextInMessages?: boolean;
+    preferProviderThreads?: boolean;
+  };
   lifecycleHardening?: {
     strictStaleDrop?: boolean;
     strictStaleResume409?: boolean;

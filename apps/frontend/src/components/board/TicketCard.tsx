@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, Image, Clock } from 'lucide-react'
+import { Archive, Image, Clock, MessageCircleQuestion } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, timeAgo } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
@@ -124,8 +124,12 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
       {/* Pending question badge */}
       {isPending && (
         <div className="absolute top-1.5 right-1.5 z-10">
-          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold animate-pending-glow">
-            ?
+          <span
+            aria-label="Waiting for human input"
+            title="Waiting for human input"
+            className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold animate-pending-glow"
+          >
+            <MessageCircleQuestion className="h-3.5 w-3.5" />
           </span>
         </div>
       )}

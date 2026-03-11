@@ -15,6 +15,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { cn, timeAgo, formatToolActivity } from '@/lib/utils'
+import { getWaitingIndicatorLabel, isAwaitingUserInput } from '@/lib/waiting-indicator'
 import { Linkify } from '@/components/ui/linkify'
 import { useSessionOutput, useBrainstormMessage, useSessionEnded } from '@/hooks/useSSE'
 import type { BrainstormMessage } from '@potato-cannon/shared'
@@ -224,6 +225,11 @@ export function BrainstormChat({
     return []
   }, [messages])
 
+  const awaitingUserInput = useMemo(
+    () => isAwaitingUserInput(messages),
+    [messages]
+  )
+
   const handleSend = useCallback(async (text: string) => {
     if (!text.trim() || isSubmitting) return
 
@@ -337,7 +343,12 @@ export function BrainstormChat({
             <MessageBubble key={index} message={message} />
           ))}
 
-          {(isWaitingForResponse || currentActivity) && <ThinkingIndicator activity={currentActivity} />}
+          {(isWaitingForResponse || currentActivity || awaitingUserInput) && (
+            <ThinkingIndicator
+              activity={currentActivity}
+              awaitingUserInput={awaitingUserInput}
+            />
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -505,14 +516,20 @@ function MessageBubble({ message }: MessageBubbleProps) {
   )
 }
 
-function ThinkingIndicator({ activity }: { activity?: string | null }) {
+function ThinkingIndicator({
+  activity,
+  awaitingUserInput,
+}: {
+  activity?: string | null
+  awaitingUserInput: boolean
+}) {
   return (
     <div className="flex justify-start">
       <div className="thinking-shimmer bg-bg-tertiary rounded-lg rounded-bl-sm px-4 py-3 max-w-[85%]">
         <div className="flex items-center gap-2 text-text-muted">
           <Brain className="h-3 w-3 animate-pulse" />
           <span className="text-xs font-medium">
-            {activity || 'Thinking'}
+            {getWaitingIndicatorLabel(activity, awaitingUserInput)}
           </span>
         </div>
       </div>

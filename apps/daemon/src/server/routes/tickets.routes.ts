@@ -154,7 +154,11 @@ export function registerTicketRoutes(
       return true;
     }
 
-    const phaseConfig = await getPhaseConfig(projectId, ticket.phase);
+    const phaseConfig = await getPhaseConfig(
+      projectId,
+      ticket.phase,
+      ticket.workflowId,
+    );
     if (!phaseConfig?.workers || phaseConfig.workers.length === 0) {
       return true;
     }
@@ -274,6 +278,7 @@ export function registerTicketRoutes(
         resolvedPhase = (await resolveTargetPhase(
           projectId,
           updates.phase,
+          oldTicket.workflowId,
         )) as TicketPhase;
         if (resolvedPhase !== updates.phase) {
           console.log(
@@ -349,7 +354,11 @@ export function registerTicketRoutes(
         });
 
         // Check if target phase has automation (workers defined in template)
-        const phaseConfig = await getPhaseConfig(projectId, resolvedPhase);
+        const phaseConfig = await getPhaseConfig(
+          projectId,
+          resolvedPhase,
+          ticket.workflowId ?? oldTicket.workflowId,
+        );
         const hasAutomation = phaseConfig?.workers && phaseConfig.workers.length > 0;
 
         if (hasAutomation) {

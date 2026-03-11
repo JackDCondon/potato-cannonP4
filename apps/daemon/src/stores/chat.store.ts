@@ -69,6 +69,7 @@ export interface PendingQuestion {
   question: string;
   options: string[] | null;
   askedAt: string;
+  notifiedAt?: string;
   phase?: string;
   ticketGeneration?: number;
   phaseAtAsk?: string;

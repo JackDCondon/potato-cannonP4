@@ -82,7 +82,7 @@ describe('TicketCard - Pending Badge', () => {
 
     render(<TicketCard ticket={baseTicket as any} projectId="proj-1" />)
 
-    const badge = screen.getByText('?')
+    const badge = screen.getByLabelText('Waiting for human input')
     expect(badge).toBeTruthy()
     expect(badge.className).toContain('text-amber-400')
   })
@@ -92,7 +92,7 @@ describe('TicketCard - Pending Badge', () => {
 
     render(<TicketCard ticket={baseTicket as any} projectId="proj-1" />)
 
-    const badge = screen.getByText('?')
+    const badge = screen.getByLabelText('Waiting for human input')
     expect(badge.className).toContain('animate-pending-glow')
   })
 })

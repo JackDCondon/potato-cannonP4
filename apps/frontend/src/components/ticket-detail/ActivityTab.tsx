@@ -6,6 +6,7 @@ import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn, timeAgo, formatToolActivity } from '@/lib/utils'
+import { getWaitingIndicatorLabel, isAwaitingUserInput } from '@/lib/waiting-indicator'
 import { Linkify } from '@/components/ui/linkify'
 import { ArtifactViewerFull } from './ArtifactViewerFull'
 import { TaskList } from './TaskList'
@@ -77,11 +78,14 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
         artifact: msg.artifact
       })) as ChatMessage[]
     },
+    // Backfill missed SSE events while a session is active or we're waiting.
+    refetchInterval: hasActiveSession || isWaitingForResponse ? 2000 : false,
   })
 
   const { data: pendingState } = useQuery({
     queryKey: ['ticket-pending', projectId, ticketId],
     queryFn: () => api.getTicketPending(projectId, ticketId),
+    refetchInterval: hasActiveSession || isWaitingForResponse ? 2000 : false,
   })
 
   // Derive pending options from last message
@@ -95,6 +99,11 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
       return lastMessage.options
     }
     return []
+  }, [messages, pendingState])
+
+  const awaitingUserInput = useMemo(() => {
+    if (pendingState?.question) return true
+    return isAwaitingUserInput(messages)
   }, [messages, pendingState])
 
   // Subscribe to session output for streaming activity
@@ -144,6 +153,20 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
     // Clear activity when session ends
     setCurrentActivity(null)
   }, [ticketId]))
+
+  // Recover activity state after SSE reconnects by refetching durable backend state.
+  useEffect(() => {
+    const handleReconnected = () => {
+      queryClient.refetchQueries({ queryKey: ['ticket-messages', projectId, ticketId] })
+      queryClient.refetchQueries({ queryKey: ['ticket-pending', projectId, ticketId] })
+      queryClient.refetchQueries({ queryKey: ['ticket', projectId, ticketId] })
+    }
+
+    window.addEventListener('sse:reconnected', handleReconnected as EventListener)
+    return () => {
+      window.removeEventListener('sse:reconnected', handleReconnected as EventListener)
+    }
+  }, [projectId, queryClient, ticketId])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -331,7 +354,12 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
               />
             ))}
 
-            {(isWaitingForResponse || currentActivity) && <ThinkingIndicator activity={currentActivity} />}
+            {(isWaitingForResponse || currentActivity || awaitingUserInput) && (
+              <ThinkingIndicator
+                activity={currentActivity}
+                awaitingUserInput={awaitingUserInput}
+              />
+            )}
 
             <div ref={messagesEndRef} />
           </div>
@@ -517,14 +545,20 @@ function MessageBubble({ message, onArtifactClick }: MessageBubbleProps) {
   )
 }
 
-function ThinkingIndicator({ activity }: { activity?: string | null }) {
+function ThinkingIndicator({
+  activity,
+  awaitingUserInput,
+}: {
+  activity?: string | null
+  awaitingUserInput: boolean
+}) {
   return (
     <div className="flex justify-start">
       <div className="thinking-shimmer bg-accent-purple/10 rounded-lg rounded-bl-sm px-4 py-3 max-w-[85%]">
         <div className="flex items-center gap-2 text-text-muted">
           <Brain className="h-3 w-3 animate-pulse" />
           <span className="text-xs font-medium">
-            {activity || 'Thinking'}
+            {getWaitingIndicatorLabel(activity, awaitingUserInput)}
           </span>
         </div>
       </div>

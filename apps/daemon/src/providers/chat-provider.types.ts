@@ -16,6 +16,8 @@ export interface OutboundMessage {
   text: string;
   options?: string[];
   phase?: string;
+  kind?: "question" | "notification";
+  contextLabel?: string;
 }
 
 /**

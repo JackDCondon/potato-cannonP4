@@ -320,7 +320,9 @@ export async function startPhase(
   projectPath: string,
   callbacks: ExecutorCallbacks
 ): Promise<string | null> {
-  const phaseConfig = await getPhaseConfig(projectId, phase);
+  const ticket = getTicket(projectId, ticketId);
+  const workflowId = ticket?.workflowId;
+  const phaseConfig = await getPhaseConfig(projectId, phase, workflowId);
   if (!phaseConfig) {
     console.log(`[WorkerExecutor] No phase config for ${phase}`);
     return null;
@@ -331,7 +333,7 @@ export async function startPhase(
   await clearQuestion(projectId, ticketId);
 
   // Run P4 pre-build validation for isolation phases
-  const needsIsolation = await phaseRequiresIsolation(projectId, phase);
+  const needsIsolation = await phaseRequiresIsolation(projectId, phase, workflowId);
   if (needsIsolation) {
     const validationError = validateP4Prerequisites(projectId);
     if (validationError) {
@@ -346,7 +348,6 @@ export async function startPhase(
 
   // Check for existing state (recovery)
   let state = await getWorkerState(projectId, ticketId);
-  const ticket = getTicket(projectId, ticketId);
   const ticketGeneration = ticket?.executionGeneration ?? 0;
   if (
     state &&
@@ -563,6 +564,7 @@ export async function handleAgentCompletion(
     process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP !== "false";
   const currentTicket = getTicket(projectId, ticketId);
   const ticketGeneration = currentTicket?.executionGeneration ?? 0;
+  const workflowId = currentTicket?.workflowId;
   const callbackGeneration = callbackIdentity?.executionGeneration;
   const isStaleCallback =
     callbackGeneration === undefined ||
@@ -589,7 +591,7 @@ export async function handleAgentCompletion(
     );
   }
 
-  const phaseConfig = await getPhaseConfig(projectId, phase);
+  const phaseConfig = await getPhaseConfig(projectId, phase, workflowId);
   if (!phaseConfig) return;
 
   const state = await getWorkerState(projectId, ticketId);
@@ -708,13 +710,22 @@ async function processNestedCompletion(
   projectId: string,
   ticketId: string,
   phase: TicketPhase,
-  worker: Worker,
+  worker: Worker | undefined,
   workerState: WorkerState,
   exitCode: number,
   verdict: { approved: boolean; feedback?: string },
   callbacks: ExecutorCallbacks,
   taskId: string | null = null
 ): Promise<NestedCompletionResult> {
+  if (!worker) {
+    await callbacks.onTicketBlocked(
+      projectId,
+      ticketId,
+      `Worker state mismatch in phase "${phase}" (missing worker definition)`,
+    );
+    return { newState: null, loopComplete: false, blocked: true };
+  }
+
   if (workerState.type === "agent") {
     // This shouldn't happen at this level
     return { newState: null, loopComplete: true, blocked: false };
