@@ -46,6 +46,7 @@ import type {
 import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
+import type { ContinuityPacket } from "./continuity.types.js";
 
 import type {
   ActiveSession,
@@ -101,6 +102,7 @@ interface InvalidateTicketLifecycleOptions {
   targetPhase: TicketPhase;
   expectedPhase?: TicketPhase;
   expectedGeneration?: number;
+  restartSnapshot?: ContinuityPacket;
 }
 
 interface InvalidateTicketLifecycleResult {
@@ -169,6 +171,7 @@ export class SessionService {
       const workerState = createSpawnPendingWorkerState(
         options.targetPhase,
         newGeneration,
+        options.restartSnapshot,
       );
 
       const result = db

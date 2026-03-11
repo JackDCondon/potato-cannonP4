@@ -189,4 +189,19 @@ describe("worker state root guards and generation helpers", () => {
     assert.equal(state.pendingSpawn, true);
     assert.ok(state.spawnRequestedAt);
   });
+
+  it("createSpawnPendingWorkerState preserves optional continuity snapshot payload", async () => {
+    const { createSpawnPendingWorkerState } = await getModule();
+    const state = createSpawnPendingWorkerState("Build", 9, {
+      scope: "safe_user_context_only",
+      reasonForRestart: "manual restart",
+      conversationTurns: [{ role: "user", text: "Keep this context" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    assert.ok(state.continuitySnapshot);
+    assert.equal(state.continuitySnapshot?.scope, "safe_user_context_only");
+    assert.ok(state.continuitySnapshotCreatedAt);
+  });
 });

@@ -14,6 +14,7 @@ import type {
   RalphLoopState,
   TaskLoopState,
 } from "../../types/orchestration.types.js";
+import type { ContinuityPacket } from "./continuity.types.js";
 import {
   isActiveWorkerStateRoot as isActiveRootGuard,
   isSpawnPendingWorkerStateRoot as isSpawnPendingRootGuard,
@@ -185,10 +186,11 @@ export function createTaskLoopState(
 
 export function createSpawnPendingWorkerState(
   phaseId: string,
-  executionGeneration: number
+  executionGeneration: number,
+  continuitySnapshot?: ContinuityPacket,
 ): SpawnPendingWorkerStateRoot {
   const now = new Date().toISOString();
-  return {
+  const state: SpawnPendingWorkerStateRoot = {
     kind: "spawn_pending",
     phaseId,
     executionGeneration,
@@ -196,6 +198,11 @@ export function createSpawnPendingWorkerState(
     spawnRequestedAt: now,
     updatedAt: now,
   };
+  if (continuitySnapshot) {
+    state.continuitySnapshot = continuitySnapshot;
+    state.continuitySnapshotCreatedAt = now;
+  }
+  return state;
 }
 
 export function isActiveWorkerStateRoot(
