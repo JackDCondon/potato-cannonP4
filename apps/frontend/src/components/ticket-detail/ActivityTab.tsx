@@ -28,6 +28,11 @@ interface ActivityTabProps {
   currentPhase?: string
   history?: TicketHistoryEntry[]
   archived?: boolean
+  latestSessionContinuity?: {
+    continuityMode?: string
+    continuityReason?: string
+    continuitySummary?: string
+  }
 }
 
 interface ChatMessage {
@@ -52,7 +57,15 @@ function buildLifecycleErrorText(error: ApiError): string {
   return error.message || 'Failed to send message'
 }
 
-export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, currentPhase: propPhase, history, archived }: ActivityTabProps) {
+export function ActivityTab({
+  projectId,
+  ticketId,
+  ticketTitle: _ticketTitle,
+  currentPhase: propPhase,
+  history,
+  archived,
+  latestSessionContinuity,
+}: ActivityTabProps) {
   const [input, setInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false)
@@ -303,6 +316,19 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
       {/* Section Label */}
       <div className="px-3 pb-2 shrink-0 flex items-center justify-between">
         <h3 className="text-xs font-medium text-text-muted uppercase tracking-wide">Conversation</h3>
+            <div className="flex items-center gap-2">
+              {latestSessionContinuity?.continuityMode && (
+                <div className="flex items-center gap-1">
+                  <span className="inline-flex items-center rounded border border-border px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
+                    {latestSessionContinuity.continuityMode}
+                  </span>
+                  {latestSessionContinuity.continuityReason && (
+                    <span className="inline-flex items-center rounded border border-border px-1.5 py-0.5 text-[10px] text-text-muted">
+                      {latestSessionContinuity.continuityReason}
+                    </span>
+                  )}
+                </div>
+              )}
             {currentPhase && history && (
               <RestartPhaseButton
                 projectId={projectId}
@@ -312,7 +338,13 @@ export function ActivityTab({ projectId, ticketId, ticketTitle: _ticketTitle, cu
                 disabled={archived}
               />
             )}
+            </div>
       </div>
+      {latestSessionContinuity?.continuitySummary && (
+        <p className="px-3 pb-2 text-xs text-text-muted truncate">
+          {latestSessionContinuity.continuitySummary}
+        </p>
+      )}
       <div className="flex items-center gap-2 px-4 pt-1 pb-2">
         <ViewSessionButton
           projectId={projectId}

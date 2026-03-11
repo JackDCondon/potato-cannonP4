@@ -84,4 +84,25 @@ describe('useTicketSessions', () => {
     expect(result.current.fetchStatus).toBe('idle')
     expect(mockedGetTicketSessions).not.toHaveBeenCalled()
   })
+
+  it('keeps continuity fields optional when metadata is absent', async () => {
+    mockedGetTicketSessions.mockResolvedValue([
+      {
+        id: 's2',
+        phase: 'Build',
+        agentSource: 'builder',
+        status: 'completed',
+        startedAt: '2026-03-10T02:00:00Z',
+      },
+    ])
+
+    const { result } = renderHook(
+      () => useTicketSessions('p1', 't2'),
+      { wrapper: createWrapper() }
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.[0].continuityMode).toBeUndefined()
+    expect(result.current.data?.[0].continuitySummary).toBeUndefined()
+  })
 })
