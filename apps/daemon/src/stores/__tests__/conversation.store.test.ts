@@ -117,6 +117,29 @@ describe("ConversationStore", () => {
         source: "agent",
       });
     });
+
+    it("should persist continuity provenance metadata fields", () => {
+      const conv = store.createConversation(projectId);
+      const msg = store.addMessage(conv.id, {
+        type: "question",
+        text: "Need more detail?",
+        metadata: {
+          phase: "Build",
+          executionGeneration: 4,
+          agentSource: "worker:builder",
+          sourceSessionId: "sess_123",
+          messageOrigin: "agent",
+        },
+      });
+
+      assert.deepStrictEqual(msg.metadata, {
+        phase: "Build",
+        executionGeneration: 4,
+        agentSource: "worker:builder",
+        sourceSessionId: "sess_123",
+        messageOrigin: "agent",
+      });
+    });
   });
 
   describe("getMessages", () => {
