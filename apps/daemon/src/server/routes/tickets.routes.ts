@@ -9,6 +9,7 @@ import {
   createTicket,
   updateTicket,
   setCurrentHistoryMetadata,
+  isTerminalPhase,
   deleteTicket,
   archiveTicket,
   restoreTicket,
@@ -142,6 +143,30 @@ export function registerTicketRoutes(
     strictStaleDrop: boolean;
   } = () => ({ strictStaleResume409: true, strictStaleDrop: true }),
 ): void {
+  async function isQuestionStaleForCurrentPhase(
+    projectId: string,
+    ticket: Ticket,
+    pendingQuestion: Awaited<ReturnType<typeof readQuestion>>,
+  ): Promise<boolean> {
+    if (!pendingQuestion) return false;
+
+    if (isTerminalPhase(ticket.phase)) {
+      return true;
+    }
+
+    const phaseConfig = await getPhaseConfig(projectId, ticket.phase);
+    if (!phaseConfig?.workers || phaseConfig.workers.length === 0) {
+      return true;
+    }
+
+    const askedPhase = pendingQuestion.phase ?? pendingQuestion.phaseAtAsk;
+    if (askedPhase && askedPhase !== ticket.phase) {
+      return true;
+    }
+
+    return false;
+  }
+
   // List tickets
   app.get("/api/tickets/:project", async (req: Request, res: Response) => {
     try {
@@ -617,7 +642,19 @@ export function registerTicketRoutes(
         const projectId = decodeURIComponent(req.params.project);
         const ticketId = req.params.id;
 
-        const question = await readQuestion(projectId, ticketId);
+        let question = await readQuestion(projectId, ticketId);
+        if (question) {
+          const ticket = await getTicket(projectId, ticketId);
+          const stale = await isQuestionStaleForCurrentPhase(
+            projectId,
+            ticket,
+            question,
+          );
+          if (stale) {
+            await clearPendingInteraction(projectId, ticketId);
+            question = null;
+          }
+        }
 
         res.json({ question });
       } catch (error) {
@@ -648,6 +685,26 @@ export function registerTicketRoutes(
         const pendingQuestion = await readQuestion(projectId, ticketId);
         const ticket = await getTicket(projectId, ticketId);
         const currentGeneration = ticket.executionGeneration ?? 0;
+        const stalePhaseQuestion = await isQuestionStaleForCurrentPhase(
+          projectId,
+          ticket,
+          pendingQuestion,
+        );
+
+        if (stalePhaseQuestion) {
+          await clearPendingInteraction(projectId, ticketId);
+          const stale = mapStaleTicketInput(
+            new StaleTicketInputError(
+              "Ticket input is stale for the current phase",
+              currentGeneration,
+              ticketGeneration,
+              pendingQuestion?.questionId,
+              questionId,
+            ),
+          );
+          res.status(stale!.status).json(stale!.body);
+          return;
+        }
 
         if (
           !pendingQuestion ||

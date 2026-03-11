@@ -1,4 +1,4 @@
-import { useState, useCallback, type KeyboardEvent } from 'react'
+import { useState, useCallback, useEffect, type KeyboardEvent } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
@@ -38,6 +38,39 @@ export function AddTicketModal() {
   const [description, setDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const workflowId = getCurrentWorkflowId(location.pathname)
+
+  const getDraftStorageKey = useCallback(() => {
+    if (!effectiveProjectId) return null
+    return `add-ticket-draft:${effectiveProjectId}:${workflowId ?? 'none'}`
+  }, [effectiveProjectId, workflowId])
+
+  const saveDraft = useCallback(() => {
+    const storageKey = getDraftStorageKey()
+    if (!storageKey || typeof window === 'undefined') return
+
+    const trimmedTitle = title.trim()
+    const trimmedDescription = description.trim()
+
+    if (!trimmedTitle && !trimmedDescription) {
+      window.localStorage.removeItem(storageKey)
+      return
+    }
+
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        title,
+        description,
+      })
+    )
+  }, [description, getDraftStorageKey, title])
+
+  const clearDraft = useCallback(() => {
+    const storageKey = getDraftStorageKey()
+    if (!storageKey || typeof window === 'undefined') return
+    window.localStorage.removeItem(storageKey)
+  }, [getDraftStorageKey])
 
   const resetForm = useCallback(() => {
     setTitle('')
@@ -46,9 +79,43 @@ export function AddTicketModal() {
   }, [])
 
   const handleClose = useCallback(() => {
-    resetForm()
     closeModal()
-  }, [closeModal, resetForm])
+  }, [closeModal])
+
+  const handleCancel = useCallback(() => {
+    saveDraft()
+    resetForm()
+    handleClose()
+  }, [handleClose, resetForm, saveDraft])
+
+  const handleCreateSuccess = useCallback(() => {
+    clearDraft()
+    resetForm()
+    handleClose()
+  }, [clearDraft, handleClose, resetForm])
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined') return
+
+    const storageKey = getDraftStorageKey()
+    if (!storageKey) return
+
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) {
+      setError(null)
+      return
+    }
+
+    try {
+      const draft = JSON.parse(raw) as { title?: string; description?: string }
+      setTitle(draft.title ?? '')
+      setDescription(draft.description ?? '')
+      setError(null)
+    } catch {
+      window.localStorage.removeItem(storageKey)
+      setError(null)
+    }
+  }, [getDraftStorageKey, isOpen])
 
   const handleSubmit = useCallback(async () => {
     if (!effectiveProjectId || !title.trim()) {
@@ -62,7 +129,6 @@ export function AddTicketModal() {
     setError(null)
 
     try {
-      const workflowId = getCurrentWorkflowId(location.pathname)
       const body: Record<string, string> = { title: title.trim() }
       const trimmedDesc = description.trim()
       if (trimmedDesc) body.description = trimmedDesc
@@ -80,13 +146,13 @@ export function AddTicketModal() {
 
       queryClient.invalidateQueries({ queryKey: ['tickets', effectiveProjectId] })
       queryClient.invalidateQueries({ queryKey: ['tickets', effectiveProjectId, workflowId ?? null] })
-      handleClose()
+      handleCreateSuccess()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create ticket')
     } finally {
       setIsSubmitting(false)
     }
-  }, [effectiveProjectId, title, description, queryClient, handleClose, location.pathname])
+  }, [description, effectiveProjectId, handleCreateSuccess, queryClient, title, workflowId])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && title.trim() && !isSubmitting) {
@@ -97,7 +163,12 @@ export function AddTicketModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="bg-bg-secondary border-border sm:max-w-lg">
+      <DialogContent
+        className="bg-bg-secondary border-border sm:max-w-lg"
+        showCloseButton={false}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="text-text-primary">New Ticket</DialogTitle>
           <DialogDescription className="text-text-secondary">
@@ -143,7 +214,7 @@ export function AddTicketModal() {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
+          <Button variant="outline" onClick={handleCancel} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={!title.trim() || isSubmitting}>

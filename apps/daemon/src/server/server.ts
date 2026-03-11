@@ -70,7 +70,7 @@ import {
   clearPendingInteraction,
   readQuestion,
   readResponse,
-  getPendingQuestionsByProject,
+  getPendingQuestionsByProjectFiltered,
 } from "../stores/chat.store.js";
 import { artifactChatStore } from "../stores/artifact-chat.store.js";
 import { SESSIONS_DIR, LOCK_FILE, PID_FILE, TASKS_DIR } from "../config/paths.js";
@@ -221,6 +221,33 @@ async function recoverOrphanedSessions(): Promise<void> {
   }
 }
 
+async function getStalePendingQuestionReason(
+  projectId: string,
+  ticketId: string,
+  pendingQuestion: Awaited<ReturnType<typeof readQuestion>>,
+): Promise<string | null> {
+  const ticket = await getTicket(projectId, ticketId);
+  if (!ticket) {
+    return "ticket missing";
+  }
+
+  if (isTerminalPhase(ticket.phase)) {
+    return `phase ${ticket.phase} is terminal`;
+  }
+
+  const phaseConfig = await getPhaseConfig(projectId, ticket.phase);
+  if (!phaseConfig?.workers || phaseConfig.workers.length === 0) {
+    return `phase ${ticket.phase} has no workers`;
+  }
+
+  const askedPhase = pendingQuestion?.phase ?? pendingQuestion?.phaseAtAsk;
+  if (askedPhase && askedPhase !== ticket.phase) {
+    return `asked in ${askedPhase}, current phase is ${ticket.phase}`;
+  }
+
+  return null;
+}
+
 /**
  * Resume sessions for tickets/brainstorms that have pending responses but no active session.
  * This handles the case where the daemon was restarted while waiting for a user response.
@@ -255,10 +282,14 @@ async function recoverPendingResponses(): Promise<void> {
           continue;
         }
 
-        // Skip terminal phases
-        if (isTerminalPhase(ticket.phase)) {
+        const staleReason = await getStalePendingQuestionReason(
+          item.projectId,
+          item.contextId,
+          item.question,
+        );
+        if (staleReason) {
           console.log(
-            `[recovery] Ticket ${item.contextId} is in terminal phase ${ticket.phase}, cleaning up stale pending files`,
+            `[recovery] Dropped stale pending input for ${item.contextId}; ${staleReason}`,
           );
           await clearPendingInteraction(item.projectId, item.contextId);
           continue;
@@ -395,7 +426,9 @@ async function recoverInterruptedSessions(): Promise<void> {
     for (const ticketId of ticketDirs) {
       try {
         // Pending responses are handled first by recoverPendingResponses.
-        const pendingResponse = await readResponse(projectId, ticketId);
+        const pendingResponse = typeof readResponse === "function"
+          ? await readResponse(projectId, ticketId)
+          : null;
         if (pendingResponse) {
           continue;
         }
@@ -595,7 +628,26 @@ export async function main(): Promise<void> {
   setInterval(async () => {
     if (!sessionService) return;
     const processingByProject = sessionService.getProcessingByProject();
-    const pendingByProject = await getPendingQuestionsByProject();
+    const pendingByProject = await getPendingQuestionsByProjectFiltered(
+      async ({ projectId, ticketId, question }) => {
+        try {
+          const staleReason = await getStalePendingQuestionReason(
+            projectId,
+            ticketId,
+            question,
+          );
+          if (staleReason) {
+            await clearPendingInteraction(projectId, ticketId);
+            return false;
+          }
+        } catch {
+          await clearPendingInteraction(projectId, ticketId);
+          return false;
+        }
+
+        return true;
+      },
+    );
 
     // Collect all project IDs from both maps
     const allProjectIds = new Set([
@@ -774,6 +826,18 @@ export async function main(): Promise<void> {
                   const pendingQuestion = await readQuestion(context.projectId, context.ticketId);
 
                   if (pendingQuestion) {
+                    const staleReason = await getStalePendingQuestionReason(
+                      context.projectId,
+                      context.ticketId,
+                      pendingQuestion,
+                    );
+                    if (staleReason) {
+                      await clearPendingInteraction(context.projectId, context.ticketId);
+                      console.warn(
+                        `[Telegram] Dropped stale pending question for ticket ${context.ticketId}; ${staleReason}`,
+                      );
+                      return handled;
+                    }
                     if (
                       !pendingQuestion.questionId ||
                       pendingQuestion.ticketGeneration === undefined
@@ -887,6 +951,18 @@ export async function main(): Promise<void> {
                   const pendingQuestion = await readQuestion(context.projectId, context.ticketId);
 
                   if (pendingQuestion) {
+                    const staleReason = await getStalePendingQuestionReason(
+                      context.projectId,
+                      context.ticketId,
+                      pendingQuestion,
+                    );
+                    if (staleReason) {
+                      await clearPendingInteraction(context.projectId, context.ticketId);
+                      console.warn(
+                        `[Slack] Dropped stale pending question for ticket ${context.ticketId}; ${staleReason}`,
+                      );
+                      return handled;
+                    }
                     if (
                       !pendingQuestion.questionId ||
                       pendingQuestion.ticketGeneration === undefined

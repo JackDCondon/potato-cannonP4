@@ -315,6 +315,23 @@ export async function scanPendingResponses(): Promise<PendingContext[]> {
 export async function getPendingQuestionsByProject(): Promise<
   Map<string, string[]>
 > {
+  return getPendingQuestionsByProjectFiltered();
+}
+
+export type PendingQuestionFilter = (args: {
+  projectId: string;
+  ticketId: string;
+  question: PendingQuestion;
+}) => boolean | Promise<boolean>;
+
+/**
+ * Scan all tickets for pending questions (pending-question.json files).
+ * Returns ticket IDs grouped by project ID.
+ * Optional filter allows callers to hide stale questions without rewriting store scans.
+ */
+export async function getPendingQuestionsByProjectFiltered(
+  includeQuestion?: PendingQuestionFilter,
+): Promise<Map<string, string[]>> {
   const result = new Map<string, string[]>();
 
   try {
@@ -330,7 +347,21 @@ export async function getPendingQuestionsByProject(): Promise<
       for (const ticketDir of ticketDirs) {
         const questionPath = path.join(projectPath, ticketDir, "pending-question.json");
         try {
-          await fs.access(questionPath);
+          const questionData = await fs.readFile(questionPath, "utf-8");
+          const question = JSON.parse(questionData) as PendingQuestion;
+          const projectId = projectDir.replace(/__/g, "/");
+
+          if (includeQuestion) {
+            const include = await includeQuestion({
+              projectId,
+              ticketId: ticketDir,
+              question,
+            });
+            if (!include) {
+              continue;
+            }
+          }
+
           pendingTicketIds.push(ticketDir);
         } catch {
           // No pending question for this ticket

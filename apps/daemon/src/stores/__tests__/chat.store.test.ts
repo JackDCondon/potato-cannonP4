@@ -12,6 +12,7 @@ import {
   clearResponse,
   clearQuestion,
   getPendingQuestionsByProject,
+  getPendingQuestionsByProjectFiltered,
   writeQuestion,
 } from "../chat.store.js";
 
@@ -159,5 +160,32 @@ describe("getPendingQuestionsByProject", () => {
     assert.ok(tickets);
     assert.ok(tickets.includes(ticketId1));
     assert.ok(!tickets.includes(ticketId2));
+  });
+
+  it("should filter out pending questions when callback returns false", async () => {
+    await writeQuestion(projectId, ticketId1, {
+      conversationId: "conv-1",
+      question: "Architecture question",
+      options: null,
+      askedAt: new Date().toISOString(),
+      phase: "Architecture",
+    });
+    await writeQuestion(projectId, ticketId2, {
+      conversationId: "conv-2",
+      question: "Build question",
+      options: null,
+      askedAt: new Date().toISOString(),
+      phase: "Build",
+    });
+
+    const result = await getPendingQuestionsByProjectFiltered(
+      ({ question }) => question.phase !== "Architecture",
+    );
+
+    const tickets = result.get(projectId);
+    assert.ok(tickets);
+    assert.ok(!tickets.includes(ticketId1));
+    assert.ok(tickets.includes(ticketId2));
+    assert.strictEqual(tickets.length, 1);
   });
 });
