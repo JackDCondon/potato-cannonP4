@@ -9,6 +9,11 @@ import { runMigrations } from "../../stores/migrations.js";
 import { createSessionStore } from "../../stores/session.store.js";
 import { createProjectStore } from "../../stores/project.store.js";
 import { createTicketStore } from "../../stores/ticket.store.js";
+import { SESSIONS_DIR } from "../../config/paths.js";
+import {
+  continuityFromMetadata,
+  continuityFromSessionLog,
+} from "./sessions.routes.js";
 
 describe("GET /api/projects/:projectId/tickets/:ticketId/sessions — store-level integration", () => {
   let db: Database.Database;
@@ -198,6 +203,59 @@ describe("GET /api/projects/:projectId/tickets/:ticketId/sessions — store-leve
       assert.ok(session.startedAt);
       assert.strictEqual(session.endedAt, undefined);
       assert.strictEqual(session.exitCode, undefined);
+    });
+  });
+
+  describe("continuity projection helpers", () => {
+    it("prefers continuity fields from session metadata", () => {
+      const continuity = continuityFromMetadata({
+        continuityMode: "handoff",
+        continuityReason: "packet_available",
+        continuityScope: "same_lifecycle",
+        continuitySummary: "handoff(same_lifecycle): turns=1, highlights=1, questions=0",
+        continuitySourceSessionId: "claude_prev_1",
+        continuityCompatibility: { ticketId: "hidden" },
+      });
+
+      assert.deepStrictEqual(continuity, {
+        continuityMode: "handoff",
+        continuityReason: "packet_available",
+        continuityScope: "same_lifecycle",
+        continuitySummary: "handoff(same_lifecycle): turns=1, highlights=1, questions=0",
+        continuitySourceSessionId: "claude_prev_1",
+      });
+    });
+
+    it("falls back to continuity fields from session_start log metadata", async () => {
+      await fs.promises.mkdir(SESSIONS_DIR, { recursive: true });
+      const sessionId = `sess_route_${Date.now()}`;
+      const logPath = path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+      await fs.promises.writeFile(
+        logPath,
+        [
+          JSON.stringify({
+            type: "session_start",
+            meta: {
+              projectId: projectId,
+              ticketId,
+              continuityMode: "fresh",
+              continuityReason: "packet_unavailable",
+              continuitySummary: "fresh(packet_unavailable)",
+            },
+            timestamp: new Date().toISOString(),
+          }),
+        ].join("\n"),
+      );
+
+      const continuity = await continuityFromSessionLog(sessionId);
+      assert.strictEqual(continuity.continuityMode, "fresh");
+      assert.strictEqual(continuity.continuityReason, "packet_unavailable");
+      assert.strictEqual(
+        continuity.continuitySummary,
+        "fresh(packet_unavailable)",
+      );
+
+      await fs.promises.unlink(logPath);
     });
   });
 });

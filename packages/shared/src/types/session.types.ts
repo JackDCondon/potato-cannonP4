@@ -40,6 +40,11 @@ export interface Session {
   startedAt: string
   endedAt?: string
   preview?: string
+  continuityMode?: ContinuityMode
+  continuityReason?: ContinuityReason
+  continuityScope?: ContinuityPacketScope
+  continuitySummary?: string
+  continuitySourceSessionId?: string
 }
 
 /** A single content block within an assistant message */

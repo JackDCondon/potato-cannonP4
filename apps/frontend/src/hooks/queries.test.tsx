@@ -42,6 +42,10 @@ describe('useTicketSessions', () => {
         agentSource: 'architect',
         status: 'completed',
         startedAt: '2026-03-10T00:00:00Z',
+        continuityMode: 'handoff',
+        continuityReason: 'packet_available',
+        continuityScope: 'same_lifecycle',
+        continuitySummary: 'handoff(same_lifecycle): turns=1, highlights=1, questions=0',
       },
     ])
 
@@ -55,6 +59,10 @@ describe('useTicketSessions', () => {
     expect(mockedGetTicketSessions).toHaveBeenCalledWith('p1', 't1')
     expect(result.current.data).toHaveLength(1)
     expect(result.current.data![0].agentSource).toBe('architect')
+    expect(result.current.data![0].continuityMode).toBe('handoff')
+    expect(result.current.data![0].continuityReason).toBe('packet_available')
+    expect(result.current.data![0].continuityScope).toBe('same_lifecycle')
+    expect(result.current.data![0].continuitySummary).toContain('handoff')
   })
 
   it('is disabled when projectId is undefined', () => {
