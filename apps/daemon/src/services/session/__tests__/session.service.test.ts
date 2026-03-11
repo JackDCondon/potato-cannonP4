@@ -726,3 +726,23 @@ describe("SessionService transcript highlights", () => {
     await fs.unlink(logPath);
   });
 });
+
+describe("SessionService restart snapshot cache", () => {
+  it("takeRestartSnapshotForTicket returns snapshot once and clears it", () => {
+    const service = new SessionService(new EventEmitter());
+    const cache = (service as any).consumedRestartSnapshots as Map<string, unknown>;
+    cache.set("POT-1", {
+      scope: "safe_user_context_only",
+      conversationTurns: [],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    const first = service.takeRestartSnapshotForTicket("POT-1");
+    const second = service.takeRestartSnapshotForTicket("POT-1");
+
+    assert.ok(first);
+    assert.strictEqual((first as any).scope, "safe_user_context_only");
+    assert.strictEqual(second, null);
+  });
+});

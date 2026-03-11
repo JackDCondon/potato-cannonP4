@@ -78,6 +78,7 @@ import {
 import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 import { createSpawnPendingWorkerState } from "./worker-state.js";
+import { consumeSpawnPendingContinuitySnapshot } from "./worker-state.js";
 import { evaluateResumeEligibility } from "./continuity-policy.js";
 import {
   buildBoundedContinuityPacket,
@@ -160,6 +161,7 @@ interface BuildRestartSnapshotInput {
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private remoteControlState: Map<string, RemoteControlState> = new Map();
+  private consumedRestartSnapshots: Map<string, ContinuityPacket> = new Map();
   private eventEmitter: EventEmitter;
 
   constructor(eventEmitter: EventEmitter) {
@@ -619,6 +621,16 @@ export class SessionService {
     console.log(
       `[spawnForTicket] Starting for ticket ${ticketId}, phase ${phase}`,
     );
+    const ticket = getTicket(projectId, ticketId);
+    const snapshot = consumeSpawnPendingContinuitySnapshot(
+      projectId,
+      ticketId,
+      phase,
+      ticket.executionGeneration ?? 0,
+    );
+    if (snapshot) {
+      this.consumedRestartSnapshots.set(ticketId, snapshot);
+    }
 
     // Delegate to the worker executor which handles all orchestration
     const sessionId = await startPhase(
@@ -630,6 +642,15 @@ export class SessionService {
     );
 
     return sessionId || "";
+  }
+
+  takeRestartSnapshotForTicket(ticketId: string): ContinuityPacket | null {
+    const snapshot = this.consumedRestartSnapshots.get(ticketId);
+    if (!snapshot) {
+      return null;
+    }
+    this.consumedRestartSnapshots.delete(ticketId);
+    return snapshot;
   }
 
   /**

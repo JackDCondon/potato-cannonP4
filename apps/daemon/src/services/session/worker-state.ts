@@ -205,6 +205,39 @@ export function createSpawnPendingWorkerState(
   return state;
 }
 
+export function consumeSpawnPendingContinuitySnapshot(
+  projectId: string,
+  ticketId: string,
+  expectedPhase?: string,
+  expectedGeneration?: number,
+): ContinuityPacket | null {
+  const state = getWorkerState(projectId, ticketId);
+  if (!isSpawnPendingWorkerStateRoot(state)) {
+    return null;
+  }
+  if (!state.continuitySnapshot) {
+    return null;
+  }
+  if (expectedPhase && state.phaseId !== expectedPhase) {
+    return null;
+  }
+  if (
+    expectedGeneration !== undefined &&
+    state.executionGeneration !== expectedGeneration
+  ) {
+    return null;
+  }
+
+  const snapshot = state.continuitySnapshot;
+  const nextState: SpawnPendingWorkerStateRoot = {
+    ...state,
+    continuitySnapshot: undefined,
+    continuitySnapshotCreatedAt: undefined,
+  };
+  saveWorkerState(projectId, ticketId, nextState);
+  return snapshot;
+}
+
 export function isActiveWorkerStateRoot(
   state: OrchestrationState | null | undefined
 ): state is ActiveWorkerStateRoot {
