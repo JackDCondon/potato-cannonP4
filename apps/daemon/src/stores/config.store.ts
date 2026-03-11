@@ -15,6 +15,7 @@ import type {
   TelegramConfig,
   SlackConfig,
   DaemonConfig,
+  LifecycleContinuityConfig,
 } from "../types/index.js";
 import { getDatabase } from "./db.js";
 
@@ -216,8 +217,78 @@ const DEFAULT_CONFIG: GlobalConfig = {
       strictStaleDrop: false,
       strictStaleResume409: false,
     },
+    lifecycleContinuity: {
+      enabled: true,
+      allowResumeSameSwimlane: true,
+      maxConversationTurns: 12,
+      maxSessionEvents: 12,
+      maxCharsPerItem: 800,
+      maxPromptChars: 16000,
+    },
   },
 };
+
+export const DEFAULT_LIFECYCLE_CONTINUITY_CONFIG: Required<LifecycleContinuityConfig> = {
+  enabled: true,
+  allowResumeSameSwimlane: true,
+  maxConversationTurns: 12,
+  maxSessionEvents: 12,
+  maxCharsPerItem: 800,
+  maxPromptChars: 16000,
+};
+
+export function normalizeLifecycleContinuityConfig(config: GlobalConfig): void {
+  config.daemon = config.daemon || { port: 8443 };
+  config.daemon.lifecycleContinuity = config.daemon.lifecycleContinuity || {};
+
+  if (typeof config.daemon.lifecycleContinuity.enabled !== "boolean") {
+    config.daemon.lifecycleContinuity.enabled = DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.enabled;
+  }
+  if (typeof config.daemon.lifecycleContinuity.allowResumeSameSwimlane !== "boolean") {
+    config.daemon.lifecycleContinuity.allowResumeSameSwimlane =
+      DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.allowResumeSameSwimlane;
+  }
+
+  const maxConversationTurns = config.daemon.lifecycleContinuity.maxConversationTurns;
+  if (
+    typeof maxConversationTurns !== "number" ||
+    !Number.isFinite(maxConversationTurns) ||
+    maxConversationTurns < 1
+  ) {
+    config.daemon.lifecycleContinuity.maxConversationTurns =
+      DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxConversationTurns;
+  }
+
+  const maxSessionEvents = config.daemon.lifecycleContinuity.maxSessionEvents;
+  if (
+    typeof maxSessionEvents !== "number" ||
+    !Number.isFinite(maxSessionEvents) ||
+    maxSessionEvents < 1
+  ) {
+    config.daemon.lifecycleContinuity.maxSessionEvents =
+      DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxSessionEvents;
+  }
+
+  const maxCharsPerItem = config.daemon.lifecycleContinuity.maxCharsPerItem;
+  if (
+    typeof maxCharsPerItem !== "number" ||
+    !Number.isFinite(maxCharsPerItem) ||
+    maxCharsPerItem < 1
+  ) {
+    config.daemon.lifecycleContinuity.maxCharsPerItem =
+      DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxCharsPerItem;
+  }
+
+  const maxPromptChars = config.daemon.lifecycleContinuity.maxPromptChars;
+  if (
+    typeof maxPromptChars !== "number" ||
+    !Number.isFinite(maxPromptChars) ||
+    maxPromptChars < 1
+  ) {
+    config.daemon.lifecycleContinuity.maxPromptChars =
+      DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxPromptChars;
+  }
+}
 
 function normalizeTelegramConfig(config: GlobalConfig): void {
   config.telegram = config.telegram || {
@@ -273,6 +344,7 @@ function normalizeDaemonConfig(config: GlobalConfig): void {
   if (typeof config.daemon.lifecycleHardening.strictStaleResume409 !== "boolean") {
     config.daemon.lifecycleHardening.strictStaleResume409 = false;
   }
+  normalizeLifecycleContinuityConfig(config);
 }
 
 export async function ensureGlobalDir(): Promise<void> {

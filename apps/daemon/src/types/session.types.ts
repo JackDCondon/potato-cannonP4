@@ -1,3 +1,5 @@
+import type { SessionContinuityMetadata } from "../services/session/continuity.types.js";
+
 export interface SessionMeta {
   projectId: string;
   ticketId?: string;
@@ -16,6 +18,11 @@ export interface SessionMeta {
   agentType?: string;
   /** Current stage index within the phase */
   stage?: number;
+  continuityMode?: SessionContinuityMetadata["continuityMode"];
+  continuityReason?: SessionContinuityMetadata["continuityReason"];
+  continuityScope?: SessionContinuityMetadata["continuityScope"];
+  continuitySummary?: SessionContinuityMetadata["continuitySummary"];
+  continuitySourceSessionId?: SessionContinuityMetadata["continuitySourceSessionId"];
 }
 
 export interface Session {
@@ -39,6 +46,11 @@ export interface SessionInfo {
   status: "running" | "completed" | "failed";
   exitCode?: number;
   endedAt?: string;
+  continuityMode?: SessionContinuityMetadata["continuityMode"];
+  continuityReason?: SessionContinuityMetadata["continuityReason"];
+  continuityScope?: SessionContinuityMetadata["continuityScope"];
+  continuitySummary?: SessionContinuityMetadata["continuitySummary"];
+  continuitySourceSessionId?: SessionContinuityMetadata["continuitySourceSessionId"];
 }
 
 export interface SessionLogEntry {
