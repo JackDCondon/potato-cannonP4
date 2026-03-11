@@ -899,4 +899,42 @@ describe("SessionService decideContinuityForTicket", () => {
     assert.strictEqual(decision.mode, "handoff");
     assert.strictEqual(decision.reason, "restart_snapshot");
   });
+
+  it("prefers suspended resume over restart snapshots and packet handoff", async () => {
+    const service = new SessionService(new EventEmitter());
+    const cache = (service as any).consumedRestartSnapshots as Map<string, unknown>;
+    cache.set("POT-1", {
+      scope: "safe_user_context_only",
+      conversationTurns: [{ role: "user", text: "restart snapshot" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+    (service as any).buildContinuityPacketForTicket = async () => ({
+      scope: "same_lifecycle",
+      conversationTurns: [{ role: "user", text: "same lifecycle" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+      suspendedResumeSessionId: "claude_suspended_1",
+    });
+
+    assert.strictEqual(decision.mode, "resume");
+    assert.strictEqual(decision.reason, "suspended_session_resume");
+    assert.strictEqual(decision.sourceSessionId, "claude_suspended_1");
+  });
 });

@@ -82,7 +82,6 @@ import { createSpawnPendingWorkerState } from "./worker-state.js";
 import { consumeSpawnPendingContinuitySnapshot } from "./worker-state.js";
 import {
   decideContinuityMode,
-  evaluateResumeEligibility,
   type ResumeEligibilityInput,
 } from "./continuity-policy.js";
 import {
@@ -1627,14 +1626,25 @@ export class SessionService {
       ? (latestSession.metadata as { continuityCompatibility?: ContinuityCompatibilityKey })
           .continuityCompatibility
       : undefined;
-    const eligibility = evaluateResumeEligibility({
-      stored: storedCompatibility,
-      current: compatibilityKey,
-      claudeSessionId,
-      lifecycleInvalidated: false,
+    const continuityDecision = await this.decideContinuityForTicket({
+      ticketId,
+      conversationId: ticket.conversationId,
+      filter: {
+        phase: ticket.phase,
+        agentSource: "resume",
+        executionGeneration: ticketGeneration,
+      },
+      limits: this.getLifecycleContinuityLimits(),
+      resumeEligibility: {
+        stored: storedCompatibility,
+        current: compatibilityKey,
+        claudeSessionId,
+        lifecycleInvalidated: false,
+      },
+      suspendedResumeSessionId: claudeSessionId,
     });
-    if (!eligibility.eligible) {
-      throw new Error(`Resume eligibility failed: ${eligibility.reason}`);
+    if (continuityDecision.mode !== "resume") {
+      return this.spawnForTicket(projectId, ticketId, ticket.phase, project.path);
     }
 
     const storedSession = createStoredSession({

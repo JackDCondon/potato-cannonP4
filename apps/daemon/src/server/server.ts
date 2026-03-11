@@ -33,7 +33,7 @@ import {
   getProjects,
 } from "./routes/index.js";
 import { registerSystemRoutes } from "./routes/system.routes.js";
-import { safeReadPendingResponse } from "./recovery.utils.js";
+import { isStalePendingTicketInput, safeReadPendingResponse } from "./recovery.utils.js";
 import {
   loadGlobalConfig,
   saveGlobalConfig,
@@ -325,15 +325,14 @@ async function recoverPendingResponses(): Promise<void> {
         const expectedGeneration = item.question?.ticketGeneration;
 
         // Precedence 1: stale reject
-        const isStalePendingResponse =
-          typeof providedGeneration !== "number" ||
-          typeof providedQuestionId !== "string" ||
-          !item.question ||
-          typeof expectedQuestionId !== "string" ||
-          typeof expectedGeneration !== "number" ||
-          providedGeneration !== expectedGeneration ||
-          providedQuestionId !== expectedQuestionId ||
-          providedGeneration !== currentGeneration;
+        const isStalePendingResponse = isStalePendingTicketInput({
+          providedGeneration,
+          providedQuestionId,
+          expectedGeneration,
+          expectedQuestionId,
+          currentGeneration,
+          hasPendingQuestion: Boolean(item.question),
+        });
 
         if (isStalePendingResponse && lifecycleHardeningFlags.strictStaleResume409) {
           await clearPendingInteraction(item.projectId, item.contextId);
@@ -373,16 +372,7 @@ async function recoverPendingResponses(): Promise<void> {
             console.error(
               `[recovery] Failed to resume suspended ticket ${item.contextId}: ${(err as Error).message}`,
             );
-            // Fall back to standard recovery
-            const sessionId = await sessionService.spawnForTicket(
-              item.projectId,
-              item.contextId,
-              ticket.phase,
-              project.path,
-            );
-            console.log(
-              `[recovery] Fallback: spawned session ${sessionId} for ticket ${item.contextId}`,
-            );
+            continue;
           }
         } else {
           // Standard recovery — no pending question means it was a blocking ask
