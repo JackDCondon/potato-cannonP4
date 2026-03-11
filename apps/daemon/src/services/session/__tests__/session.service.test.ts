@@ -6,6 +6,7 @@ import {
   TicketLifecycleConflictError,
   StaleTicketInputError,
 } from "../session.service.js";
+import { evaluateResumeEligibility } from "../continuity-policy.js";
 
 /**
  * Tests for SessionService.terminateExistingSession
@@ -573,5 +574,103 @@ describe("SessionService continuity compatibility key", () => {
       "never persist this prompt raw",
     );
     assert.strictEqual(compatibility.agentDefinitionPromptHash.length, 64);
+  });
+});
+
+describe("evaluateResumeEligibility", () => {
+  const baseKey = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/build.md",
+    executionGeneration: 4,
+    workflowId: "wf-main",
+    worktreePath: "/tmp/wt",
+    branchName: "potato/POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["potato-cannon", "p4"],
+    model: "sonnet",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+
+  it("returns eligible only when all compatibility fields match", () => {
+    const result = evaluateResumeEligibility({
+      stored: baseKey,
+      current: { ...baseKey },
+      claudeSessionId: "claude_123",
+      lifecycleInvalidated: false,
+    });
+
+    assert.deepStrictEqual(result, { eligible: true, reason: "eligible" });
+  });
+
+  it("rejects resume when any compatibility field mismatches", () => {
+    const mismatchCases = [
+      { ticketId: "POT-2" },
+      { phase: "Refinement" },
+      { agentSource: "agents/review.md" },
+      { executionGeneration: 5 },
+      { workflowId: "wf-2" },
+      { worktreePath: "/tmp/wt2" },
+      { branchName: "potato/POT-2" },
+      { agentDefinitionPromptHash: "b".repeat(64) },
+      { mcpServerNames: ["potato-cannon"] },
+      { model: "haiku" },
+      { disallowedTools: [] as string[] },
+    ];
+
+    for (const mismatch of mismatchCases) {
+      const result = evaluateResumeEligibility({
+        stored: baseKey,
+        current: { ...baseKey, ...mismatch },
+        claudeSessionId: "claude_123",
+        lifecycleInvalidated: false,
+      });
+      assert.deepStrictEqual(result, {
+        eligible: false,
+        reason: "compatibility_mismatch",
+      });
+    }
+  });
+
+  it("rejects resume when compatibility key is incomplete", () => {
+    const result = evaluateResumeEligibility({
+      stored: { ...baseKey, workflowId: "" },
+      current: { ...baseKey },
+      claudeSessionId: "claude_123",
+      lifecycleInvalidated: false,
+    });
+
+    assert.deepStrictEqual(result, {
+      eligible: false,
+      reason: "missing_compatibility_key",
+    });
+  });
+
+  it("rejects resume without a stored Claude session id", () => {
+    const result = evaluateResumeEligibility({
+      stored: baseKey,
+      current: { ...baseKey },
+      claudeSessionId: "",
+      lifecycleInvalidated: false,
+    });
+
+    assert.deepStrictEqual(result, {
+      eligible: false,
+      reason: "missing_claude_session_id",
+    });
+  });
+
+  it("rejects resume after lifecycle invalidation", () => {
+    const result = evaluateResumeEligibility({
+      stored: baseKey,
+      current: { ...baseKey },
+      claudeSessionId: "claude_123",
+      lifecycleInvalidated: true,
+    });
+
+    assert.deepStrictEqual(result, {
+      eligible: false,
+      reason: "lifecycle_invalidated",
+    });
   });
 });

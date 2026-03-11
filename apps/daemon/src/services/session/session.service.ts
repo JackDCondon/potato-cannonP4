@@ -29,6 +29,7 @@ import {
   updateClaudeSessionId,
   getActiveSessionForBrainstorm,
   getActiveSessionForTicket,
+  getSessionsByTicket,
 } from "../../stores/session.store.js";
 import {
   readResponse,
@@ -71,6 +72,7 @@ import {
 import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 import { createSpawnPendingWorkerState } from "./worker-state.js";
+import { evaluateResumeEligibility } from "./continuity-policy.js";
 
 export class TicketLifecycleConflictError extends Error {
   readonly code = "TICKET_LIFECYCLE_CONFLICT";
@@ -1344,6 +1346,21 @@ export class SessionService {
       model: "default",
       disallowedTools: ["Skill(superpowers:*)"],
     });
+
+    const latestSession = getSessionsByTicket(ticketId).at(-1);
+    const storedCompatibility = latestSession?.metadata
+      ? (latestSession.metadata as { continuityCompatibility?: ContinuityCompatibilityKey })
+          .continuityCompatibility
+      : undefined;
+    const eligibility = evaluateResumeEligibility({
+      stored: storedCompatibility,
+      current: compatibilityKey,
+      claudeSessionId,
+      lifecycleInvalidated: false,
+    });
+    if (!eligibility.eligible) {
+      throw new Error(`Resume eligibility failed: ${eligibility.reason}`);
+    }
 
     const storedSession = createStoredSession({
       projectId,
