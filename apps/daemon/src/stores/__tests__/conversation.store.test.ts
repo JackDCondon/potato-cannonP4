@@ -164,6 +164,128 @@ describe("ConversationStore", () => {
     });
   });
 
+  describe("getMessagesForContinuity", () => {
+    it("filters by phase", () => {
+      const conv = store.createConversation(projectId);
+      store.addMessage(conv.id, {
+        type: "question",
+        text: "Refinement question",
+        metadata: { phase: "Refinement", executionGeneration: 1 },
+      });
+      store.addMessage(conv.id, {
+        type: "question",
+        text: "Build question",
+        metadata: { phase: "Build", executionGeneration: 1 },
+      });
+
+      const messages = store.getMessagesForContinuity(
+        conv.id,
+        { phase: "Build" },
+        10
+      );
+
+      assert.strictEqual(messages.length, 1);
+      assert.strictEqual(messages[0].text, "Build question");
+    });
+
+    it("filters by execution generation", () => {
+      const conv = store.createConversation(projectId);
+      store.addMessage(conv.id, {
+        type: "user",
+        text: "Gen 1 context",
+        metadata: { phase: "Build", executionGeneration: 1 },
+      });
+      store.addMessage(conv.id, {
+        type: "user",
+        text: "Gen 2 context",
+        metadata: { phase: "Build", executionGeneration: 2 },
+      });
+
+      const messages = store.getMessagesForContinuity(
+        conv.id,
+        { executionGeneration: 2 },
+        10
+      );
+
+      assert.strictEqual(messages.length, 1);
+      assert.strictEqual(messages[0].text, "Gen 2 context");
+    });
+
+    it("filters by agent source when present", () => {
+      const conv = store.createConversation(projectId);
+      store.addMessage(conv.id, {
+        type: "question",
+        text: "Builder message",
+        metadata: {
+          phase: "Build",
+          executionGeneration: 1,
+          agentSource: "agents/build.md",
+        },
+      });
+      store.addMessage(conv.id, {
+        type: "question",
+        text: "Verifier message",
+        metadata: {
+          phase: "Build",
+          executionGeneration: 1,
+          agentSource: "agents/review.md",
+        },
+      });
+
+      const messages = store.getMessagesForContinuity(
+        conv.id,
+        { phase: "Build", agentSource: "agents/build.md" },
+        10
+      );
+
+      assert.strictEqual(messages.length, 1);
+      assert.strictEqual(messages[0].text, "Builder message");
+    });
+
+    it("returns most recent matching messages but emits oldest to newest", () => {
+      const conv = store.createConversation(projectId);
+      const first = store.addMessage(conv.id, {
+        type: "user",
+        text: "first",
+        metadata: { phase: "Build", executionGeneration: 3 },
+      });
+      const second = store.addMessage(conv.id, {
+        type: "user",
+        text: "second",
+        metadata: { phase: "Build", executionGeneration: 3 },
+      });
+      const third = store.addMessage(conv.id, {
+        type: "user",
+        text: "third",
+        metadata: { phase: "Build", executionGeneration: 3 },
+      });
+
+      db.prepare("UPDATE conversation_messages SET timestamp = ? WHERE id = ?").run(
+        "2026-03-11T00:00:01.000Z",
+        first.id
+      );
+      db.prepare("UPDATE conversation_messages SET timestamp = ? WHERE id = ?").run(
+        "2026-03-11T00:00:02.000Z",
+        second.id
+      );
+      db.prepare("UPDATE conversation_messages SET timestamp = ? WHERE id = ?").run(
+        "2026-03-11T00:00:03.000Z",
+        third.id
+      );
+
+      const messages = store.getMessagesForContinuity(
+        conv.id,
+        { phase: "Build", executionGeneration: 3 },
+        2
+      );
+
+      assert.deepStrictEqual(
+        messages.map((m) => m.text),
+        ["second", "third"]
+      );
+    });
+  });
+
   describe("getPendingQuestion", () => {
     it("should return null when no pending questions", () => {
       const conv = store.createConversation(projectId);
