@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 
-const CURRENT_SCHEMA_VERSION = 15;
+const CURRENT_SCHEMA_VERSION = 16;
 
 /**
  * Run database migrations.
@@ -68,6 +68,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 15) {
     migrateV15(db);
+  }
+
+  if (version < 16) {
+    migrateV16(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -643,4 +647,25 @@ function migrateV15(db: Database.Database): void {
   if (!columns.some((column) => column.name === 'metadata')) {
     db.exec('ALTER TABLE ticket_history ADD COLUMN metadata TEXT')
   }
+}
+
+/**
+ * V16: Add execution generation fields for ticket/session lifecycle fencing.
+ */
+function migrateV16(db: Database.Database): void {
+  const ticketColumns = db.pragma('table_info(tickets)') as { name: string }[];
+  if (!ticketColumns.some((column) => column.name === 'execution_generation')) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN execution_generation INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  const sessionColumns = db.pragma('table_info(sessions)') as { name: string }[];
+  if (!sessionColumns.some((column) => column.name === 'execution_generation')) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN execution_generation INTEGER`);
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_ticket_generation_active
+    ON sessions(ticket_id, execution_generation)
+    WHERE ended_at IS NULL AND ticket_id IS NOT NULL AND execution_generation IS NOT NULL
+  `);
 }

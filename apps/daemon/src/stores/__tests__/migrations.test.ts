@@ -82,9 +82,94 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.equal(ticket.workflow_id, null, 'workflow_id should be null for pre-V13 tickets');
   });
 
-  it('schema version is 15', () => {
+  it('schema version is 16', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 15);
+    assert.equal(version, 16);
+  });
+});
+
+describe('V16 migration - execution generation schema support', () => {
+  it('adds execution_generation to tickets and sessions', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const ticketCols = db.pragma('table_info(tickets)') as Array<{ name: string; notnull: number; dflt_value: string | null }>;
+    const ticketGeneration = ticketCols.find((col) => col.name === 'execution_generation');
+    assert.ok(ticketGeneration, 'tickets.execution_generation should exist');
+    assert.equal(ticketGeneration.notnull, 1, 'tickets.execution_generation should be NOT NULL');
+    assert.equal(ticketGeneration.dflt_value, '0', 'tickets.execution_generation should default to 0');
+
+    const sessionCols = db.pragma('table_info(sessions)') as Array<{ name: string; notnull: number }>;
+    const sessionGeneration = sessionCols.find((col) => col.name === 'execution_generation');
+    assert.ok(sessionGeneration, 'sessions.execution_generation should exist');
+    assert.equal(sessionGeneration.notnull, 0, 'sessions.execution_generation should be nullable for legacy rows');
+  });
+
+  it('enforces one active ticket session per execution_generation', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v16','pv16','V16 Project','/v16','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v16', 1)"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at) VALUES ('t-v16','proj-v16','Ticket V16','Ideas','2026-03-11','2026-03-11')"
+    );
+
+    db.exec(
+      "INSERT INTO sessions (id, project_id, ticket_id, started_at, execution_generation) VALUES ('sess-v16-a','proj-v16','t-v16','2026-03-11T00:00:00.000Z',0)"
+    );
+
+    assert.throws(
+      () => {
+        db.exec(
+          "INSERT INTO sessions (id, project_id, ticket_id, started_at, execution_generation) VALUES ('sess-v16-b','proj-v16','t-v16','2026-03-11T00:00:01.000Z',0)"
+        );
+      },
+      /UNIQUE constraint failed/
+    );
+
+    db.exec(
+      "UPDATE sessions SET ended_at = '2026-03-11T00:00:02.000Z' WHERE id = 'sess-v16-a'"
+    );
+    db.exec(
+      "INSERT INTO sessions (id, project_id, ticket_id, started_at, execution_generation) VALUES ('sess-v16-c','proj-v16','t-v16','2026-03-11T00:00:03.000Z',0)"
+    );
+    db.exec(
+      "INSERT INTO sessions (id, project_id, ticket_id, started_at, execution_generation) VALUES ('sess-v16-d','proj-v16','t-v16','2026-03-11T00:00:04.000Z',1)"
+    );
+  });
+
+  it('allows multiple legacy active sessions with NULL execution_generation', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v16-legacy','pv16l','V16 Legacy','/v16l','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v16-legacy', 1)"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at) VALUES ('t-v16-legacy','proj-v16-legacy','Legacy Ticket','Ideas','2026-03-11','2026-03-11')"
+    );
+
+    db.exec(
+      "INSERT INTO sessions (id, project_id, ticket_id, started_at, execution_generation) VALUES ('sess-v16-legacy-a','proj-v16-legacy','t-v16-legacy','2026-03-11T00:00:00.000Z',NULL)"
+    );
+    db.exec(
+      "INSERT INTO sessions (id, project_id, ticket_id, started_at, execution_generation) VALUES ('sess-v16-legacy-b','proj-v16-legacy','t-v16-legacy','2026-03-11T00:00:01.000Z',NULL)"
+    );
+
+    const count = db
+      .prepare(
+        "SELECT COUNT(*) as count FROM sessions WHERE ticket_id = 't-v16-legacy' AND ended_at IS NULL"
+      )
+      .get() as { count: number };
+    assert.equal(count.count, 2);
   });
 });
 

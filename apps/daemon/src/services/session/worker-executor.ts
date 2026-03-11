@@ -16,12 +16,14 @@ import {
   isTaskLoopWorker,
 } from "../../types/template.types.js";
 import type {
+  ActiveWorkerStateRoot,
   OrchestrationState,
   WorkerState,
   RalphLoopState,
   TaskLoopState,
   TaskContext,
 } from "../../types/orchestration.types.js";
+import { isActiveWorkerStateRoot as isActiveRoot } from "../../types/orchestration.types.js";
 import {
   getWorkerState,
   saveWorkerState,
@@ -29,11 +31,9 @@ import {
   clearWorkerState,
   createAgentState,
   prepareForRecovery,
+  hasMatchingExecutionGeneration,
 } from "./worker-state.js";
-import {
-  initRalphLoop,
-  handleAgentCompletion as handleRalphLoopAgentCompletion,
-} from "./loops/ralph-loop.js";
+import { initRalphLoop, handleAgentCompletion as handleRalphLoopAgentCompletion } from "./loops/ralph-loop.js";
 import {
   initTaskLoop,
   getNextTask,
@@ -43,7 +43,7 @@ import {
   buildTaskContext,
 } from "./loops/task-loop.js";
 import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./phase-config.js";
-import { updateTicket } from "../../stores/ticket.store.js";
+import { getTicket } from "../../stores/ticket.store.js";
 import { getProjectById } from "../../stores/project.store.js";
 import { readQuestion, clearQuestion } from "../../stores/chat.store.js";
 import { updateTaskStatus } from "../../stores/task.store.js";
@@ -54,6 +54,7 @@ import {
   updateRalphFeedbackStatus,
   getRalphFeedbackForLoop,
 } from "../../stores/ralph-feedback.store.js";
+import type { SessionCallbackIdentity } from "./types.js";
 
 /**
  * Callbacks for spawning sessions and handling transitions
@@ -120,7 +121,7 @@ function findTaskLoopInState(workerState: WorkerState | null): TaskLoopState | n
  * Get active task ID from state if inside a task loop
  */
 function getActiveTaskId(state: OrchestrationState): string | null {
-  if (!state.activeWorker) return null;
+  if (!isActiveRoot(state) || !state.activeWorker) return null;
   if (state.activeWorker.type === "taskLoop") {
     return (state.activeWorker as TaskLoopState).currentTaskId;
   }
@@ -135,7 +136,7 @@ function getRalphContext(
   state: OrchestrationState,
   phase: string
 ): { phaseId: string; ralphLoopId: string; taskId: string | null } | undefined {
-  if (!state.activeWorker) return undefined;
+  if (!isActiveRoot(state) || !state.activeWorker) return undefined;
 
   // Direct ralph loop
   if (state.activeWorker.type === "ralphLoop") {
@@ -176,7 +177,7 @@ export function validatePhaseWorkers(phase: Phase): void {
  */
 function getCurrentWorker(
   workers: Worker[],
-  state: OrchestrationState
+  state: ActiveWorkerStateRoot
 ): { worker: Worker; path: string[] } | null {
   if (state.workerIndex >= workers.length) {
     return null;
@@ -315,7 +316,14 @@ export async function startPhase(
 
   // Check for existing state (recovery)
   let state = await getWorkerState(projectId, ticketId);
-  if (state && state.phaseId === phase) {
+  const ticket = getTicket(projectId, ticketId);
+  const ticketGeneration = ticket?.executionGeneration ?? 0;
+  if (
+    state &&
+    isActiveRoot(state) &&
+    state.phaseId === phase &&
+    hasMatchingExecutionGeneration(state, ticketGeneration)
+  ) {
     // Recovery - prepare state
     state = prepareForRecovery(state);
     await saveWorkerState(projectId, ticketId, state);
@@ -341,7 +349,7 @@ async function executeNextWorker(
   phase: TicketPhase,
   projectPath: string,
   phaseConfig: Phase,
-  state: OrchestrationState,
+  state: ActiveWorkerStateRoot,
   callbacks: ExecutorCallbacks
 ): Promise<string | null> {
   const current = getCurrentWorker(phaseConfig.workers, state);
@@ -451,9 +459,9 @@ async function executeNextWorker(
  * Update state tree with new active worker
  */
 function updateStateWithActiveWorker(
-  state: OrchestrationState,
+  state: ActiveWorkerStateRoot,
   newActiveWorker: WorkerState
-): OrchestrationState {
+): ActiveWorkerStateRoot {
   if (!state.activeWorker) {
     return { ...state, activeWorker: newActiveWorker };
   }
@@ -499,13 +507,14 @@ export async function handleAgentCompletion(
   exitCode: number,
   agentId: string,
   verdict: { approved: boolean; feedback?: string },
-  callbacks: ExecutorCallbacks
+  callbacks: ExecutorCallbacks,
+  callbackIdentity?: SessionCallbackIdentity,
 ): Promise<void> {
   const phaseConfig = await getPhaseConfig(projectId, phase);
   if (!phaseConfig) return;
 
   const state = await getWorkerState(projectId, ticketId);
-  if (!state) return;
+  if (!state || !isActiveRoot(state)) return;
 
   // Check if this exit is a suspension (pending question exists, no response yet)
   // A suspended session exits cleanly (code 0) after calling chat_ask with suspend: true.
@@ -518,12 +527,9 @@ export async function handleAgentCompletion(
         questionConversationId: pendingQuestion.conversationId,
       });
       // Emit event so frontend knows ticket is waiting
-      const { getTicket } = await import("../../stores/ticket.store.js");
       const ticket = getTicket(projectId, ticketId);
-      if (ticket) {
-        const { eventBus } = await import("../../utils/event-bus.js");
-        eventBus.emit("ticket:updated", { projectId, ticket });
-      }
+      const { eventBus } = await import("../../utils/event-bus.js");
+      eventBus.emit("ticket:updated", { projectId, ticket });
       return; // Critical: return without advancing worker state
     }
   }
@@ -531,6 +537,7 @@ export async function handleAgentCompletion(
   await logToDaemon(projectId, ticketId, `Agent ${agentId} completed`, {
     exitCode,
     verdict: verdict.approved ? "APPROVED" : "REVISION_NEEDED",
+    callbackIdentity,
   });
 
   // Handle based on where we are in the worker tree
@@ -558,11 +565,11 @@ async function processAgentCompletion(
   phase: TicketPhase,
   projectPath: string,
   phaseConfig: Phase,
-  state: OrchestrationState,
+  state: ActiveWorkerStateRoot,
   exitCode: number,
   verdict: { approved: boolean; feedback?: string },
   callbacks: ExecutorCallbacks
-): Promise<OrchestrationState | null> {
+): Promise<ActiveWorkerStateRoot | null> {
   if (!state.activeWorker) {
     // Top-level agent completed
     if (exitCode !== 0) {

@@ -3,6 +3,7 @@ export type SessionStatus = 'running' | 'completed' | 'failed'
 export interface SessionMeta {
   id: string
   ticketId?: string
+  executionGeneration?: number | null
   phase?: string
   agentSource?: string
   status: SessionStatus
@@ -14,6 +15,7 @@ export interface Session {
   id: string
   projectId: string
   ticketId?: string
+  executionGeneration?: number | null
   brainstormId?: string
   status: SessionStatus
   startedAt: string

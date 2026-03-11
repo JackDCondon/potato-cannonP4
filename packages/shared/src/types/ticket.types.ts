@@ -23,6 +23,7 @@ export interface Ticket {
   title: string
   description?: string
   phase: string
+  executionGeneration?: number
   project?: string
   createdAt: string
   updatedAt: string

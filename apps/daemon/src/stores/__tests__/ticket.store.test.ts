@@ -73,6 +73,7 @@ describe("TicketStore", () => {
       assert.match(ticket.id, TICKET_ID_REGEX, "ID should be prefix-based");
       assert.strictEqual(ticket.title, "My First Ticket");
       assert.strictEqual(ticket.phase, "Ideas");
+      assert.strictEqual((ticket as unknown as { executionGeneration?: number }).executionGeneration, 0);
       assert.strictEqual(ticket.project, projectId);
       assert.ok(ticket.createdAt);
       assert.ok(ticket.updatedAt);

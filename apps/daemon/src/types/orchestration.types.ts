@@ -47,12 +47,25 @@ export type WorkerState = AgentState | RalphLoopState | TaskLoopState;
 /**
  * Top-level orchestration state for a ticket
  */
-export interface OrchestrationState {
+export interface ActiveWorkerStateRoot {
+  kind: "active";
   phaseId: string;
+  executionGeneration: number;
   workerIndex: number;
   activeWorker: WorkerState | null;
   updatedAt: string;
 }
+
+export interface SpawnPendingWorkerStateRoot {
+  kind: "spawn_pending";
+  phaseId: string;
+  executionGeneration: number;
+  pendingSpawn: true;
+  spawnRequestedAt: string;
+  updatedAt: string;
+}
+
+export type OrchestrationState = ActiveWorkerStateRoot | SpawnPendingWorkerStateRoot;
 
 /**
  * Task context injected into agent prompts when running inside a taskLoop
@@ -79,4 +92,16 @@ export function isRalphLoopState(state: WorkerState): state is RalphLoopState {
 
 export function isTaskLoopState(state: WorkerState): state is TaskLoopState {
   return state.type === "taskLoop";
+}
+
+export function isActiveWorkerStateRoot(
+  state: unknown
+): state is ActiveWorkerStateRoot {
+  return !!state && typeof state === "object" && (state as { kind?: string }).kind === "active";
+}
+
+export function isSpawnPendingWorkerStateRoot(
+  state: unknown
+): state is SpawnPendingWorkerStateRoot {
+  return !!state && typeof state === "object" && (state as { kind?: string }).kind === "spawn_pending";
 }

@@ -179,6 +179,7 @@ await mock.module("../worker-state.js", {
     clearWorkerState: async () => {},
     createAgentState: () => ({ id: "agent", type: "agent" }),
     prepareForRecovery: (s: unknown) => s,
+    hasMatchingExecutionGeneration: () => true,
   },
 });
 

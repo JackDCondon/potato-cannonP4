@@ -45,7 +45,10 @@ import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
 
-import type { ActiveSession, RemoteControlState } from "./types.js";
+import type {
+  ActiveSession,
+  RemoteControlState,
+} from "./types.js";
 import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./phase-config.js";
 import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
@@ -394,6 +397,10 @@ export class SessionService {
     this.sessions.set(sessionId, {
       process: proc,
       meta,
+      callbackIdentity: {
+        sessionId,
+        executionGeneration: meta.executionGeneration ?? null,
+      },
       logStream,
       exitPromise,
       exitResolver,
@@ -519,7 +526,11 @@ export class SessionService {
           exitCode,
           agentType,
           getPendingVerdict(projectId, ticketId) ?? { approved: exitCode === 0 },
-          this.getExecutorCallbacks()
+          this.getExecutorCallbacks(),
+          {
+            sessionId,
+            executionGeneration: meta.executionGeneration ?? null,
+          }
         ).catch((err) =>
           console.error(`[spawnClaudeSession] Error in completion handler:`, err),
         );
@@ -897,16 +908,17 @@ export class SessionService {
     await this.terminateExistingSession('ticket', ticketId);
 
     // Create stored session record in database for tracking
+    const ticket = await getTicket(projectId, ticketId);
     const storedSession = createStoredSession({
       projectId,
       ticketId,
+      executionGeneration: ticket.executionGeneration ?? 0,
       agentSource: agentWorker.source,
       phase,
     });
     // Use the stored session ID instead of the generated one
     const sessionId = storedSession.id;
 
-    const ticket = await getTicket(projectId, ticketId);
     const images = await listTicketImages(projectId, ticketId);
 
     const project = getProjectById(projectId);
@@ -958,6 +970,7 @@ export class SessionService {
       projectId,
       ticketId,
       ticketTitle: ticket.title,
+      executionGeneration: ticket.executionGeneration ?? 0,
       phase,
       worktreePath,
       branchName: workspaceLabel,
@@ -1049,6 +1062,7 @@ export class SessionService {
     const storedSession = createStoredSession({
       projectId,
       ticketId,
+      executionGeneration: ticket.executionGeneration ?? 0,
       claudeSessionId,
       agentSource: "resume",
       phase: ticket.phase,
@@ -1075,6 +1089,7 @@ export class SessionService {
       projectId,
       ticketId,
       ticketTitle: ticket.title,
+      executionGeneration: ticket.executionGeneration ?? 0,
       phase: ticket.phase,
       worktreePath,
       branchName: workspaceLabel,

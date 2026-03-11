@@ -1,22 +1,30 @@
 export interface ConversationEntry {
   id: string
+  questionId?: string
   question: string
   options?: string[]
   askedAt: string
   phase?: string
+  ticketGeneration?: number
+  phaseAtAsk?: string
   answer?: string
   answeredAt?: string
 }
 
 export interface TicketPendingQuestion {
   conversationId: string
+  questionId?: string
   question: string
   options?: string[]
   askedAt: string
   phase?: string
+  ticketGeneration?: number
+  phaseAtAsk?: string
 }
 
 export interface TicketPendingResponse {
+  questionId?: string
+  ticketGeneration?: number
   question?: TicketPendingQuestion
 }
 

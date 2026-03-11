@@ -15,6 +15,7 @@ interface SessionRow {
   project_id: string;
   ticket_id: string | null;
   brainstorm_id: string | null;
+  execution_generation: number | null;
   conversation_id: string | null;
   claude_session_id: string | null;
   agent_source: string | null;
@@ -35,6 +36,7 @@ function rowToSession(row: SessionRow): StoredSession {
     projectId: row.project_id,
     ticketId: row.ticket_id || undefined,
     brainstormId: row.brainstorm_id || undefined,
+    executionGeneration: row.execution_generation,
     conversationId: row.conversation_id || undefined,
     claudeSessionId: row.claude_session_id || undefined,
     agentSource: row.agent_source || undefined,
@@ -53,6 +55,24 @@ function rowToSession(row: SessionRow): StoredSession {
 export class SessionStore {
   constructor(private db: Database.Database) {}
 
+  private resolveExecutionGeneration(input: CreateSessionInput): number | null {
+    if (input.executionGeneration !== undefined) {
+      return input.executionGeneration;
+    }
+
+    if (!input.ticketId) {
+      return null;
+    }
+
+    const ticket = this.db
+      .prepare("SELECT execution_generation FROM tickets WHERE id = ?")
+      .get(input.ticketId) as { execution_generation: number } | undefined;
+    if (!ticket) {
+      throw new Error(`Ticket ${input.ticketId} not found for session creation`);
+    }
+    return ticket.execution_generation;
+  }
+
   // ---------------------------------------------------------------------------
   // Session Lifecycle
   // ---------------------------------------------------------------------------
@@ -63,14 +83,15 @@ export class SessionStore {
 
     this.db
       .prepare(
-        `INSERT INTO sessions (id, project_id, ticket_id, brainstorm_id, claude_session_id, agent_source, started_at, phase, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, project_id, ticket_id, brainstorm_id, execution_generation, claude_session_id, agent_source, started_at, phase, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
         input.projectId,
         input.ticketId || null,
         input.brainstormId || null,
+        this.resolveExecutionGeneration(input),
         input.claudeSessionId || null,
         input.agentSource || null,
         now,

@@ -76,9 +76,11 @@ describe("SessionStore", () => {
       const session = sessionStore.createSession({
         projectId,
         ticketId: ticket.id,
+        executionGeneration: 0,
       });
 
       assert.strictEqual(session.ticketId, ticket.id);
+      assert.strictEqual((session as unknown as { executionGeneration?: number | null }).executionGeneration, 0);
       assert.strictEqual(session.brainstormId, undefined);
     });
 
@@ -92,6 +94,7 @@ describe("SessionStore", () => {
 
       assert.strictEqual(session.brainstormId, brainstorm.id);
       assert.strictEqual(session.ticketId, undefined);
+      assert.strictEqual((session as unknown as { executionGeneration?: number | null }).executionGeneration, null);
     });
 
     it("should store optional fields", () => {
@@ -184,7 +187,8 @@ describe("SessionStore", () => {
       const ticket1 = ticketStore.createTicket(projectId, { title: "Ticket 1" });
       const ticket2 = ticketStore.createTicket(projectId, { title: "Ticket 2" });
 
-      sessionStore.createSession({ projectId, ticketId: ticket1.id });
+      const first = sessionStore.createSession({ projectId, ticketId: ticket1.id });
+      sessionStore.endSession(first.id);
       sessionStore.createSession({ projectId, ticketId: ticket1.id });
       sessionStore.createSession({ projectId, ticketId: ticket2.id }); // different ticket
 
@@ -376,12 +380,13 @@ describe("SessionStore", () => {
 
     it("should return the most recent claude session id", () => {
       const ticket = ticketStore.createTicket(projectId, { title: "Test Ticket 3" });
-      sessionStore.createSession({
+      const oldSession = sessionStore.createSession({
         projectId,
         ticketId: ticket.id,
         claudeSessionId: "claude_sess_old",
         agentSource: "test",
       });
+      sessionStore.endSession(oldSession.id);
       sessionStore.createSession({
         projectId,
         ticketId: ticket.id,

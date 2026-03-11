@@ -49,6 +49,7 @@ interface TicketRow {
   title: string;
   description: string;
   phase: string;
+  execution_generation: number;
   complexity: string;
   created_at: string;
   updated_at: string;
@@ -434,6 +435,7 @@ export class TicketStore {
       title: row.title,
       description: row.description,
       phase: row.phase as TicketPhase,
+      executionGeneration: row.execution_generation,
       complexity: row.complexity as Complexity,
       project: row.project_id,
       createdAt: row.created_at,

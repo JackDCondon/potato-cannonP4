@@ -6,13 +6,71 @@ import {
   clearWorkerState as clearWorkerStateInStore,
 } from "../../stores/ticket.store.js";
 import type {
+  ActiveWorkerStateRoot,
   OrchestrationState,
+  SpawnPendingWorkerStateRoot,
   WorkerState,
   AgentState,
   RalphLoopState,
   TaskLoopState,
 } from "../../types/orchestration.types.js";
+import {
+  isActiveWorkerStateRoot as isActiveRootGuard,
+  isSpawnPendingWorkerStateRoot as isSpawnPendingRootGuard,
+} from "../../types/orchestration.types.js";
 import { listTasks } from "../../stores/task.store.js";
+import { getTicket } from "../../stores/ticket.store.js";
+
+interface LegacyOrchestrationState {
+  phaseId?: unknown;
+  executionGeneration?: unknown;
+  workerIndex?: unknown;
+  activeWorker?: unknown;
+  updatedAt?: unknown;
+}
+
+function asLegacyState(value: unknown): LegacyOrchestrationState | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as LegacyOrchestrationState;
+}
+
+function normalizeWorkerState(
+  raw: unknown
+): OrchestrationState | null {
+  if (!raw) return null;
+
+  if (isActiveRootGuard(raw) || isSpawnPendingRootGuard(raw)) {
+    return raw;
+  }
+
+  const legacy = asLegacyState(raw);
+  if (!legacy || typeof legacy.phaseId !== "string") {
+    return null;
+  }
+
+  if (legacy.workerIndex !== undefined && legacy.activeWorker !== undefined) {
+    return {
+      kind: "active",
+      phaseId: legacy.phaseId,
+      // Legacy payloads without generation are treated as stale by comparison helpers.
+      executionGeneration:
+        typeof legacy.executionGeneration === "number"
+          ? legacy.executionGeneration
+          : -1,
+      workerIndex:
+        typeof legacy.workerIndex === "number" ? legacy.workerIndex : 0,
+      activeWorker: (legacy.activeWorker as WorkerState | null) ?? null,
+      updatedAt:
+        typeof legacy.updatedAt === "string"
+          ? legacy.updatedAt
+          : new Date().toISOString(),
+    };
+  }
+
+  return null;
+}
 
 /**
  * Get the current orchestration state for a ticket
@@ -21,7 +79,7 @@ export function getWorkerState(
   _projectId: string,
   ticketId: string
 ): OrchestrationState | null {
-  return getWorkerStateFromStore(ticketId);
+  return normalizeWorkerState(getWorkerStateFromStore(ticketId));
 }
 
 /**
@@ -43,9 +101,17 @@ export function initWorkerState(
   projectId: string,
   ticketId: string,
   phaseId: string
-): OrchestrationState {
-  const state: OrchestrationState = {
+): ActiveWorkerStateRoot {
+  let ticketGeneration = 0;
+  try {
+    ticketGeneration = getTicket(projectId, ticketId).executionGeneration ?? 0;
+  } catch {
+    ticketGeneration = 0;
+  }
+  const state: ActiveWorkerStateRoot = {
+    kind: "active",
     phaseId,
+    executionGeneration: ticketGeneration,
     workerIndex: 0,
     activeWorker: null,
     updatedAt: new Date().toISOString(),
@@ -115,6 +181,41 @@ export function createTaskLoopState(
     workerIndex: 0,
     activeWorker: null,
   };
+}
+
+export function createSpawnPendingWorkerState(
+  phaseId: string,
+  executionGeneration: number
+): SpawnPendingWorkerStateRoot {
+  const now = new Date().toISOString();
+  return {
+    kind: "spawn_pending",
+    phaseId,
+    executionGeneration,
+    pendingSpawn: true,
+    spawnRequestedAt: now,
+    updatedAt: now,
+  };
+}
+
+export function isActiveWorkerStateRoot(
+  state: OrchestrationState | null | undefined
+): state is ActiveWorkerStateRoot {
+  return isActiveRootGuard(state);
+}
+
+export function isSpawnPendingWorkerStateRoot(
+  state: OrchestrationState | null | undefined
+): state is SpawnPendingWorkerStateRoot {
+  return isSpawnPendingRootGuard(state);
+}
+
+export function hasMatchingExecutionGeneration(
+  state: OrchestrationState | null,
+  ticketGeneration: number
+): boolean {
+  if (!state) return false;
+  return state.executionGeneration === ticketGeneration;
 }
 
 /**
@@ -225,7 +326,7 @@ function recoverCrashedWorker(worker: WorkerState): WorkerState {
  * If no agent was running (previous work completed cleanly), preserves state as-is
  * so execution can continue from where it left off.
  */
-export function prepareForRecovery(state: OrchestrationState): OrchestrationState {
+export function prepareForRecovery(state: ActiveWorkerStateRoot): ActiveWorkerStateRoot {
   if (!state.activeWorker) return state;
 
   // Check if recovery is needed (crashed agent OR exhausted ralph loop)

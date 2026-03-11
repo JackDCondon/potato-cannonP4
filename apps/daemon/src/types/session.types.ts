@@ -2,6 +2,7 @@ export interface SessionMeta {
   projectId: string;
   ticketId?: string;
   ticketTitle?: string;
+  executionGeneration?: number | null;
   brainstormId?: string;
   brainstormName?: string;
   phase?: string;
@@ -28,6 +29,7 @@ export interface SessionInfo {
   projectId: string;
   ticketId?: string;
   ticketTitle?: string;
+  executionGeneration?: number | null;
   brainstormId?: string;
   brainstormName?: string;
   phase?: string;
@@ -60,6 +62,7 @@ export interface CreateSessionInput {
   projectId: string;
   ticketId?: string;
   brainstormId?: string;
+  executionGeneration?: number | null;
   claudeSessionId?: string;
   agentSource?: string;
   phase?: string;
@@ -71,6 +74,7 @@ export interface StoredSession {
   projectId: string;
   ticketId?: string;
   brainstormId?: string;
+  executionGeneration?: number | null;
   conversationId?: string;
   claudeSessionId?: string;
   agentSource?: string;
