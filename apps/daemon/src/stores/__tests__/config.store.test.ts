@@ -6,7 +6,12 @@ import os from "os";
 import Database from "better-sqlite3";
 
 import { runMigrations } from "../migrations.js";
-import { createConfigStore, ConfigStore } from "../config.store.js";
+import {
+  createConfigStore,
+  ConfigStore,
+  normalizeLifecycleContinuityConfig,
+  DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
+} from "../config.store.js";
 
 describe("ConfigStore", () => {
   let db: Database.Database;
@@ -246,6 +251,65 @@ describe("ConfigStore", () => {
       const config = configStore.getSlackConfig();
       assert.strictEqual(config?.appToken, "xapp-new");
       assert.strictEqual(config?.botToken, "xoxb-new");
+    });
+  });
+});
+
+describe("normalizeLifecycleContinuityConfig", () => {
+  it("should apply lifecycle continuity defaults when config is missing", () => {
+    const config: any = {
+      daemon: { port: 8443 },
+    };
+
+    normalizeLifecycleContinuityConfig(config);
+
+    assert.deepStrictEqual(config.daemon.lifecycleContinuity, DEFAULT_LIFECYCLE_CONTINUITY_CONFIG);
+  });
+
+  it("should normalize invalid lifecycle continuity values to safe defaults", () => {
+    const config: any = {
+      daemon: {
+        port: 8443,
+        lifecycleContinuity: {
+          enabled: "yes",
+          allowResumeSameSwimlane: 1,
+          maxConversationTurns: -5,
+          maxSessionEvents: 0,
+          maxCharsPerItem: Number.POSITIVE_INFINITY,
+          maxPromptChars: NaN,
+        },
+      },
+    };
+
+    normalizeLifecycleContinuityConfig(config);
+
+    assert.deepStrictEqual(config.daemon.lifecycleContinuity, DEFAULT_LIFECYCLE_CONTINUITY_CONFIG);
+  });
+
+  it("should preserve valid lifecycle continuity values", () => {
+    const config: any = {
+      daemon: {
+        port: 8443,
+        lifecycleContinuity: {
+          enabled: false,
+          allowResumeSameSwimlane: false,
+          maxConversationTurns: 8,
+          maxSessionEvents: 6,
+          maxCharsPerItem: 600,
+          maxPromptChars: 12000,
+        },
+      },
+    };
+
+    normalizeLifecycleContinuityConfig(config);
+
+    assert.deepStrictEqual(config.daemon.lifecycleContinuity, {
+      enabled: false,
+      allowResumeSameSwimlane: false,
+      maxConversationTurns: 8,
+      maxSessionEvents: 6,
+      maxCharsPerItem: 600,
+      maxPromptChars: 12000,
     });
   });
 });

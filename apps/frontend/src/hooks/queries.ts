@@ -1,7 +1,15 @@
 // src/hooks/queries.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
-import type { Ticket, Template, TemplatePhase, Complexity, CreateWorkflowInput, DependencyTier } from '@potato-cannon/shared'
+import type {
+  Ticket,
+  Template,
+  TemplatePhase,
+  Complexity,
+  CreateWorkflowInput,
+  DependencyTier,
+  SessionMeta,
+} from '@potato-cannon/shared'
 
 export type UpdateTicketRequest = Partial<Ticket> & {
   overrideDependencies?: boolean
@@ -295,6 +303,14 @@ export function useTicketSessions(projectId: string | undefined, ticketId: strin
   return useQuery({
     queryKey: ['ticketSessions', projectId, ticketId],
     queryFn: () => api.getTicketSessions(projectId!, ticketId!),
+    select: (sessions: SessionMeta[]) =>
+      sessions.map((session) => ({
+        ...session,
+        continuityMode: session.continuityMode,
+        continuityReason: session.continuityReason,
+        continuityScope: session.continuityScope,
+        continuitySummary: session.continuitySummary,
+      })),
     enabled: !!projectId && !!ticketId,
   })
 }

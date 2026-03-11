@@ -1,7 +1,71 @@
 import type { Express, Request, Response } from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import { eventBus } from '../../utils/event-bus.js';
 import type { SessionService } from '../../services/session/index.js';
 import { getActiveSessionForTicket, getSessionsByTicket } from '../../stores/session.store.js';
+import { SESSIONS_DIR } from '../../config/paths.js';
+import type { ContinuityMode, ContinuityPacketScope, ContinuityReason } from '../../services/session/continuity.types.js';
+
+type ContinuityFields = {
+  continuityMode?: ContinuityMode;
+  continuityReason?: ContinuityReason;
+  continuityScope?: ContinuityPacketScope;
+  continuitySummary?: string;
+  continuitySourceSessionId?: string;
+};
+
+export function continuityFromMetadata(metadata: unknown): ContinuityFields {
+  if (!metadata || typeof metadata !== 'object') {
+    return {};
+  }
+  const candidate = metadata as Record<string, unknown>;
+  return {
+    continuityMode:
+      typeof candidate.continuityMode === 'string'
+        ? (candidate.continuityMode as ContinuityMode)
+        : undefined,
+    continuityReason:
+      typeof candidate.continuityReason === 'string'
+        ? (candidate.continuityReason as ContinuityReason)
+        : undefined,
+    continuityScope:
+      typeof candidate.continuityScope === 'string'
+        ? (candidate.continuityScope as ContinuityPacketScope)
+        : undefined,
+    continuitySummary:
+      typeof candidate.continuitySummary === 'string'
+        ? candidate.continuitySummary
+        : undefined,
+    continuitySourceSessionId:
+      typeof candidate.continuitySourceSessionId === 'string'
+        ? candidate.continuitySourceSessionId
+        : undefined,
+  };
+}
+
+export async function continuityFromSessionLog(
+  sessionId: string,
+): Promise<ContinuityFields> {
+  try {
+    const logPath = path.join(SESSIONS_DIR, `${sessionId}.jsonl`);
+    const content = await fs.readFile(logPath, 'utf-8');
+    const lines = content.split('\n').filter(Boolean);
+    for (const line of lines) {
+      const parsed = JSON.parse(line) as { type?: string; meta?: Record<string, unknown> };
+      if (parsed.type !== 'session_start' || !parsed.meta) {
+        continue;
+      }
+      const continuity = continuityFromMetadata(parsed.meta);
+      if (continuity.continuityMode || continuity.continuityReason || continuity.continuitySummary) {
+        return continuity;
+      }
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
 
 export function registerSessionRoutes(app: Express, sessionService: SessionService): void {
   // List sessions
@@ -15,13 +79,22 @@ export function registerSessionRoutes(app: Express, sessionService: SessionServi
   });
 
   // Get all sessions for a ticket, ordered by startedAt ascending
-  app.get('/api/projects/:projectId/tickets/:ticketId/sessions', (req: Request, res: Response) => {
+  app.get('/api/projects/:projectId/tickets/:ticketId/sessions', async (req: Request, res: Response) => {
     try {
       const { ticketId } = req.params;
       const sessions = getSessionsByTicket(ticketId);
-      const result = sessions.map(s => ({
-        ...s,
-        status: !s.endedAt ? 'running' : (s.exitCode === 0 || s.exitCode == null) ? 'completed' : 'failed',
+      const result = await Promise.all(sessions.map(async (s) => {
+        const fromMetadata = continuityFromMetadata(s.metadata);
+        const continuity =
+          fromMetadata.continuityMode || fromMetadata.continuityReason || fromMetadata.continuitySummary
+            ? fromMetadata
+            : await continuityFromSessionLog(s.id);
+
+        return {
+          ...s,
+          status: !s.endedAt ? 'running' : (s.exitCode === 0 || s.exitCode == null) ? 'completed' : 'failed',
+          ...continuity,
+        };
       }));
       res.json(result);
     } catch (error) {

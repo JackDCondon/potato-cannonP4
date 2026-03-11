@@ -9,7 +9,8 @@ import {
   useUpdateTicket,
   useProjects,
   useTemplate,
-  useWorkflows
+  useWorkflows,
+  useTicketSessions,
 } from '@/hooks/queries'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
@@ -72,6 +73,7 @@ export function TicketDetailPanel() {
 
   // Queries
   const { data: ticket, isLoading } = useTicket(currentProjectId, ticketSheetTicketId)
+  const { data: ticketSessions } = useTicketSessions(currentProjectId ?? undefined, ticketSheetTicketId ?? undefined)
   const { data: projectPhases } = useProjectPhases(currentProjectId)
   const updateTicket = useUpdateTicket()
 
@@ -111,6 +113,15 @@ export function TicketDetailPanel() {
     const recent = ticket.history.slice(-3)
     return recent.map((h) => h.phase)
   }, [ticket?.history])
+  const latestSessionContinuity = useMemo(() => {
+    if (!ticketSessions || ticketSessions.length === 0) return undefined
+    const latest = ticketSessions[ticketSessions.length - 1]
+    return {
+      continuityMode: latest.continuityMode,
+      continuityReason: latest.continuityReason,
+      continuitySummary: latest.continuitySummary,
+    }
+  }, [ticketSessions])
 
   const handlePhaseChange = useCallback(
     (newPhase: string) => {
@@ -303,6 +314,7 @@ export function TicketDetailPanel() {
                     currentPhase={ticket.phase}
                     history={ticket.history}
                     archived={ticket.archived}
+                    latestSessionContinuity={latestSessionContinuity}
                   />
                 </TabsContent>
                 <TabsContent value="details" className="mt-0 flex-1 min-h-0">

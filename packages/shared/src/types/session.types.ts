@@ -1,5 +1,19 @@
 export type SessionStatus = 'running' | 'completed' | 'failed'
 
+export type ContinuityMode = 'resume' | 'handoff' | 'fresh'
+
+export type ContinuityReason =
+  | 'suspended_session_resume'
+  | 'restart_snapshot'
+  | 'same_lifecycle_resume'
+  | 'resume_not_allowed'
+  | 'packet_available'
+  | 'packet_unavailable'
+  | 'disabled'
+  | 'default_fallback'
+
+export type ContinuityPacketScope = 'same_lifecycle' | 'safe_user_context_only'
+
 export interface SessionMeta {
   id: string
   ticketId?: string
@@ -9,6 +23,11 @@ export interface SessionMeta {
   status: SessionStatus
   startedAt: string
   endedAt?: string
+  continuityMode?: ContinuityMode
+  continuityReason?: ContinuityReason
+  continuityScope?: ContinuityPacketScope
+  continuitySummary?: string
+  continuitySourceSessionId?: string
 }
 
 export interface Session {
@@ -21,6 +40,11 @@ export interface Session {
   startedAt: string
   endedAt?: string
   preview?: string
+  continuityMode?: ContinuityMode
+  continuityReason?: ContinuityReason
+  continuityScope?: ContinuityPacketScope
+  continuitySummary?: string
+  continuitySourceSessionId?: string
 }
 
 /** A single content block within an assistant message */

@@ -35,6 +35,7 @@ import type {
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
+export type TicketSessionResponse = SessionMeta
 
 const BASE_URL = ''
 
@@ -314,7 +315,7 @@ export const api = {
   // ============ Sessions ============
 
   getTicketSessions: (projectId: string, ticketId: string) =>
-    request<SessionMeta[]>(`/api/projects/${encodeURIComponent(projectId)}/tickets/${encodeURIComponent(ticketId)}/sessions`),
+    request<TicketSessionResponse[]>(`/api/projects/${encodeURIComponent(projectId)}/tickets/${encodeURIComponent(ticketId)}/sessions`),
 
   getSessions: () =>
     request<Session[]>('/api/sessions'),

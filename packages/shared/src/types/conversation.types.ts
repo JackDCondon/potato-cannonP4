@@ -1,3 +1,16 @@
+export type ConversationMessageOrigin = 'agent' | 'user' | 'system' | 'provider'
+
+export interface ConversationContinuityMetadata {
+  phase?: string
+  executionGeneration?: number
+  agentSource?: string
+  sourceSessionId?: string
+  messageOrigin?: ConversationMessageOrigin
+}
+
+export type ConversationMessageMetadata =
+  ConversationContinuityMetadata & Record<string, unknown>
+
 export interface ConversationEntry {
   id: string
   questionId?: string
@@ -34,6 +47,7 @@ export interface TicketMessage {
   conversationId?: string
   options?: string[]
   timestamp: string
+  metadata?: ConversationMessageMetadata
   artifact?: {
     filename: string
     description?: string

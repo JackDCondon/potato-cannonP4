@@ -29,6 +29,12 @@ interface MessageRow {
   metadata: string | null;
 }
 
+export interface ConversationContinuityFilter {
+  phase?: string;
+  executionGeneration?: number;
+  agentSource?: string;
+}
+
 // =============================================================================
 // Row Mappers
 // =============================================================================
@@ -147,6 +153,42 @@ export class ConversationStore {
     return rows.map(rowToMessage);
   }
 
+  getMessagesForContinuity(
+    conversationId: string,
+    filter: ConversationContinuityFilter,
+    limit: number
+  ): ConversationMessage[] {
+    const whereClauses: string[] = ["conversation_id = ?"];
+    const params: Array<string | number> = [conversationId];
+
+    if (filter.phase) {
+      whereClauses.push("json_extract(metadata, '$.phase') = ?");
+      params.push(filter.phase);
+    }
+    if (filter.executionGeneration !== undefined) {
+      whereClauses.push("json_extract(metadata, '$.executionGeneration') = ?");
+      params.push(filter.executionGeneration);
+    }
+    if (filter.agentSource) {
+      whereClauses.push("json_extract(metadata, '$.agentSource') = ?");
+      params.push(filter.agentSource);
+    }
+
+    const boundedLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 1;
+    params.push(boundedLimit);
+
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM conversation_messages
+         WHERE ${whereClauses.join(" AND ")}
+         ORDER BY timestamp DESC
+         LIMIT ?`
+      )
+      .all(...params) as MessageRow[];
+
+    return rows.reverse().map(rowToMessage);
+  }
+
   getPendingQuestion(conversationId: string): ConversationMessage | null {
     const row = this.db
       .prepare(
@@ -196,6 +238,18 @@ export function addMessage(
 
 export function getMessages(conversationId: string): ConversationMessage[] {
   return new ConversationStore(getDatabase()).getMessages(conversationId);
+}
+
+export function getMessagesForContinuity(
+  conversationId: string,
+  filter: ConversationContinuityFilter,
+  limit: number
+): ConversationMessage[] {
+  return new ConversationStore(getDatabase()).getMessagesForContinuity(
+    conversationId,
+    filter,
+    limit
+  );
 }
 
 export function getPendingQuestion(

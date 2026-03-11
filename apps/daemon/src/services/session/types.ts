@@ -1,6 +1,15 @@
 import type { WriteStream } from 'fs';
 import type { IPty } from 'node-pty';
 import type { SessionMeta } from '../../types/session.types.js';
+export type {
+  ContinuityMode,
+  ContinuityReason,
+  ContinuityPacketScope,
+  ContinuityPacket,
+  ContinuityDecision,
+  ContinuityCompatibilityKey,
+  SessionContinuityMetadata,
+} from './continuity.types.js';
 
 export interface SessionCallbackIdentity {
   sessionId: string;

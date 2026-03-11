@@ -26,10 +26,17 @@ import {
   endStoredSession,
   getLatestClaudeSessionId,
   getLatestClaudeSessionIdForTicket,
+  getRecentSessionsForContinuity,
   updateClaudeSessionId,
   getActiveSessionForBrainstorm,
   getActiveSessionForTicket,
+  getSessionsByTicket,
 } from "../../stores/session.store.js";
+import { getMessages, getMessagesForContinuity } from "../../stores/conversation.store.js";
+import {
+  DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
+  getConfigStore,
+} from "../../stores/config.store.js";
 import {
   readResponse,
   readQuestion,
@@ -46,6 +53,12 @@ import type {
 import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
+import type {
+  ContinuityDecision,
+  ContinuityPacket,
+  ContinuityCompatibilityKey,
+  SessionContinuityMetadata,
+} from "./continuity.types.js";
 
 import type {
   ActiveSession,
@@ -67,6 +80,17 @@ import {
 import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 import { createSpawnPendingWorkerState } from "./worker-state.js";
+import { consumeSpawnPendingContinuitySnapshot } from "./worker-state.js";
+import {
+  decideContinuityMode,
+  type ResumeEligibilityInput,
+} from "./continuity-policy.js";
+import {
+  buildBoundedContinuityPacket,
+  type ContinuityPacketLimits,
+  type ContinuityPacketFilter,
+} from "./continuity-context.service.js";
+import { buildRestartSnapshot } from "./continuity-snapshot.service.js";
 
 export class TicketLifecycleConflictError extends Error {
   readonly code = "TICKET_LIFECYCLE_CONFLICT";
@@ -101,6 +125,7 @@ interface InvalidateTicketLifecycleOptions {
   targetPhase: TicketPhase;
   expectedPhase?: TicketPhase;
   expectedGeneration?: number;
+  restartSnapshot?: ContinuityPacket;
 }
 
 interface InvalidateTicketLifecycleResult {
@@ -113,13 +138,88 @@ interface ResumeTicketInputIdentity {
   ticketGeneration: number;
 }
 
+export interface SessionTranscriptHighlight {
+  sourceSessionId: string;
+  kind: "assistant" | "tool";
+  summary: string;
+  timestamp?: string;
+}
+
+interface BuildContinuityPacketForTicketInput {
+  ticketId: string;
+  conversationId?: string;
+  filter: ContinuityPacketFilter;
+  limits: ContinuityPacketLimits;
+  reasonForRestart?: string;
+  scope: ContinuityPacket["scope"];
+}
+
+interface BuildRestartSnapshotInput {
+  projectId: string;
+  ticketId: string;
+  currentPhase: string;
+  targetPhase: string;
+  executionGeneration: number;
+  conversationId?: string;
+}
+
+interface DecideContinuityForTicketInput {
+  ticketId: string;
+  conversationId?: string;
+  filter: ContinuityPacketFilter;
+  limits: ContinuityPacketLimits;
+  resumeEligibility: ResumeEligibilityInput;
+  suspendedResumeSessionId?: string | null;
+}
+
+interface StoredSessionContinuityMetadata extends Record<string, unknown> {
+  continuityMode?: SessionContinuityMetadata["continuityMode"];
+  continuityReason?: SessionContinuityMetadata["continuityReason"];
+  continuityScope?: SessionContinuityMetadata["continuityScope"];
+  continuitySummary?: SessionContinuityMetadata["continuitySummary"];
+  continuitySourceSessionId?: SessionContinuityMetadata["continuitySourceSessionId"];
+  continuityCompatibility?: ContinuityCompatibilityKey;
+}
+
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private remoteControlState: Map<string, RemoteControlState> = new Map();
+  private consumedRestartSnapshots: Map<string, ContinuityPacket> = new Map();
   private eventEmitter: EventEmitter;
 
   constructor(eventEmitter: EventEmitter) {
     this.eventEmitter = eventEmitter;
+  }
+
+  private buildContinuityCompatibilityKey(input: {
+    ticketId: string;
+    phase: string;
+    agentSource: string;
+    executionGeneration: number;
+    workflowId: string;
+    worktreePath: string;
+    branchName: string;
+    agentPrompt: string;
+    mcpServerNames: string[];
+    model: string;
+    disallowedTools: string[];
+  }): ContinuityCompatibilityKey {
+    return {
+      ticketId: input.ticketId,
+      phase: input.phase,
+      agentSource: input.agentSource,
+      executionGeneration: input.executionGeneration,
+      workflowId: input.workflowId,
+      worktreePath: input.worktreePath,
+      branchName: input.branchName,
+      agentDefinitionPromptHash: crypto
+        .createHash("sha256")
+        .update(input.agentPrompt)
+        .digest("hex"),
+      mcpServerNames: [...input.mcpServerNames].sort(),
+      model: input.model,
+      disallowedTools: [...input.disallowedTools].sort(),
+    };
   }
 
   generateSessionId(): string {
@@ -169,6 +269,7 @@ export class SessionService {
       const workerState = createSpawnPendingWorkerState(
         options.targetPhase,
         newGeneration,
+        options.restartSnapshot,
       );
 
       const result = db
@@ -361,6 +462,214 @@ export class SessionService {
       .map((line) => JSON.parse(line) as SessionLogEntry);
   }
 
+  async getTranscriptHighlightsForContinuity(
+    sessionId: string,
+    maxEvents: number = 20
+  ): Promise<SessionTranscriptHighlight[]> {
+    const entries = await this.getSessionLog(sessionId);
+    const highlights: SessionTranscriptHighlight[] = [];
+
+    for (const entry of entries) {
+      const entryAny = entry as unknown as Record<string, unknown>;
+      if (entryAny.type === "raw") {
+        continue;
+      }
+
+      if (typeof entryAny.tool_name === "string") {
+        const resultText =
+          typeof entryAny.tool_result === "string" ? entryAny.tool_result : "";
+        highlights.push({
+          sourceSessionId: sessionId,
+          kind: "tool",
+          summary: `${entryAny.tool_name}: ${resultText}`.trim().slice(0, 240),
+          timestamp: entry.timestamp,
+        });
+        continue;
+      }
+
+      const message = entryAny.message as
+        | { content?: Array<Record<string, unknown>> }
+        | undefined;
+      if (entryAny.type === "assistant" && Array.isArray(message?.content)) {
+        const textSummary = message.content
+          .map((block: Record<string, unknown>) => {
+            if (block.type === "text" && typeof block.text === "string") {
+              return block.text;
+            }
+            if (block.type === "tool_use" && block.name) {
+              return `tool_use:${block.name}`;
+            }
+            if (block.type === "tool_result") {
+              if (typeof block.content === "string") {
+                return `tool_result:${block.content}`;
+              }
+              return "tool_result";
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 240);
+
+        if (textSummary.length > 0) {
+          highlights.push({
+            sourceSessionId: sessionId,
+            kind: "assistant",
+            summary: textSummary,
+            timestamp: entry.timestamp,
+          });
+        }
+      }
+    }
+
+    const bounded = Number.isFinite(maxEvents) && maxEvents > 0 ? Math.floor(maxEvents) : 1;
+    if (highlights.length <= bounded) {
+      return highlights;
+    }
+    return highlights.slice(highlights.length - bounded);
+  }
+
+  async buildContinuityPacketForTicket(
+    input: BuildContinuityPacketForTicketInput,
+  ): Promise<ContinuityPacket | null> {
+    const conversationMessages = input.conversationId
+      ? getMessagesForContinuity(input.conversationId, input.filter, input.limits.maxConversationTurns)
+      : [];
+    const candidateSessions = getRecentSessionsForContinuity(
+      input.ticketId,
+      input.filter,
+      input.limits.maxSessionEvents,
+    );
+
+    const transcriptHighlights: SessionTranscriptHighlight[] = [];
+    for (const session of candidateSessions) {
+      const highlights = await this.getTranscriptHighlightsForContinuity(
+        session.id,
+        input.limits.maxSessionEvents,
+      );
+      transcriptHighlights.push(...highlights);
+    }
+
+    return buildBoundedContinuityPacket({
+      scope: input.scope,
+      reasonForRestart: input.reasonForRestart,
+      filter: input.filter,
+      limits: input.limits,
+      conversationMessages,
+      transcriptHighlights,
+    });
+  }
+
+  async buildRestartSnapshotForLifecycleRestart(
+    input: BuildRestartSnapshotInput,
+  ): Promise<ContinuityPacket | null> {
+    const daemonConfig = getConfigStore().getDaemonConfig();
+    const lifecycleContinuity = daemonConfig?.lifecycleContinuity ?? {};
+    const limits: ContinuityPacketLimits = {
+      maxConversationTurns:
+        lifecycleContinuity.maxConversationTurns ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxConversationTurns,
+      // Restart snapshots are safe user context only; transcript events are excluded.
+      maxSessionEvents: 1,
+      maxCharsPerItem:
+        lifecycleContinuity.maxCharsPerItem ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxCharsPerItem,
+      maxPromptChars:
+        lifecycleContinuity.maxPromptChars ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxPromptChars,
+    };
+
+    const conversationMessages = input.conversationId
+      ? getMessages(input.conversationId)
+      : [];
+    const pendingQuestion = await readQuestion(input.projectId, input.ticketId);
+    const pendingResponse = await readResponse(input.projectId, input.ticketId);
+
+    return buildRestartSnapshot({
+      projectId: input.projectId,
+      ticketId: input.ticketId,
+      currentPhase: input.currentPhase,
+      targetPhase: input.targetPhase,
+      executionGeneration: input.executionGeneration,
+      conversationMessages,
+      pendingQuestion,
+      pendingResponse,
+      limits,
+    });
+  }
+
+  private getLifecycleContinuityLimits(): ContinuityPacketLimits {
+    const daemonConfig = getConfigStore().getDaemonConfig();
+    const lifecycleContinuity = daemonConfig?.lifecycleContinuity ?? {};
+    return {
+      maxConversationTurns:
+        lifecycleContinuity.maxConversationTurns ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxConversationTurns,
+      maxSessionEvents:
+        lifecycleContinuity.maxSessionEvents ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxSessionEvents,
+      maxCharsPerItem:
+        lifecycleContinuity.maxCharsPerItem ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxCharsPerItem,
+      maxPromptChars:
+        lifecycleContinuity.maxPromptChars ??
+        DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.maxPromptChars,
+    };
+  }
+
+  private isLifecycleContinuityEnabled(): boolean {
+    try {
+      const daemonConfig = getConfigStore().getDaemonConfig();
+      const enabled = daemonConfig?.lifecycleContinuity?.enabled;
+      if (typeof enabled === "boolean") {
+        return enabled;
+      }
+    } catch {
+      // Some unit tests construct SessionService without initializing DB-backed config.
+      // Default behavior should still match runtime default continuity enablement.
+    }
+    return DEFAULT_LIFECYCLE_CONTINUITY_CONFIG.enabled;
+  }
+
+  private buildContinuitySummary(decision: ContinuityDecision): string {
+    if (decision.mode === "handoff" && decision.packet) {
+      return `handoff(${decision.scope ?? decision.packet.scope}): turns=${decision.packet.conversationTurns.length}, highlights=${decision.packet.sessionHighlights.length}, questions=${decision.packet.unresolvedQuestions.length}`;
+    }
+    if (decision.mode === "resume") {
+      return `resume(${decision.reason})`;
+    }
+    return `fresh(${decision.reason})`;
+  }
+
+  private buildStoredSessionContinuityMetadata(
+    decision: ContinuityDecision,
+    compatibility: ContinuityCompatibilityKey,
+  ): StoredSessionContinuityMetadata {
+    return {
+      continuityMode: decision.mode,
+      continuityReason: decision.reason,
+      continuityScope: decision.scope,
+      continuitySummary: this.buildContinuitySummary(decision),
+      continuitySourceSessionId: decision.sourceSessionId,
+      continuityCompatibility: compatibility,
+    };
+  }
+
+  private buildContinuityDecisionLogFields(
+    decision: ContinuityDecision,
+  ): Record<string, string> {
+    return {
+      continuity_mode: decision.mode,
+      continuity_reason: decision.reason,
+      continuity_scope: decision.scope ?? "none",
+      continuity_source_session_id: decision.sourceSessionId ?? "none",
+      continuity_resume_rejected:
+        decision.mode === "fresh" && decision.reason === "resume_not_allowed"
+          ? "true"
+          : "false",
+    };
+  }
+
   isActive(sessionId: string): boolean {
     return this.sessions.has(sessionId);
   }
@@ -407,6 +716,16 @@ export class SessionService {
     console.log(
       `[spawnForTicket] Starting for ticket ${ticketId}, phase ${phase}`,
     );
+    const ticket = getTicket(projectId, ticketId);
+    const snapshot = consumeSpawnPendingContinuitySnapshot(
+      projectId,
+      ticketId,
+      phase,
+      ticket.executionGeneration ?? 0,
+    );
+    if (snapshot) {
+      this.consumedRestartSnapshots.set(ticketId, snapshot);
+    }
 
     // Delegate to the worker executor which handles all orchestration
     const sessionId = await startPhase(
@@ -418,6 +737,42 @@ export class SessionService {
     );
 
     return sessionId || "";
+  }
+
+  takeRestartSnapshotForTicket(ticketId: string): ContinuityPacket | null {
+    const snapshot = this.consumedRestartSnapshots.get(ticketId);
+    if (!snapshot) {
+      return null;
+    }
+    this.consumedRestartSnapshots.delete(ticketId);
+    return snapshot;
+  }
+
+  async decideContinuityForTicket(
+    input: DecideContinuityForTicketInput,
+  ): Promise<ContinuityDecision> {
+    if (!this.isLifecycleContinuityEnabled()) {
+      return {
+        mode: "fresh",
+        reason: "disabled",
+      };
+    }
+
+    const restartSnapshot = this.takeRestartSnapshotForTicket(input.ticketId);
+    const sameLifecyclePacket = await this.buildContinuityPacketForTicket({
+      ticketId: input.ticketId,
+      conversationId: input.conversationId,
+      filter: input.filter,
+      limits: input.limits,
+      scope: "same_lifecycle",
+    });
+
+    return decideContinuityMode({
+      suspendedResumeSessionId: input.suspendedResumeSessionId,
+      restartSnapshot,
+      resumeEligibility: input.resumeEligibility,
+      sameLifecyclePacket,
+    });
   }
 
   /**
@@ -1070,18 +1425,7 @@ export class SessionService {
     // Terminate any existing session first (uses sessions table as lock)
     await this.terminateExistingSession('ticket', ticketId);
 
-    // Create stored session record in database for tracking
     const ticket = await getTicket(projectId, ticketId);
-    const storedSession = createStoredSession({
-      projectId,
-      ticketId,
-      executionGeneration: ticket.executionGeneration ?? 0,
-      agentSource: agentWorker.source,
-      phase,
-    });
-    // Use the stored session ID instead of the generated one
-    const sessionId = storedSession.id;
-
     const images = await listTicketImages(projectId, ticketId);
 
     const project = getProjectById(projectId);
@@ -1110,13 +1454,71 @@ export class SessionService {
       throw new Error(`Agent ${agentWorker.source} not found in template`);
     }
 
+    // Resolve model for this agent, using task complexity if available, else ticket complexity
+    const taskComplexity = taskContext?.complexity ?? ticket.complexity;
+    const resolvedModel = resolveModel(agentWorker.model, taskComplexity);
+    const disallowedTools = ["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])];
+    const compatibilityKey = this.buildContinuityCompatibilityKey({
+      ticketId,
+      phase,
+      agentSource: agentWorker.source,
+      executionGeneration: ticket.executionGeneration ?? 0,
+      workflowId: ticket.workflowId || "",
+      worktreePath,
+      branchName: workspaceLabel,
+      agentPrompt: agentDefinition.prompt,
+      mcpServerNames: ["potato-cannon", ...Object.keys(additionalMcpServers)],
+      model: resolvedModel ?? "default",
+      disallowedTools,
+    });
+    const existingClaudeSessionId = getLatestClaudeSessionIdForTicket(ticketId);
+    const priorSessions = getSessionsByTicket(ticketId);
+    const latestSession = priorSessions.length > 0 ? priorSessions[priorSessions.length - 1] : null;
+    const storedCompatibility = latestSession?.metadata
+      ? (latestSession.metadata as StoredSessionContinuityMetadata).continuityCompatibility
+      : undefined;
+    const continuityDecision = await this.decideContinuityForTicket({
+      ticketId,
+      conversationId: ticket.conversationId,
+      filter: {
+        phase,
+        agentSource: agentWorker.source,
+        executionGeneration: ticket.executionGeneration ?? 0,
+      },
+      limits: this.getLifecycleContinuityLimits(),
+      resumeEligibility: {
+        stored: storedCompatibility,
+        current: compatibilityKey,
+        claudeSessionId: existingClaudeSessionId,
+        lifecycleInvalidated: false,
+      },
+    });
+    const continuityMetadata = this.buildStoredSessionContinuityMetadata(
+      continuityDecision,
+      compatibilityKey,
+    );
+    logToDaemon(
+      projectId,
+      ticketId,
+      "Continuity decision for ticket spawn",
+      this.buildContinuityDecisionLogFields(continuityDecision),
+    ).catch(() => {});
+    const resumeSessionId =
+      continuityDecision.mode === "resume"
+        ? continuityDecision.sourceSessionId ??
+          existingClaudeSessionId ??
+          undefined
+        : undefined;
+    const handoffDecision =
+      continuityDecision.mode === "handoff" ? continuityDecision : undefined;
+
     // Build prompt with task context if provided
     let prompt = agentDefinition.prompt;
     if (taskContext) {
       prompt += `\n\n---\n\n${formatTaskContext(taskContext)}`;
     }
 
-    // Build ticket context with optional ralph feedback injection
+    // Build ticket context with optional continuity and phase-entry sections
     const ticketContext = await buildAgentPrompt(
       projectId,
       ticketId,
@@ -1127,6 +1529,7 @@ export class SessionService {
       undefined, // agentPrompt - we already have it
       ralphContext,
       phaseEntryContext,
+      handoffDecision,
     );
     prompt += `\n\n---\n\n${ticketContext}`;
 
@@ -1142,11 +1545,22 @@ export class SessionService {
       status: "running",
       agentType: agentWorker.source,
       stage: 0,
+      continuityMode: continuityMetadata.continuityMode,
+      continuityReason: continuityMetadata.continuityReason,
+      continuityScope: continuityMetadata.continuityScope,
+      continuitySummary: continuityMetadata.continuitySummary,
+      continuitySourceSessionId: continuityMetadata.continuitySourceSessionId,
     };
 
-    // Resolve model for this agent, using task complexity if available, else ticket complexity
-    const taskComplexity = taskContext?.complexity ?? ticket.complexity;
-    const resolvedModel = resolveModel(agentWorker.model, taskComplexity);
+    const storedSession = createStoredSession({
+      projectId,
+      ticketId,
+      executionGeneration: ticket.executionGeneration ?? 0,
+      agentSource: agentWorker.source,
+      phase,
+      metadata: continuityMetadata,
+    });
+    const sessionId = storedSession.id;
 
     return this.spawnClaudeSession(
       sessionId,
@@ -1163,7 +1577,7 @@ export class SessionService {
       0,
       agentWorker.disallowTools,
       resolvedModel ?? undefined,
-      undefined,
+      resumeSessionId,
       additionalMcpServers,
     );
   }
@@ -1263,16 +1677,6 @@ export class SessionService {
       message: { type: "user", text: userResponse, timestamp: new Date().toISOString() },
     });
 
-    // Create stored session record
-    const storedSession = createStoredSession({
-      projectId,
-      ticketId,
-      executionGeneration: ticketGeneration,
-      claudeSessionId,
-      agentSource: "resume",
-      phase: ticket.phase,
-    });
-
     const provider = createVCSProvider(project);
 
     const needsIsolation = await phaseRequiresIsolation(projectId, ticket.phase, ticket.workflowId);
@@ -1289,6 +1693,65 @@ export class SessionService {
 
     const nodePath = resolveNode();
     const additionalMcpServers = provider.getMcpServers(nodePath, projectId, ticketId);
+    const compatibilityKey = this.buildContinuityCompatibilityKey({
+      ticketId,
+      phase: ticket.phase,
+      agentSource: "resume",
+      executionGeneration: ticketGeneration,
+      workflowId: ticket.workflowId || "",
+      worktreePath,
+      branchName: workspaceLabel,
+      agentPrompt: "resume",
+      mcpServerNames: ["potato-cannon", ...Object.keys(additionalMcpServers)],
+      model: "default",
+      disallowedTools: ["Skill(superpowers:*)"],
+    });
+
+    const latestSession = getSessionsByTicket(ticketId).at(-1);
+    const storedCompatibility = latestSession?.metadata
+      ? (latestSession.metadata as { continuityCompatibility?: ContinuityCompatibilityKey })
+          .continuityCompatibility
+      : undefined;
+    const continuityDecision = await this.decideContinuityForTicket({
+      ticketId,
+      conversationId: ticket.conversationId,
+      filter: {
+        phase: ticket.phase,
+        agentSource: "resume",
+        executionGeneration: ticketGeneration,
+      },
+      limits: this.getLifecycleContinuityLimits(),
+      resumeEligibility: {
+        stored: storedCompatibility,
+        current: compatibilityKey,
+        claudeSessionId,
+        lifecycleInvalidated: false,
+      },
+      suspendedResumeSessionId: claudeSessionId,
+    });
+    if (continuityDecision.mode !== "resume") {
+      return this.spawnForTicket(projectId, ticketId, ticket.phase, project.path);
+    }
+    const continuityMetadata = this.buildStoredSessionContinuityMetadata(
+      continuityDecision,
+      compatibilityKey,
+    );
+    logToDaemon(
+      projectId,
+      ticketId,
+      "Continuity decision for suspended resume",
+      this.buildContinuityDecisionLogFields(continuityDecision),
+    ).catch(() => {});
+
+    const storedSession = createStoredSession({
+      projectId,
+      ticketId,
+      executionGeneration: ticketGeneration,
+      claudeSessionId,
+      agentSource: "resume",
+      phase: ticket.phase,
+      metadata: continuityMetadata,
+    });
 
     const meta: SessionMeta = {
       projectId,
@@ -1302,6 +1765,11 @@ export class SessionService {
       status: "running",
       agentType: "resume",
       stage: 0,
+      continuityMode: continuityMetadata.continuityMode,
+      continuityReason: continuityMetadata.continuityReason,
+      continuityScope: continuityMetadata.continuityScope,
+      continuitySummary: continuityMetadata.continuitySummary,
+      continuitySourceSessionId: continuityMetadata.continuitySourceSessionId,
     };
 
     // With --resume, Claude already has the full conversation context.

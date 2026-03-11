@@ -26,6 +26,10 @@ import { createChatQueueStore } from "../stores/chat-queue.store.js";
 import { createProviderChannelStore } from "../stores/provider-channel.store.js";
 import { getDatabase } from "../stores/db.js";
 import { ChatOrchestrator } from "./chat/chat-orchestrator.js";
+import type {
+  ConversationMessageMetadata,
+  ConversationMessageOrigin,
+} from "../types/conversation.types.js";
 
 export class ChatService {
   private providers: Map<string, ChatProvider> = new Map();
@@ -128,7 +132,12 @@ export class ChatService {
         type: "question",
         text: question,
         options,
-        metadata: phase ? { phase } : undefined,
+        metadata: this.createConversationMetadata(
+          context,
+          "agent",
+          phase,
+          ticketGeneration,
+        ),
       });
       questionMessageId = message.id;
     }
@@ -219,6 +228,12 @@ export class ChatService {
       addMessage(conversationId, {
         type: "user",
         text: mappedAnswer,
+        metadata: this.createConversationMetadata(
+          context,
+          "user",
+          phase,
+          ticketGeneration,
+        ),
       });
     }
 
@@ -272,7 +287,12 @@ export class ChatService {
         type: "question",
         text: question,
         options,
-        metadata: phase ? { phase } : undefined,
+        metadata: this.createConversationMetadata(
+          context,
+          "agent",
+          phase,
+          ticketGeneration,
+        ),
       });
       questionMessageId = message.id;
     }
@@ -334,6 +354,12 @@ export class ChatService {
       addMessage(conversationId, {
         type: "notification",
         text: message,
+        metadata: this.createConversationMetadata(
+          context,
+          "system",
+          undefined,
+          this.getTicketGeneration(context),
+        ),
       });
     }
 
@@ -417,6 +443,12 @@ export class ChatService {
         addMessage(conversationId, {
           type: "user",
           text: mappedAnswer,
+          metadata: this.createConversationMetadata(
+            context,
+            "user",
+            pendingQuestion?.metadata?.phase as string | undefined,
+            pendingQuestion?.metadata?.executionGeneration as number | undefined,
+          ),
         });
 
         if (context.brainstormId) {
@@ -676,6 +708,36 @@ export class ChatService {
         this.sendToProvider(provider, context, message),
     );
     return this.orchestrator;
+  }
+
+  private createConversationMetadata(
+    context: ChatContext,
+    origin: ConversationMessageOrigin,
+    phase?: string,
+    executionGeneration?: number,
+  ): ConversationMessageMetadata | undefined {
+    if (!context.ticketId) {
+      return phase ? { phase } : undefined;
+    }
+
+    const metadata: ConversationMessageMetadata = {
+      messageOrigin: origin,
+    };
+
+    if (phase) {
+      metadata.phase = phase;
+    }
+    if (typeof executionGeneration === "number") {
+      metadata.executionGeneration = executionGeneration;
+    }
+    if (context.agentSource) {
+      metadata.agentSource = context.agentSource;
+    }
+    if (context.sourceSessionId) {
+      metadata.sourceSessionId = context.sourceSessionId;
+    }
+
+    return metadata;
   }
 
   /**

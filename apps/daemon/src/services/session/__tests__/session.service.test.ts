@@ -1,11 +1,14 @@
 import { describe, it, beforeEach, mock } from "node:test";
 import assert from "node:assert";
 import { EventEmitter } from "events";
+import fs from "fs/promises";
 import {
   SessionService,
   TicketLifecycleConflictError,
   StaleTicketInputError,
 } from "../session.service.js";
+import { decideContinuityMode, evaluateResumeEligibility } from "../continuity-policy.js";
+import { SESSIONS_DIR } from "../../../config/paths.js";
 
 /**
  * Tests for SessionService.terminateExistingSession
@@ -546,5 +549,522 @@ describe("StaleTicketInputError", () => {
     assert.strictEqual(error.expectedQuestionId, "q-1");
     assert.strictEqual(error.providedQuestionId, "q-2");
     assert.strictEqual(error.name, "StaleTicketInputError");
+  });
+});
+
+describe("SessionService continuity compatibility key", () => {
+  it("normalizes list fields and hashes prompt text", () => {
+    const service = new SessionService(new EventEmitter());
+    const compatibility = (service as any).buildContinuityCompatibilityKey({
+      ticketId: "POT-22",
+      phase: "Build",
+      agentSource: "agents/build.md",
+      executionGeneration: 7,
+      workflowId: "wf_main",
+      worktreePath: "/tmp/worktree",
+      branchName: "potato/POT-22",
+      agentPrompt: "never persist this prompt raw",
+      mcpServerNames: ["zeta", "alpha", "potato-cannon"],
+      model: "sonnet",
+      disallowedTools: ["B", "A"],
+    });
+
+    assert.deepStrictEqual(compatibility.mcpServerNames, ["alpha", "potato-cannon", "zeta"]);
+    assert.deepStrictEqual(compatibility.disallowedTools, ["A", "B"]);
+    assert.notStrictEqual(
+      compatibility.agentDefinitionPromptHash,
+      "never persist this prompt raw",
+    );
+    assert.strictEqual(compatibility.agentDefinitionPromptHash.length, 64);
+  });
+});
+
+describe("SessionService continuity metadata persistence helpers", () => {
+  it("builds continuity metadata for session start from the selected decision", () => {
+    const service = new SessionService(new EventEmitter());
+    const compatibility = (service as any).buildContinuityCompatibilityKey({
+      ticketId: "POT-22",
+      phase: "Build",
+      agentSource: "agents/build.md",
+      executionGeneration: 3,
+      workflowId: "wf-main",
+      worktreePath: "/tmp/wt",
+      branchName: "potato/POT-22",
+      agentPrompt: "Build implementation",
+      mcpServerNames: ["potato-cannon"],
+      model: "sonnet",
+      disallowedTools: ["Skill(superpowers:*)"],
+    });
+
+    const metadata = (service as any).buildStoredSessionContinuityMetadata(
+      {
+        mode: "handoff",
+        reason: "packet_available",
+        scope: "same_lifecycle",
+        packet: {
+          scope: "same_lifecycle",
+          conversationTurns: [{ role: "user", text: "continue" }],
+          sessionHighlights: [{ summary: "added API skeleton" }],
+          unresolvedQuestions: ["confirm route naming"],
+        },
+      },
+      compatibility,
+    );
+
+    assert.strictEqual(metadata.continuityMode, "handoff");
+    assert.strictEqual(metadata.continuityReason, "packet_available");
+    assert.strictEqual(metadata.continuityScope, "same_lifecycle");
+    assert.ok(typeof metadata.continuitySummary === "string");
+    assert.strictEqual(metadata.continuitySourceSessionId, undefined);
+    assert.deepStrictEqual(metadata.continuityCompatibility, compatibility);
+  });
+
+  it("preserves continuity fields when deriving session_end meta from session_start meta", () => {
+    const startMeta = {
+      projectId: "proj-1",
+      ticketId: "POT-1",
+      startedAt: new Date().toISOString(),
+      status: "running" as const,
+      continuityMode: "handoff" as const,
+      continuityReason: "packet_available" as const,
+      continuityScope: "same_lifecycle" as const,
+      continuitySummary: "handoff(same_lifecycle): turns=1, highlights=1, questions=1",
+      continuitySourceSessionId: "claude_prev_1",
+    };
+
+    const endMeta = {
+      ...startMeta,
+      status: "completed" as const,
+      exitCode: 0,
+      endedAt: new Date().toISOString(),
+    };
+
+    assert.strictEqual(endMeta.continuityMode, startMeta.continuityMode);
+    assert.strictEqual(endMeta.continuityReason, startMeta.continuityReason);
+    assert.strictEqual(endMeta.continuityScope, startMeta.continuityScope);
+    assert.strictEqual(endMeta.continuitySummary, startMeta.continuitySummary);
+    assert.strictEqual(
+      endMeta.continuitySourceSessionId,
+      startMeta.continuitySourceSessionId,
+    );
+  });
+});
+
+describe("evaluateResumeEligibility", () => {
+  const baseKey = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/build.md",
+    executionGeneration: 4,
+    workflowId: "wf-main",
+    worktreePath: "/tmp/wt",
+    branchName: "potato/POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["potato-cannon", "p4"],
+    model: "sonnet",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+
+  it("returns eligible only when all compatibility fields match", () => {
+    const result = evaluateResumeEligibility({
+      stored: baseKey,
+      current: { ...baseKey },
+      claudeSessionId: "claude_123",
+      lifecycleInvalidated: false,
+    });
+
+    assert.deepStrictEqual(result, { eligible: true, reason: "eligible" });
+  });
+
+  it("rejects resume when any compatibility field mismatches", () => {
+    const mismatchCases = [
+      { ticketId: "POT-2" },
+      { phase: "Refinement" },
+      { agentSource: "agents/review.md" },
+      { executionGeneration: 5 },
+      { workflowId: "wf-2" },
+      { worktreePath: "/tmp/wt2" },
+      { branchName: "potato/POT-2" },
+      { agentDefinitionPromptHash: "b".repeat(64) },
+      { mcpServerNames: ["potato-cannon"] },
+      { model: "haiku" },
+      { disallowedTools: [] as string[] },
+    ];
+
+    for (const mismatch of mismatchCases) {
+      const result = evaluateResumeEligibility({
+        stored: baseKey,
+        current: { ...baseKey, ...mismatch },
+        claudeSessionId: "claude_123",
+        lifecycleInvalidated: false,
+      });
+      assert.deepStrictEqual(result, {
+        eligible: false,
+        reason: "compatibility_mismatch",
+      });
+    }
+  });
+
+  it("rejects resume when compatibility key is incomplete", () => {
+    const result = evaluateResumeEligibility({
+      stored: { ...baseKey, workflowId: "" },
+      current: { ...baseKey },
+      claudeSessionId: "claude_123",
+      lifecycleInvalidated: false,
+    });
+
+    assert.deepStrictEqual(result, {
+      eligible: false,
+      reason: "missing_compatibility_key",
+    });
+  });
+
+  it("rejects resume without a stored Claude session id", () => {
+    const result = evaluateResumeEligibility({
+      stored: baseKey,
+      current: { ...baseKey },
+      claudeSessionId: "",
+      lifecycleInvalidated: false,
+    });
+
+    assert.deepStrictEqual(result, {
+      eligible: false,
+      reason: "missing_claude_session_id",
+    });
+  });
+
+  it("rejects resume after lifecycle invalidation", () => {
+    const result = evaluateResumeEligibility({
+      stored: baseKey,
+      current: { ...baseKey },
+      claudeSessionId: "claude_123",
+      lifecycleInvalidated: true,
+    });
+
+    assert.deepStrictEqual(result, {
+      eligible: false,
+      reason: "lifecycle_invalidated",
+    });
+  });
+});
+
+describe("decideContinuityMode", () => {
+  const baseKey = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/build.md",
+    executionGeneration: 4,
+    workflowId: "wf-main",
+    worktreePath: "/tmp/wt",
+    branchName: "potato/POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["potato-cannon", "p4"],
+    model: "sonnet",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+
+  it("prioritizes suspended resume over all other continuity options", () => {
+    const decision = decideContinuityMode({
+      suspendedResumeSessionId: "claude_suspended_1",
+      restartSnapshot: {
+        scope: "safe_user_context_only",
+        conversationTurns: [],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+      sameLifecyclePacket: {
+        scope: "same_lifecycle",
+        conversationTurns: [{ role: "user", text: "context" }],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+    });
+
+    assert.deepStrictEqual(decision, {
+      mode: "resume",
+      reason: "suspended_session_resume",
+      sourceSessionId: "claude_suspended_1",
+    });
+  });
+
+  it("chooses restart snapshot handoff before same-lifecycle resume checks", () => {
+    const decision = decideContinuityMode({
+      restartSnapshot: {
+        scope: "safe_user_context_only",
+        conversationTurns: [{ role: "user", text: "restart context" }],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+      sameLifecyclePacket: null,
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "restart_snapshot");
+    assert.strictEqual(decision.scope, "safe_user_context_only");
+  });
+
+  it("chooses same-lifecycle handoff when resume is unsafe but packet exists", () => {
+    const decision = decideContinuityMode({
+      resumeEligibility: {
+        stored: baseKey,
+        current: { ...baseKey, phase: "Refinement" },
+        claudeSessionId: "claude_resume_1",
+      },
+      sameLifecyclePacket: {
+        scope: "same_lifecycle",
+        conversationTurns: [{ role: "user", text: "handoff context" }],
+        sessionHighlights: [],
+        unresolvedQuestions: [],
+      },
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "packet_available");
+  });
+
+  it("falls back to fresh when resume is stale and no packet is available", () => {
+    const decision = decideContinuityMode({
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+        lifecycleInvalidated: true,
+      },
+      sameLifecyclePacket: null,
+    });
+
+    assert.deepStrictEqual(decision, {
+      mode: "fresh",
+      reason: "resume_not_allowed",
+    });
+  });
+});
+
+describe("SessionService transcript highlights", () => {
+  it("parses structured assistant/tool entries and excludes raw lines", async () => {
+    const service = new SessionService(new EventEmitter());
+    const sessionId = `sess_highlight_${Date.now()}`;
+    const logPath = service.getSessionLogPath(sessionId);
+    await fs.mkdir(SESSIONS_DIR, { recursive: true });
+
+    await fs.writeFile(
+      logPath,
+      [
+        JSON.stringify({
+          type: "assistant",
+          timestamp: "2026-03-11T00:00:00.000Z",
+          message: { content: [{ type: "text", text: "assistant summary" }] },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          timestamp: "2026-03-11T00:00:01.000Z",
+          message: {
+            content: [{ type: "tool_use", name: "chat_ask" }],
+          },
+        }),
+        JSON.stringify({
+          type: "output",
+          timestamp: "2026-03-11T00:00:02.000Z",
+          tool_name: "chat_ask",
+          tool_result: "ok",
+        }),
+        JSON.stringify({
+          type: "raw",
+          timestamp: "2026-03-11T00:00:03.000Z",
+          content: "raw PTY bytes",
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const highlights = await service.getTranscriptHighlightsForContinuity(sessionId, 10);
+
+    assert.strictEqual(highlights.length, 3);
+    assert.deepStrictEqual(
+      highlights.map((h) => h.kind),
+      ["assistant", "assistant", "tool"],
+    );
+    assert.ok(highlights.every((h) => !h.summary.includes("raw PTY")));
+
+    await fs.unlink(logPath);
+  });
+});
+
+describe("SessionService restart snapshot cache", () => {
+  it("takeRestartSnapshotForTicket returns snapshot once and clears it", () => {
+    const service = new SessionService(new EventEmitter());
+    const cache = (service as any).consumedRestartSnapshots as Map<string, unknown>;
+    cache.set("POT-1", {
+      scope: "safe_user_context_only",
+      conversationTurns: [],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    const first = service.takeRestartSnapshotForTicket("POT-1");
+    const second = service.takeRestartSnapshotForTicket("POT-1");
+
+    assert.ok(first);
+    assert.strictEqual((first as any).scope, "safe_user_context_only");
+    assert.strictEqual(second, null);
+  });
+});
+
+describe("SessionService decideContinuityForTicket", () => {
+  const baseKey = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/build.md",
+    executionGeneration: 4,
+    workflowId: "wf-main",
+    worktreePath: "/tmp/wt",
+    branchName: "potato/POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["potato-cannon", "p4"],
+    model: "sonnet",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+
+  it("prefers consumed restart snapshots over same-lifecycle packets", async () => {
+    const service = new SessionService(new EventEmitter());
+    const cache = (service as any).consumedRestartSnapshots as Map<string, unknown>;
+    cache.set("POT-1", {
+      scope: "safe_user_context_only",
+      conversationTurns: [{ role: "user", text: "restart snapshot" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+    (service as any).buildContinuityPacketForTicket = async () => ({
+      scope: "same_lifecycle",
+      conversationTurns: [{ role: "user", text: "same lifecycle" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "restart_snapshot");
+  });
+
+  it("prefers suspended resume over restart snapshots and packet handoff", async () => {
+    const service = new SessionService(new EventEmitter());
+    const cache = (service as any).consumedRestartSnapshots as Map<string, unknown>;
+    cache.set("POT-1", {
+      scope: "safe_user_context_only",
+      conversationTurns: [{ role: "user", text: "restart snapshot" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+    (service as any).buildContinuityPacketForTicket = async () => ({
+      scope: "same_lifecycle",
+      conversationTurns: [{ role: "user", text: "same lifecycle" }],
+      sessionHighlights: [],
+      unresolvedQuestions: [],
+    });
+
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+      suspendedResumeSessionId: "claude_suspended_1",
+    });
+
+    assert.strictEqual(decision.mode, "resume");
+    assert.strictEqual(decision.reason, "suspended_session_resume");
+    assert.strictEqual(decision.sourceSessionId, "claude_suspended_1");
+  });
+
+  it("returns handoff decision details for same-lifecycle packets", async () => {
+    const service = new SessionService(new EventEmitter());
+    (service as any).buildContinuityPacketForTicket = async () => ({
+      scope: "same_lifecycle",
+      conversationTurns: [{ role: "user", text: "handoff context" }],
+      sessionHighlights: [{ summary: "completed scaffolding" }],
+      unresolvedQuestions: ["confirm endpoint naming"],
+    });
+
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: { ...baseKey, phase: "Refinement" },
+        claudeSessionId: "claude_resume_1",
+      },
+    });
+
+    assert.strictEqual(decision.mode, "handoff");
+    assert.strictEqual(decision.reason, "packet_available");
+    assert.strictEqual(decision.scope, "same_lifecycle");
+    assert.strictEqual(decision.packet?.conversationTurns.length, 1);
+  });
+
+  it("falls back to fresh disabled mode when lifecycle continuity is turned off", async () => {
+    const service = new SessionService(new EventEmitter());
+    (service as any).isLifecycleContinuityEnabled = () => false;
+    (service as any).buildContinuityPacketForTicket = async () => {
+      throw new Error("should not build packet when continuity is disabled");
+    };
+    const decision = await service.decideContinuityForTicket({
+      ticketId: "POT-1",
+      filter: { phase: "Build", agentSource: "agents/build.md", executionGeneration: 4 },
+      limits: {
+        maxConversationTurns: 12,
+        maxSessionEvents: 12,
+        maxCharsPerItem: 800,
+        maxPromptChars: 16000,
+      },
+      resumeEligibility: {
+        stored: baseKey,
+        current: baseKey,
+        claudeSessionId: "claude_resume_1",
+      },
+    });
+
+    assert.deepStrictEqual(decision, {
+      mode: "fresh",
+      reason: "disabled",
+    });
   });
 });

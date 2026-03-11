@@ -26,6 +26,25 @@ interface SessionRow {
   metadata: string | null;
 }
 
+function parseSessionMetadata(
+  metadata: string | null,
+): Record<string, unknown> | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(metadata) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface SessionContinuityFilter {
+  phase?: string;
+  agentSource?: string;
+  executionGeneration?: number;
+}
+
 // =============================================================================
 // Row Mappers
 // =============================================================================
@@ -44,7 +63,7 @@ function rowToSession(row: SessionRow): StoredSession {
     endedAt: row.ended_at || undefined,
     exitCode: row.exit_code ?? undefined,
     phase: row.phase || undefined,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    metadata: parseSessionMetadata(row.metadata),
   };
 }
 
@@ -133,6 +152,42 @@ export class SessionStore {
     const rows = this.db
       .prepare("SELECT * FROM sessions WHERE ticket_id = ? ORDER BY started_at")
       .all(ticketId) as SessionRow[];
+
+    return rows.map(rowToSession);
+  }
+
+  getRecentSessionsForContinuity(
+    ticketId: string,
+    filter: SessionContinuityFilter,
+    limit: number
+  ): StoredSession[] {
+    const whereClauses: string[] = ["ticket_id = ?"];
+    const params: Array<string | number> = [ticketId];
+
+    if (filter.phase) {
+      whereClauses.push("phase = ?");
+      params.push(filter.phase);
+    }
+    if (filter.agentSource) {
+      whereClauses.push("agent_source = ?");
+      params.push(filter.agentSource);
+    }
+    if (filter.executionGeneration !== undefined) {
+      whereClauses.push("execution_generation = ?");
+      params.push(filter.executionGeneration);
+    }
+
+    const boundedLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 1;
+    params.push(boundedLimit);
+
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM sessions
+         WHERE ${whereClauses.join(" AND ")}
+         ORDER BY started_at DESC
+         LIMIT ?`
+      )
+      .all(...params) as SessionRow[];
 
     return rows.map(rowToSession);
   }
@@ -255,6 +310,18 @@ export function getStoredSession(sessionId: string): StoredSession | null {
 
 export function getSessionsByTicket(ticketId: string): StoredSession[] {
   return new SessionStore(getDatabase()).getSessionsByTicket(ticketId);
+}
+
+export function getRecentSessionsForContinuity(
+  ticketId: string,
+  filter: SessionContinuityFilter,
+  limit: number
+): StoredSession[] {
+  return new SessionStore(getDatabase()).getRecentSessionsForContinuity(
+    ticketId,
+    filter,
+    limit
+  );
 }
 
 export function getSessionsByBrainstorm(brainstormId: string): StoredSession[] {

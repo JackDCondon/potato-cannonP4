@@ -34,6 +34,16 @@ export interface DaemonConfig {
     strictStaleDrop?: boolean;
     strictStaleResume409?: boolean;
   };
+  lifecycleContinuity?: LifecycleContinuityConfig;
+}
+
+export interface LifecycleContinuityConfig {
+  enabled?: boolean;
+  allowResumeSameSwimlane?: boolean;
+  maxConversationTurns?: number;
+  maxSessionEvents?: number;
+  maxCharsPerItem?: number;
+  maxPromptChars?: number;
 }
 
 export interface GlobalConfig {

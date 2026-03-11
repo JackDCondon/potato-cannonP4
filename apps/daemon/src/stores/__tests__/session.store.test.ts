@@ -114,6 +114,71 @@ describe("SessionStore", () => {
       assert.strictEqual(session.phase, "Refinement");
       assert.deepStrictEqual(session.metadata, { custom: "data" });
     });
+
+    it("should persist continuity compatibility metadata", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Compatibility ticket" });
+
+      const session = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        metadata: {
+          continuityCompatibility: {
+            ticketId: ticket.id,
+            phase: "Build",
+            agentSource: "agents/build.md",
+            executionGeneration: 2,
+            workflowId: "wf_1",
+            worktreePath: "D:/tmp/worktree",
+            branchName: "potato/POT-1",
+            agentDefinitionPromptHash: "abc123",
+            mcpServerNames: ["potato-cannon", "p4"],
+            model: "sonnet",
+            disallowedTools: ["Skill(superpowers:*)"],
+          },
+        },
+      });
+
+      assert.deepStrictEqual((session.metadata as any)?.continuityCompatibility, {
+        ticketId: ticket.id,
+        phase: "Build",
+        agentSource: "agents/build.md",
+        executionGeneration: 2,
+        workflowId: "wf_1",
+        worktreePath: "D:/tmp/worktree",
+        branchName: "potato/POT-1",
+        agentDefinitionPromptHash: "abc123",
+        mcpServerNames: ["potato-cannon", "p4"],
+        model: "sonnet",
+        disallowedTools: ["Skill(superpowers:*)"],
+      });
+    });
+
+    it("should persist continuity decision metadata fields", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Decision metadata ticket" });
+
+      const session = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        metadata: {
+          continuityMode: "handoff",
+          continuityReason: "packet_available",
+          continuityScope: "same_lifecycle",
+          continuitySummary: "handoff(same_lifecycle): turns=1, highlights=1, questions=1",
+          continuitySourceSessionId: "claude_prev_1",
+        },
+      });
+
+      assert.strictEqual((session.metadata as any)?.continuityMode, "handoff");
+      assert.strictEqual((session.metadata as any)?.continuityReason, "packet_available");
+      assert.strictEqual((session.metadata as any)?.continuityScope, "same_lifecycle");
+      assert.strictEqual(
+        (session.metadata as any)?.continuitySummary,
+        "handoff(same_lifecycle): turns=1, highlights=1, questions=1"
+      );
+      assert.strictEqual((session.metadata as any)?.continuitySourceSessionId, "claude_prev_1");
+    });
   });
 
   describe("getSession", () => {
@@ -395,6 +460,94 @@ describe("SessionStore", () => {
       });
       const result = sessionStore.getLatestClaudeSessionIdForTicket(ticket.id);
       assert.strictEqual(result, "claude_sess_new");
+    });
+  });
+
+  describe("getRecentSessionsForContinuity", () => {
+    it("filters by ticket, phase, agent source, and execution generation", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Continuity ticket" });
+      const otherTicket = ticketStore.createTicket(projectId, { title: "Other ticket" });
+
+      const first = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        agentSource: "agents/build.md",
+        executionGeneration: 5,
+      });
+      sessionStore.endSession(first.id);
+      const second = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+        agentSource: "agents/review.md",
+        executionGeneration: 5,
+      });
+      sessionStore.endSession(second.id);
+      const third = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Refinement",
+        agentSource: "agents/build.md",
+        executionGeneration: 5,
+      });
+      sessionStore.endSession(third.id);
+      sessionStore.createSession({
+        projectId,
+        ticketId: otherTicket.id,
+        phase: "Build",
+        agentSource: "agents/build.md",
+        executionGeneration: 5,
+      });
+
+      const sessions = sessionStore.getRecentSessionsForContinuity(
+        ticket.id,
+        {
+          phase: "Build",
+          agentSource: "agents/build.md",
+          executionGeneration: 5,
+        },
+        10
+      );
+
+      assert.strictEqual(sessions.length, 1);
+      assert.strictEqual(sessions[0].ticketId, ticket.id);
+      assert.strictEqual(sessions[0].phase, "Build");
+      assert.strictEqual(sessions[0].agentSource, "agents/build.md");
+      assert.strictEqual(sessions[0].executionGeneration, 5);
+    });
+
+    it("returns most-recent sessions first with bounded limit", () => {
+      const ticket = ticketStore.createTicket(projectId, { title: "Ordering ticket" });
+      const first = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+      });
+      sessionStore.endSession(first.id);
+      const second = sessionStore.createSession({
+        projectId,
+        ticketId: ticket.id,
+        phase: "Build",
+      });
+
+      db.prepare("UPDATE sessions SET started_at = ? WHERE id = ?").run(
+        "2026-03-11T00:00:01.000Z",
+        first.id
+      );
+      db.prepare("UPDATE sessions SET started_at = ? WHERE id = ?").run(
+        "2026-03-11T00:00:02.000Z",
+        second.id
+      );
+
+      const sessions = sessionStore.getRecentSessionsForContinuity(
+        ticket.id,
+        { phase: "Build" },
+        1
+      );
+
+      assert.strictEqual(sessions.length, 1);
+      assert.strictEqual(sessions[0].id, second.id);
     });
   });
 });

@@ -27,6 +27,9 @@ let addMessageCalls: Array<{ conversationId: string; input: unknown }> = [];
 let messageIdCounter = 0;
 let readQuestionResult: unknown = null;
 let enqueueQuestionCalls: Array<{ context: unknown; questionId: string; message: unknown }> = [];
+let mockTicketConversationId: string | null = null;
+let mockBrainstormConversationId: string | null = null;
+let mockTicketGeneration: number | null = null;
 
 // Mock the external dependencies before importing ChatService
 mock.module("../../stores/chat.store.js", {
@@ -75,8 +78,19 @@ mock.module("../../stores/conversation.store.js", {
 
 // Mock database to return null for conversation lookups (no conversation)
 const mockDb = {
-  prepare: (_sql: string) => ({
-    get: () => null,
+  prepare: (sql: string) => ({
+    get: (_arg1?: string, _arg2?: string) => {
+      if (sql.includes("SELECT conversation_id FROM tickets")) {
+        return { conversation_id: mockTicketConversationId };
+      }
+      if (sql.includes("SELECT conversation_id FROM brainstorms")) {
+        return { conversation_id: mockBrainstormConversationId };
+      }
+      if (sql.includes("SELECT execution_generation FROM tickets")) {
+        return { execution_generation: mockTicketGeneration };
+      }
+      return null;
+    },
     run: () => ({}),
   }),
 };
@@ -144,6 +158,9 @@ describe("ChatService.askAsync", () => {
     messageIdCounter = 0;
     readQuestionResult = null;
     enqueueQuestionCalls = [];
+    mockTicketConversationId = null;
+    mockBrainstormConversationId = null;
+    mockTicketGeneration = null;
 
     service = new ChatService();
   });
@@ -375,5 +392,23 @@ describe("ChatService.askAsync", () => {
 
     assert.strictEqual(handled, false);
     assert.strictEqual(writeResponseCalls.length, 0);
+  });
+
+  it("writes ticket message provenance metadata for askAsync question messages", async () => {
+    mockTicketConversationId = "conv_ticket_1";
+    mockTicketGeneration = 12;
+    const context = { projectId: "test-project", ticketId: "POT-555" };
+
+    await service.askAsync(context, "Need confirmation?", ["Yes", "No"], "Build");
+
+    assert.strictEqual(addMessageCalls.length, 1);
+    const input = addMessageCalls[0].input as {
+      metadata?: Record<string, unknown>;
+    };
+    assert.deepStrictEqual(input.metadata, {
+      phase: "Build",
+      executionGeneration: 12,
+      messageOrigin: "agent",
+    });
   });
 });

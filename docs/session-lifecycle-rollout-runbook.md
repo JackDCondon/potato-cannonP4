@@ -14,6 +14,10 @@ Configure in global daemon config:
     "lifecycleHardening": {
       "strictStaleDrop": false,
       "strictStaleResume409": false
+    },
+    "lifecycleContinuity": {
+      "enabled": true,
+      "allowResumeSameSwimlane": true
     }
   }
 }
@@ -25,13 +29,20 @@ Configure in global daemon config:
 - `strictStaleResume409`
   - `true`: stale/missing ticket input identity returns `409 STALE_TICKET_INPUT`.
   - `false`: legacy acceptance path writes response and avoids strict 409 rejection.
+- `lifecycleContinuity.enabled`
+  - `true`: decision policy can choose `resume`, `handoff`, or `fresh`.
+  - `false`: continuity always resolves to `fresh` with reason `disabled` (legacy prompt path).
+- `lifecycleContinuity.allowResumeSameSwimlane`
+  - `true`: same-lifecycle resume remains eligible when compatibility checks pass.
+  - `false`: same-lifecycle resume is skipped and handoff/fresh is selected.
 
 ## Recommended Rollout Sequence
 
-1. Enable `strictStaleResume409=true`, keep `strictStaleDrop=false`.
-2. Observe stale-input rejection rate and user reports.
-3. Enable `strictStaleDrop=true`.
-4. Keep both enabled after one release window with stable metrics.
+1. Enable `lifecycleContinuity.enabled=true` while keeping `allowResumeSameSwimlane=true`.
+2. Enable `strictStaleResume409=true`, keep `strictStaleDrop=false`.
+3. Observe continuity decision distribution and stale-input rejection rate.
+4. Enable `strictStaleDrop=true`.
+5. Keep all three flags enabled after one release window with stable metrics.
 
 ## Expected Log Signatures
 
@@ -40,6 +51,14 @@ Configure in global daemon config:
 - `Dropped stale ticket input for <ticketId>`
 - `Strict stale-resume enforcement disabled; allowing legacy recovery`
 - `Ticket lifecycle changed concurrently` (`TICKET_LIFECYCLE_CONFLICT`)
+- `Continuity decision for ticket spawn`
+- `Continuity decision for suspended resume`
+- Structured continuity keys on decision logs:
+  - `continuity_mode=resume|handoff|fresh`
+  - `continuity_reason=<enum>`
+  - `continuity_scope=<enum|none>`
+  - `continuity_source_session_id=<id|none>`
+  - `continuity_resume_rejected=true|false`
 
 ## Telemetry/Alert Thresholds
 
@@ -62,6 +81,9 @@ Configure in global daemon config:
 - Stale callback after replacement spawn -> dropped when strict stale-drop enabled.
 - Spawn failure leaves `spawn_pending` and startup recovery respawns once.
 - Startup with both pending response + worker-state -> pending response precedence path wins.
+- Continuity disabled (`lifecycleContinuity.enabled=false`) -> no handoff/resume injection, decision reason is `disabled`.
+- Startup recovery respawn emits the same continuity decision log keys as normal ticket spawn.
+- Restart-to-earlier-phase emits continuity decision logs before new session spawn.
 
 ## Rollback
 

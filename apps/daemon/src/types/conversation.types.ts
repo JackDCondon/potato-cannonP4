@@ -1,3 +1,16 @@
+export type ConversationMessageOrigin = "agent" | "user" | "system" | "provider";
+
+export interface ConversationContinuityMetadata {
+  phase?: string;
+  executionGeneration?: number;
+  agentSource?: string;
+  sourceSessionId?: string;
+  messageOrigin?: ConversationMessageOrigin;
+}
+
+export type ConversationMessageMetadata =
+  ConversationContinuityMetadata & Record<string, unknown>;
+
 export interface Conversation {
   id: string;
   projectId: string;
@@ -13,12 +26,12 @@ export interface ConversationMessage {
   options?: string[];
   timestamp: string;
   answeredAt?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: ConversationMessageMetadata;
 }
 
 export interface CreateMessageInput {
   type: ConversationMessage["type"];
   text: string;
   options?: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: ConversationMessageMetadata;
 }

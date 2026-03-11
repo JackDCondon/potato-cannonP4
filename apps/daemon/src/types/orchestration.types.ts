@@ -2,6 +2,7 @@
 
 import type { Complexity } from "@potato-cannon/shared";
 import type { Task } from "./task.types.js";
+import type { ContinuityPacket } from "../services/session/continuity.types.js";
 
 /**
  * Base state for any active worker
@@ -61,6 +62,8 @@ export interface SpawnPendingWorkerStateRoot {
   phaseId: string;
   executionGeneration: number;
   pendingSpawn: true;
+  continuitySnapshot?: ContinuityPacket;
+  continuitySnapshotCreatedAt?: string;
   spawnRequestedAt: string;
   updatedAt: string;
 }

@@ -917,3 +917,16 @@ When converting this plan to beads:
 | Completeness | PASS | 3 | Added missing snapshot-consumption, recovery-wiring, and API/UI separation tasks |
 | Risk | PASS | 4 | Tightened exact resume compatibility rules and restart cleanup boundaries |
 | Optimality | PASS | 2 | Reused existing `worker_state` storage instead of inventing a new persistence path |
+
+---
+
+## Continuity Rollout Notes (2026-03-11)
+
+- Structured continuity decision logs were added with:
+  - `continuity_mode`
+  - `continuity_reason`
+  - `continuity_scope`
+  - `continuity_source_session_id`
+  - `continuity_resume_rejected`
+- `daemon.lifecycleContinuity.enabled=false` forces a `fresh` decision with reason `disabled` (legacy-compatible behavior).
+- Startup recovery and restart-to-earlier-phase paths emit the same continuity decision keys as normal ticket spawns.

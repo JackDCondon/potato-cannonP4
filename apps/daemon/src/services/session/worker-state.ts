@@ -14,6 +14,7 @@ import type {
   RalphLoopState,
   TaskLoopState,
 } from "../../types/orchestration.types.js";
+import type { ContinuityPacket } from "./continuity.types.js";
 import {
   isActiveWorkerStateRoot as isActiveRootGuard,
   isSpawnPendingWorkerStateRoot as isSpawnPendingRootGuard,
@@ -185,10 +186,11 @@ export function createTaskLoopState(
 
 export function createSpawnPendingWorkerState(
   phaseId: string,
-  executionGeneration: number
+  executionGeneration: number,
+  continuitySnapshot?: ContinuityPacket,
 ): SpawnPendingWorkerStateRoot {
   const now = new Date().toISOString();
-  return {
+  const state: SpawnPendingWorkerStateRoot = {
     kind: "spawn_pending",
     phaseId,
     executionGeneration,
@@ -196,6 +198,44 @@ export function createSpawnPendingWorkerState(
     spawnRequestedAt: now,
     updatedAt: now,
   };
+  if (continuitySnapshot) {
+    state.continuitySnapshot = continuitySnapshot;
+    state.continuitySnapshotCreatedAt = now;
+  }
+  return state;
+}
+
+export function consumeSpawnPendingContinuitySnapshot(
+  projectId: string,
+  ticketId: string,
+  expectedPhase?: string,
+  expectedGeneration?: number,
+): ContinuityPacket | null {
+  const state = getWorkerState(projectId, ticketId);
+  if (!isSpawnPendingWorkerStateRoot(state)) {
+    return null;
+  }
+  if (!state.continuitySnapshot) {
+    return null;
+  }
+  if (expectedPhase && state.phaseId !== expectedPhase) {
+    return null;
+  }
+  if (
+    expectedGeneration !== undefined &&
+    state.executionGeneration !== expectedGeneration
+  ) {
+    return null;
+  }
+
+  const snapshot = state.continuitySnapshot;
+  const nextState: SpawnPendingWorkerStateRoot = {
+    ...state,
+    continuitySnapshot: undefined,
+    continuitySnapshotCreatedAt: undefined,
+  };
+  saveWorkerState(projectId, ticketId, nextState);
+  return snapshot;
 }
 
 export function isActiveWorkerStateRoot(
