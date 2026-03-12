@@ -1,6 +1,6 @@
 // src/hooks/queries.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type WorkflowTemplateStatusResponse } from '@/api/client'
+import { api, type GlobalConfigResponse, type WorkflowTemplateStatusResponse } from '@/api/client'
 import type {
   Ticket,
   Template,
@@ -38,11 +38,28 @@ export function useAddProject() {
 export function useUpdateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string } }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string; providerOverride?: string | null } }) =>
       api.updateProject(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     }
+  })
+}
+
+export function useGlobalConfig() {
+  return useQuery({
+    queryKey: ['global-config'],
+    queryFn: api.getGlobalConfig,
+  })
+}
+
+export function useUpdateAiGlobalConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ai: GlobalConfigResponse['ai']) => api.updateAiGlobalConfig(ai),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['global-config'] })
+    },
   })
 }
 

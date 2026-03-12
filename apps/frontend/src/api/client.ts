@@ -40,6 +40,17 @@ export interface GlobalConfigResponse {
   perforce: {
     mcpServerPath: string
   }
+  ai: {
+    defaultProvider: string
+    providers: Array<{
+      id: string
+      models: {
+        low: string
+        mid: string
+        high: string
+      }
+    }>
+  }
 }
 
 export interface WorkflowDeletePreviewResponse {
@@ -148,6 +159,12 @@ export const api = {
       body: JSON.stringify({ mcpServerPath }),
     }),
 
+  updateAiGlobalConfig: (ai: GlobalConfigResponse['ai']) =>
+    request<{ ok: boolean; ai: GlobalConfigResponse['ai'] }>('/api/config/global/ai', {
+      method: 'PUT',
+      body: JSON.stringify(ai),
+    }),
+
   // ============ Projects ============
 
   getProjects: () =>
@@ -164,7 +181,7 @@ export const api = {
       method: 'DELETE'
     }),
 
-  updateProject: (id: string, updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string }) =>
+  updateProject: (id: string, updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string; providerOverride?: string | null }) =>
     request<Project>(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(updates)
