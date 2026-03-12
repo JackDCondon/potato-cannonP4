@@ -112,50 +112,38 @@
             "type": "string"
           }
         },
-        "model": {
+        "modelTier": {
           "oneOf": [
             {
               "type": "string",
-              "description": "Model shortcut (haiku, sonnet, opus) or explicit model ID (e.g., claude-sonnet-4-20250514)"
+              "enum": ["low", "mid", "high"],
+              "description": "Model tier shortcut"
             },
             {
               "type": "object",
-              "description": "Model specification with provider",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "description": "Model ID"
-                },
-                "provider": {
-                  "type": "string",
-                  "description": "Provider name (default: anthropic)"
-                }
-              },
-              "required": ["id"],
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "description": "Complexity-based model map: specify different models for simple, standard, and complex tasks",
+              "description": "Complexity-based tier map: specify different tiers for simple, standard, and complex tasks",
               "properties": {
                 "simple": {
                   "type": "string",
-                  "description": "Model to use for simple-complexity tasks (e.g., 'haiku')"
+                  "enum": ["low", "mid", "high"],
+                  "description": "Tier to use for simple-complexity tasks"
                 },
                 "standard": {
                   "type": "string",
-                  "description": "Model to use for standard-complexity tasks (e.g., 'sonnet')"
+                  "enum": ["low", "mid", "high"],
+                  "description": "Tier to use for standard-complexity tasks"
                 },
                 "complex": {
                   "type": "string",
-                  "description": "Model to use for complex-complexity tasks (e.g., 'opus')"
+                  "enum": ["low", "mid", "high"],
+                  "description": "Tier to use for complex-complexity tasks"
                 }
               },
               "additionalProperties": false,
               "minProperties": 1
             }
           ],
-          "description": "Optional model to use for this agent. If not specified, uses Claude Code's default."
+          "description": "Optional model tier to use for this agent. If not specified, runtime defaults apply."
         }
       },
       "additionalProperties": false

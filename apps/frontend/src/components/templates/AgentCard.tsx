@@ -22,20 +22,20 @@ interface AgentCardProps {
   onDelete: () => void
 }
 
-const MODEL_OPTIONS = ['haiku', 'sonnet', 'opus'] as const
-
 /**
- * Normalize agent model field into a full complexity matrix.
+ * Normalize agent model tier field into a full complexity matrix.
  * Accepts undefined, a string shorthand, or a partial matrix object.
  */
-function getModelMatrix(model: TemplateAgent['model']): { simple: string; standard: string; complex: string } {
-  const defaults = { simple: 'haiku', standard: 'sonnet', complex: 'opus' }
-  if (!model) return defaults
-  if (typeof model === 'string') return { simple: model, standard: model, complex: model }
+const TIER_OPTIONS = ['low', 'mid', 'high'] as const
+
+function getTierMatrix(modelTier: TemplateAgent['modelTier']): { simple: string; standard: string; complex: string } {
+  const defaults = { simple: 'low', standard: 'mid', complex: 'high' }
+  if (!modelTier) return defaults
+  if (typeof modelTier === 'string') return { simple: modelTier, standard: modelTier, complex: modelTier }
   return {
-    simple: model.simple ?? defaults.simple,
-    standard: model.standard ?? defaults.standard,
-    complex: model.complex ?? defaults.complex,
+    simple: modelTier.simple ?? defaults.simple,
+    standard: modelTier.standard ?? defaults.standard,
+    complex: modelTier.complex ?? defaults.complex,
   }
 }
 
@@ -69,7 +69,7 @@ export function AgentCard({
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const roleBadge = getRoleBadge(agent.role)
-  const modelMatrix = getModelMatrix(agent.model)
+  const tierMatrix = getTierMatrix(agent.modelTier)
 
   const handleLoadFromFile = async () => {
     if (!agent.type) {
@@ -165,25 +165,25 @@ export function AgentCard({
             />
           </div>
 
-          {/* Model Routing */}
+          {/* Tier Routing */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Model Routing</label>
+            <label className="text-xs font-medium text-muted-foreground">Tier Routing</label>
             <div className="space-y-1.5">
               {(['simple', 'standard', 'complex'] as const).map((level) => (
                 <div key={level} className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground w-16 capitalize">{level}</span>
                   <Select
-                    value={modelMatrix[level]}
+                    value={tierMatrix[level]}
                     onValueChange={(value) => {
-                      const next = { ...modelMatrix, [level]: value }
-                      onChange({ ...agent, model: next })
+                      const next = { ...tierMatrix, [level]: value }
+                      onChange({ ...agent, modelTier: next })
                     }}
                   >
                     <SelectTrigger className="h-7 flex-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {MODEL_OPTIONS.map((opt) => (
+                      {TIER_OPTIONS.map((opt) => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
                     </SelectContent>
