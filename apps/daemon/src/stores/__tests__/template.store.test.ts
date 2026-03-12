@@ -7,7 +7,7 @@ import os from "os";
 import Database from "better-sqlite3";
 
 import { runMigrations } from "../migrations.js";
-import { createTemplateStore, TemplateStore, getWorkflow } from "../template.store.js";
+import { createTemplateStore, TemplateStore, getWorkflow, installDefaultTemplates } from "../template.store.js";
 import { initDatabase, getDatabase } from "../db.js";
 import { createProjectStore } from "../project.store.js";
 
@@ -725,6 +725,31 @@ describe("getWorkflow model tier validation", () => {
 
     await fsPromises.rm(path.join(templatesDir, legacyName), { recursive: true, force: true });
     await fsPromises.rm(path.join(templatesDir, invalidName), { recursive: true, force: true });
+  });
+
+  it("loads bundled workflows under strict modelTier validation", async () => {
+    const bundledTemplateNames = ["product-development", "product-development-p4", "bug-fix"];
+
+    try {
+      // Ensure this test is deterministic even if prior local installs used legacy model fields.
+      for (const templateName of bundledTemplateNames) {
+        await fsPromises.rm(path.join(templatesDir, templateName), { recursive: true, force: true });
+      }
+
+      await installDefaultTemplates();
+
+      const productDevelopment = await getWorkflow("product-development");
+      const productDevelopmentP4 = await getWorkflow("product-development-p4");
+      const bugFix = await getWorkflow("bug-fix");
+
+      assert.ok(productDevelopment, "product-development should load");
+      assert.ok(productDevelopmentP4, "product-development-p4 should load");
+      assert.ok(bugFix, "bug-fix should load");
+    } finally {
+      for (const templateName of bundledTemplateNames) {
+        await fsPromises.rm(path.join(templatesDir, templateName), { recursive: true, force: true });
+      }
+    }
   });
 });
 

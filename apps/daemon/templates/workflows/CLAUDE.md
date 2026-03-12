@@ -94,7 +94,7 @@ Leaf node that spawns a Claude Code session.
   "source": "agents/builder.md",
   "description": "Implements the task",
   "disallowTools": ["TaskCreate", "TaskUpdate"],
-  "model": "sonnet"
+  "modelTier": "mid"
 }
 ```
 
@@ -105,7 +105,7 @@ Leaf node that spawns a Claude Code session.
 | `source` | Yes | Path to agent markdown file (relative to template) |
 | `description` | No | What this agent does |
 | `disallowTools` | No | Array of tool names to disable for this agent |
-| `model` | No | Model to use for this agent (see Model Selection below) |
+| `modelTier` | No | Model tier to use for this agent (see Tier Routing below) |
 
 **disallowTools**: Prevents the agent from using specific Claude Code tools. Useful when:
 - An agent shouldn't create tasks (e.g., spec agent conflicting with internal TaskCreate)
@@ -119,26 +119,21 @@ Example patterns:
 "disallowTools": ["Bash"]                         // No shell access
 ```
 
-**model**: Specifies which Claude model to use for this agent. Useful for cost optimization (cheaper models for verification tasks) or version pinning. If not specified, uses Claude Code's default.
+**modelTier**: Specifies the provider-agnostic tier to use for this agent. If not specified, runtime defaults apply.
 
 Supported formats:
 ```json
-// Shortcuts (Claude CLI resolves to latest version)
-"model": "haiku"              // Fastest, cheapest
-"model": "sonnet"             // Balanced
-"model": "opus"               // Most capable
+// Single tier
+"modelTier": "low"
 
-// Explicit model ID (version pinning)
-"model": "claude-sonnet-4-20250514"
-
-// Object format (future provider flexibility)
-"model": { "id": "claude-sonnet-4-20250514", "provider": "anthropic" }
+// Complexity-to-tier mapping
+"modelTier": { "simple": "low", "standard": "mid", "complex": "high" }
 ```
 
 Typical usage:
-- Build/implementation agents: Default or `sonnet`
-- Verification/review agents: `haiku` (simple pass/fail checks)
-- Complex reasoning: `opus` (architecture decisions)
+- Build/implementation agents: `mid` or `high`
+- Verification/review agents: `low`
+- Complex reasoning: `high`
 
 ### Ralph Loop Worker
 
@@ -499,7 +494,7 @@ node -e "
 
 ## Related Files
 
-- `src/types/template.types.ts` - TypeScript interfaces for workers (includes `ModelSpec` type)
+- `src/types/template.types.ts` - TypeScript interfaces for workers (includes model tier types)
 - `src/services/session/worker-executor.ts` - Worker tree interpreter
 - `src/services/session/model-resolver.ts` - Model specification resolver
 - `src/services/session/loops/ralph-loop.ts` - Ralph loop implementation

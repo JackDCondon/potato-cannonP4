@@ -21,14 +21,14 @@
               "type": "agent",
               "source": "agents/refinement.md",
               "description": "Creates refinement draft from brainstorm",
-              "model": "opus"
+              "modelTier": "high"
             },
             {
               "id": "adversarial-refinement-agent",
               "type": "agent",
               "source": "agents/adversarial-refinement.md",
               "description": "Reviews refinement draft and identifies gaps",
-              "model": "opus"
+              "modelTier": "high"
             }
           ]
         }
@@ -65,14 +65,14 @@
               "source": "agents/architect.md",
               "description": "Creates architecture draft from refinement",
               "disallowTools": ["Skill(superpowers:*)"],
-              "model": "opus"
+              "modelTier": "high"
             },
             {
               "id": "adversarial-architect-agent",
               "type": "agent",
               "source": "agents/adversarial-architect.md",
               "description": "Reviews architecture draft and identifies issues",
-              "model": "opus"
+              "modelTier": "high"
             }
           ]
         }
@@ -103,7 +103,7 @@
           "source": "agents/specification.md",
           "description": "Creates executable specification from architecture",
           "disallowTools": ["TaskCreate", "TaskUpdate", "Skill(superpowers:*)"],
-          "model": "opus"
+          "modelTier": "high"
         }
       ],
       "transitions": {
@@ -132,7 +132,7 @@
           "source": "agents/taskmaster.md",
           "description": "Creates build tickets from specification",
           "disallowTools": ["Skill(superpowers:*)"],
-          "model": "sonnet"
+          "modelTier": "mid"
         },
         {
           "id": "build-task-loop",
@@ -157,14 +157,14 @@
                   "source": "agents/builder.md",
                   "description": "Executes individual build tickets from specification",
                   "disallowTools": ["Skill(superpowers:*)"],
-                  "model": "haiku"
+                  "modelTier": "low"
                 },
                 {
                   "id": "verify-spec-agent",
                   "type": "agent",
                   "source": "agents/verify-spec.md",
                   "description": "Verifies the specification of the individual build tasks against the specification",
-                  "model": "haiku"
+                  "modelTier": "low"
                 },
                 {
                   "id": "verify-quality-agent",
@@ -172,7 +172,7 @@
                   "source": "agents/verify-quality.md",
                   "description": "Verifies the quality of the individual build task code",
                   "disallowTools": ["TodoWrite"],
-                  "model": "haiku"
+                  "modelTier": "low"
                 }
               ]
             }
@@ -183,7 +183,7 @@
           "type": "agent",
           "source": "agents/qa.md",
           "description": "Creates build tickets from specification",
-          "model": "haiku"
+          "modelTier": "low"
         }
       ],
       "transitions": {
@@ -209,3 +209,4 @@
     }
   ]
 }
+

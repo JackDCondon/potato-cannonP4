@@ -19,9 +19,9 @@ All notable changes to the product-development workflow.
 
 ### New
 
-- **Per-agent model selection** - Configure which Claude model each agent uses for cost optimization and capability tuning
-- Use shortcuts (`haiku`, `sonnet`, `opus`) or explicit model IDs for version pinning
-- Verification agents can now use cheaper models while complex reasoning stays on more capable ones
+- **Per-agent tier routing** - Configure `modelTier` values for cost/capability intent routing
+- Use tiers (`low`, `mid`, `high`) directly or via complexity maps
+- Verification agents can now use lower tiers while complex reasoning stays on higher tiers
 
 ### Example
 
@@ -30,7 +30,7 @@ All notable changes to the product-development workflow.
   "id": "spec-verifier",
   "type": "agent",
   "source": "agents/verify-spec.md",
-  "model": "haiku"
+  "modelTier": "low"
 }
 ```
 

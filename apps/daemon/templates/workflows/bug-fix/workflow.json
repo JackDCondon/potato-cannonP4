@@ -15,7 +15,7 @@
           "type": "agent",
           "source": "agents/debug-agent.md",
           "description": "Interactively diagnoses the bug and produces resolution.md",
-          "model": "opus"
+          "modelTier": "high"
         }
       ],
       "transitions": {
@@ -52,14 +52,14 @@
               "source": "agents/builder.md",
               "description": "Implements the fix from resolution.md",
               "disallowTools": ["Skill(superpowers:*)"],
-              "model": "sonnet"
+              "modelTier": "mid"
             },
             {
               "id": "bug-fix-reviewer-agent",
               "type": "agent",
               "source": "agents/bug-fix-reviewer.md",
               "description": "Verifies fix addresses root cause from resolution.md",
-              "model": "haiku"
+              "modelTier": "low"
             }
           ]
         }
@@ -87,3 +87,4 @@
     }
   ]
 }
+
