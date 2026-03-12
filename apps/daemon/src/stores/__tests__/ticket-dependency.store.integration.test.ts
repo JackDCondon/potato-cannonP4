@@ -11,7 +11,12 @@ import {
 import { createProjectStore } from "../project.store.js";
 import { createProjectWorkflowStore } from "../project-workflow.store.js";
 import { createTicketStore } from "../ticket.store.js";
-import { getWorkflowWithFullPhases } from "../template.store.js";
+
+const dependencyPhases: TemplatePhase[] = [
+  { id: "Ideas" } as TemplatePhase,
+  { id: "Build", unblocksTier: "artifact-ready" } as TemplatePhase,
+  { id: "Done", unblocksTier: "code-ready" } as TemplatePhase,
+];
 
 describe("TicketDependencyStore (integration)", () => {
   let db: Database.Database;
@@ -58,19 +63,15 @@ describe("TicketDependencyStore (integration)", () => {
     db.prepare("DELETE FROM tickets").run();
   });
 
-  it("tracks dependency satisfaction across phase changes", async () => {
+  it("tracks dependency satisfaction across phase changes", () => {
     const ticketA = createTicket("Ticket A");
     const ticketB = createTicket("Ticket B");
 
     store.createDependency(ticketA, ticketB, "code-ready");
 
-    const template = await getWorkflowWithFullPhases("product-development");
-    assert.ok(template, "Template should exist");
-    const templatePhases = template!.phases as TemplatePhase[];
-
     const initial = store.getDependenciesWithSatisfaction(
       ticketA,
-      templatePhases,
+      dependencyPhases,
     );
     assert.strictEqual(initial.length, 1);
     assert.strictEqual(initial[0].satisfied, false);
@@ -80,7 +81,7 @@ describe("TicketDependencyStore (integration)", () => {
 
     const updated = store.getDependenciesWithSatisfaction(
       ticketA,
-      templatePhases,
+      dependencyPhases,
     );
     assert.strictEqual(updated.length, 1);
     assert.strictEqual(updated[0].satisfied, true);

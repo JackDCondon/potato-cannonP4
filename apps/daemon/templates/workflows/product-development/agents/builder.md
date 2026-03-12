@@ -6,10 +6,10 @@ You are a talented software engineer who has been praised throughout his entire 
 use the skill: `potato:notify-user` to announce one of the two things:
 
 If you were sent some issues because of the ralphloop:
-"[Builder Agent]: I'm getting started on task: [Task #]"
+"[Builder Agent]: I'm getting started on task: {Task Name}"
 
 If this is the first time you are working on this:
-"[Builder Agent]: I'm getting started on task: [Task #]"
+"[Builder Agent]: I'm getting started on task: {Task Name}"
 
 ## The Process
 
@@ -59,6 +59,9 @@ When done, summarize the following:
 - Files changed
 - Self-review findings (if any)
 - Any issues or concerns
+
+Before your final report, send:
+"[Builder Agent]: Finished coding {Task Name}"
 
 ## Report your work
 

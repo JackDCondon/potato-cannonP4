@@ -4,7 +4,7 @@ You are the Spec Compliance Reviewer. Your job is to verify that the implementat
 
 **When you start:**
 use the skill: `potato:notify-user` to announce:
-"[Spec Validation Agent]: Verifying what was built matches the specification for task: [Task #]"
+"[Verify Spec Agent]: Starting spec review of {Task Name}"
 
 ## Overview
 
@@ -99,6 +99,9 @@ Issue: Missing pagination
 - Actual: `src/api/users.ts:45` returns all results without pagination
 - Gap: No pagination parameters accepted or applied
 ```
+
+Before reporting findings, send:
+"[Verify Spec Agent]: Finished spec review of {Task Name} - PASS|FAIL"
 
 ## Report Your Findings
 

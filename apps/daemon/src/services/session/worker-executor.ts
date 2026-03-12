@@ -46,8 +46,9 @@ import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./p
 import { getTicket } from "../../stores/ticket.store.js";
 import { getProjectById } from "../../stores/project.store.js";
 import { readQuestion, clearQuestion } from "../../stores/chat.store.js";
-import { listTasks, updateTaskStatus } from "../../stores/task.store.js";
+import { getTask, listTasks, updateTaskStatus } from "../../stores/task.store.js";
 import { logToDaemon } from "./ticket-logger.js";
+import { chatService } from "../chat.service.js";
 import {
   createRalphFeedback,
   addRalphIteration,
@@ -110,6 +111,23 @@ function buildPhaseEntryTaskSummary(
       status: task.status,
     })),
   };
+}
+
+async function updateTaskStatusWithNotification(
+  projectId: string,
+  ticketId: string,
+  taskId: string,
+  status: "in_progress" | "failed" | "completed",
+): Promise<void> {
+  const taskName = getTask(taskId)?.description?.trim() || taskId;
+  updateTaskStatus(taskId, status);
+
+  if (status === "completed") {
+    await chatService.notify(
+      { projectId, ticketId },
+      `[Workflow]: Task closed: ${taskName}`,
+    );
+  }
 }
 
 /**
@@ -882,7 +900,12 @@ async function processNestedCompletion(
 
           // All workers done - mark task success
           if (taskState.currentTaskId) {
-            updateTaskStatus(taskState.currentTaskId, "completed");
+            await updateTaskStatusWithNotification(
+              projectId,
+              ticketId,
+              taskState.currentTaskId,
+              "completed",
+            );
           }
           const { nextState, result } = handleTaskWorkersComplete(taskState, true);
 
@@ -923,7 +946,12 @@ async function processNestedCompletion(
 
       // Task complete
       if (taskState.currentTaskId) {
-        updateTaskStatus(taskState.currentTaskId, "completed");
+        await updateTaskStatusWithNotification(
+          projectId,
+          ticketId,
+          taskState.currentTaskId,
+          "completed",
+        );
       }
       const { nextState, result } = handleTaskWorkersComplete(taskState, true);
 

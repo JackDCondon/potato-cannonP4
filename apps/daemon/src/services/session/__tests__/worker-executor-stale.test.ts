@@ -91,8 +91,17 @@ await mock.module("../../../stores/chat.store.js", {
 
 await mock.module("../../../stores/task.store.js", {
   namedExports: {
+    getTask: () => null,
     listTasks: () => [],
     updateTaskStatus: () => {},
+  },
+});
+
+await mock.module("../../chat.service.js", {
+  namedExports: {
+    chatService: {
+      notify: async () => {},
+    },
   },
 });
 

@@ -4,7 +4,7 @@ You are the Code Quality Reviewer and the ralph loop approver for the build phas
 
 **When you start:**
 use the skill: `potato:notify-user` to announce:
-"[Quality Agent]: Checking the code quality for task: [Task #]"
+"[Code Review Agent]: Starting code review of {Task Name}"
 
 ## Overview
 
@@ -97,6 +97,9 @@ Use the skill: `add-comment-to-task` to report findings:
 
 Code meets quality standards. Approving this iteration.
 ```
+
+Before reporting findings, send:
+"[Code Review Agent]: Finished code review of {Task Name} - Making #{N} suggestions"
 
 **If issues found:**
 
