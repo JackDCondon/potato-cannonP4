@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { Ticket } from "@potato-cannon/shared";
 import { Board } from "./Board";
+import { WorkerTreeItem } from "./WorkerTreeItem";
 
 const mockState = vi.hoisted(() => ({
   tickets: [] as Ticket[],
@@ -294,5 +295,46 @@ describe("Board dependency warning dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(mockState.updateTicketMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("WorkerTreeItem tier terminology", () => {
+  it("renders a tier badge for single-tier agent config", () => {
+    const onAgentClick = vi.fn();
+    render(
+      <WorkerTreeItem
+        node={{ id: "implementer", type: "agent", agentType: "builder-agent", modelTier: "high" }}
+        depth={0}
+        isLastChild={true}
+        onAgentClick={onAgentClick}
+      />,
+    );
+
+    expect(screen.getByText("Tier: high")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Builder Agent").closest('[role="button"]') as HTMLElement);
+    expect(onAgentClick).toHaveBeenCalledWith("builder-agent", "Builder Agent", "high");
+  });
+
+  it("renders mapped modelTier values and passes the tier label on click", () => {
+    const onAgentClick = vi.fn();
+    render(
+      <WorkerTreeItem
+        node={{
+          id: "reviewer",
+          type: "agent",
+          agentType: "verify-quality-agent",
+          modelTier: { simple: "low", standard: "mid", complex: "high" },
+        }}
+        depth={0}
+        isLastChild={true}
+        onAgentClick={onAgentClick}
+      />,
+    );
+
+    expect(screen.getByText("Tier: low/mid/high")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Verify Quality Agent").closest('[role="button"]') as HTMLElement);
+    expect(onAgentClick).toHaveBeenCalledWith("verify-quality-agent", "Verify Quality Agent", "low/mid/high");
   });
 });

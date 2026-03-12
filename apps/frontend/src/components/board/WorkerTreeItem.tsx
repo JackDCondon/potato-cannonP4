@@ -7,7 +7,18 @@ interface WorkerTreeItemProps {
   node: WorkerNode
   depth: number
   isLastChild: boolean
-  onAgentClick: (agentType: string, agentName: string, model?: string) => void
+  onAgentClick: (agentType: string, agentName: string, modelTierLabel?: string) => void
+}
+
+function toTierLabel(modelTier: WorkerNode['modelTier']): string | undefined {
+  if (!modelTier) return undefined
+  if (typeof modelTier === 'string') return modelTier
+
+  const simple = modelTier.simple ?? modelTier.standard ?? modelTier.complex
+  const standard = modelTier.standard ?? simple
+  const complex = modelTier.complex ?? standard
+  if (!simple || !standard || !complex) return undefined
+  return `${simple}/${standard}/${complex}`
 }
 
 export function WorkerTreeItem({
@@ -30,9 +41,11 @@ export function WorkerTreeItem({
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ')
 
+  const tierLabel = toTierLabel(node.modelTier)
+
   const handleClick = () => {
     if (isAgent && node.agentType) {
-      onAgentClick(node.agentType, displayName, node.model)
+      onAgentClick(node.agentType, displayName, tierLabel)
     }
   }
 
@@ -100,10 +113,10 @@ export function WorkerTreeItem({
           </span>
         )}
 
-        {/* Model badge for agents */}
-        {isAgent && node.model && (
+        {/* Model tier badge for agents */}
+        {isAgent && tierLabel && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {node.model}
+            Tier: {tierLabel}
           </Badge>
         )}
 

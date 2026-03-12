@@ -6,7 +6,7 @@ interface WorkerTreeProps {
   projectId: string
   phase: string
   workflowId?: string | null
-  onAgentClick: (agentType: string, agentName: string, model?: string) => void
+  onAgentClick: (agentType: string, agentName: string, modelTierLabel?: string) => void
 }
 
 export function WorkerTree({ projectId, phase, workflowId, onAgentClick }: WorkerTreeProps) {

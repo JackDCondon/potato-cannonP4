@@ -168,4 +168,10 @@ describe('TicketCard - Complexity Left Edge', () => {
 
     expect(card?.getAttribute('style')).toContain('border-left-color: var(--color-accent-yellow)')
   })
+
+  it('does not render legacy model terminology on the card', () => {
+    render(<TicketCard ticket={baseTicket as any} projectId="proj-1" />)
+
+    expect(screen.queryByText(/\bmodel\b/i)).toBeNull()
+  })
 })

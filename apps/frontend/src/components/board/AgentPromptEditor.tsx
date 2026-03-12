@@ -22,7 +22,7 @@ interface AgentPromptEditorProps {
   projectId: string
   agentType: string
   agentName: string
-  model?: string
+  modelTierLabel?: string
   workflowId?: string
   open: boolean
   onClose: () => void
@@ -32,7 +32,7 @@ export function AgentPromptEditor({
   projectId,
   agentType,
   agentName,
-  model,
+  modelTierLabel,
   workflowId,
   open,
   onClose
@@ -178,9 +178,9 @@ export function AgentPromptEditor({
               <h2 className="text-lg font-semibold text-text-primary">
                 {agentName}
               </h2>
-              {model && (
+              {modelTierLabel && (
                 <Badge variant="outline" className="ml-2">
-                  {model}
+                  Tier: {modelTierLabel}
                 </Badge>
               )}
               {isCustomized && (

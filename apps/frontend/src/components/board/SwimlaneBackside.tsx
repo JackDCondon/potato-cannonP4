@@ -26,11 +26,11 @@ export function SwimlaneBackside({
   const [selectedAgent, setSelectedAgent] = useState<{
     agentType: string
     agentName: string
-    model?: string
+    modelTierLabel?: string
   } | null>(null)
 
-  const handleAgentClick = useCallback((agentType: string, agentName: string, model?: string) => {
-    setSelectedAgent({ agentType, agentName, model })
+  const handleAgentClick = useCallback((agentType: string, agentName: string, modelTierLabel?: string) => {
+    setSelectedAgent({ agentType, agentName, modelTierLabel })
   }, [])
 
   const handleCloseEditor = useCallback(() => {
@@ -86,7 +86,7 @@ export function SwimlaneBackside({
           projectId={projectId}
           agentType={selectedAgent.agentType}
           agentName={selectedAgent.agentName}
-          model={selectedAgent.model}
+          modelTierLabel={selectedAgent.modelTierLabel}
           workflowId={workflowId}
           open={true}
           onClose={handleCloseEditor}
