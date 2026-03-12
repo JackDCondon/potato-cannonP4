@@ -1063,8 +1063,8 @@ export class SessionService {
     return false;
   }
 
-  async terminateTicketSession(ticketId: string): Promise<void> {
-    await this.terminateExistingSession("ticket", ticketId);
+  async terminateTicketSession(ticketId: string): Promise<boolean> {
+    return this.terminateExistingSession("ticket", ticketId);
   }
 
   /**
@@ -1142,14 +1142,14 @@ export class SessionService {
     contextType: 'brainstorm' | 'ticket',
     contextId: string,
     options: { skipDatabaseClose?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Query for active session using existing store functions
     const activeSession = contextType === 'brainstorm'
       ? getActiveSessionForBrainstorm(contextId)
       : getActiveSessionForTicket(contextId);
 
     if (!activeSession) {
-      return; // No active session to terminate
+      return false; // No active session to terminate
     }
 
     console.log(`[terminateExistingSession] Terminating existing session ${activeSession.id} for ${contextType} ${contextId}`);
@@ -1173,6 +1173,7 @@ export class SessionService {
 
     // Brief delay to allow cleanup
     await new Promise(resolve => setTimeout(resolve, 50));
+    return true;
   }
 
   async spawnForBrainstorm(

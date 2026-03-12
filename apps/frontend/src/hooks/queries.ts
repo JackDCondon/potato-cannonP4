@@ -1,6 +1,6 @@
 // src/hooks/queries.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/api/client'
+import { api, type WorkflowTemplateStatusResponse } from '@/api/client'
 import type {
   Ticket,
   Template,
@@ -480,16 +480,6 @@ export function useTicketConversations(projectId: string | null, ticketId: strin
   })
 }
 
-// ============ Project Template Status ============
-
-export function useProjectTemplateStatus(projectId: string | null) {
-  return useQuery({
-    queryKey: ['templateStatus', projectId],
-    queryFn: () => api.getProjectTemplateStatus(projectId!),
-    enabled: !!projectId
-  })
-}
-
 // ============ Phase Workers ============
 
 export function usePhaseWorkers(projectId: string | null, phase: string | null, workflowId?: string | null) {
@@ -528,11 +518,13 @@ export function useDeleteAgentOverride() {
   return useMutation({
     mutationFn: ({
       projectId,
-      agentType
+      agentType,
+      workflowId,
     }: {
       projectId: string
       agentType: string
-    }) => api.deleteAgentOverride(projectId, agentType),
+      workflowId?: string | null
+    }) => api.deleteAgentOverride(projectId, agentType, workflowId),
     onSuccess: (_, { projectId }) => {
       // Invalidate all phase workers queries for this project to refresh hasOverride
       queryClient.invalidateQueries({ queryKey: ['phaseWorkers', projectId] })
@@ -563,10 +555,60 @@ export function useCreateWorkflow() {
 export function useDeleteWorkflow() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ projectId, workflowId }: { projectId: string; workflowId: string }) =>
-      api.deleteWorkflow(projectId, workflowId),
+    mutationFn: ({
+      projectId,
+      workflowId,
+      force,
+      confirmation,
+    }: {
+      projectId: string
+      workflowId: string
+      force?: boolean
+      confirmation?: string
+    }) => api.deleteWorkflow(projectId, workflowId, { force, confirmation }),
     onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: ['workflows', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['tickets', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['ticket', projectId] })
     }
+  })
+}
+
+export function useWorkflowTemplateStatus(projectId: string | null, workflowId: string | null) {
+  return useQuery({
+    queryKey: ['workflow-template-status', projectId, workflowId],
+    queryFn: () =>
+      api.getWorkflowTemplateStatus(projectId!, workflowId!) as Promise<WorkflowTemplateStatusResponse>,
+    enabled: !!projectId && !!workflowId,
+  })
+}
+
+export function useWorkflowTemplateChangelog(projectId: string | null, workflowId: string | null) {
+  return useQuery({
+    queryKey: ['workflow-template-changelog', projectId, workflowId],
+    queryFn: () => api.getWorkflowTemplateChangelog(projectId!, workflowId!),
+    enabled: !!projectId && !!workflowId,
+  })
+}
+
+export function useUpgradeWorkflowTemplate() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      workflowId,
+      force,
+    }: {
+      projectId: string
+      workflowId: string
+      force?: boolean
+    }) => api.upgradeWorkflowTemplate(projectId, workflowId, force),
+    onSuccess: (_, { projectId, workflowId }) => {
+      queryClient.invalidateQueries({ queryKey: ['workflow-template-status', projectId, workflowId] })
+      queryClient.invalidateQueries({ queryKey: ['workflow-template-changelog', projectId, workflowId] })
+      queryClient.invalidateQueries({ queryKey: ['workflows', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['tickets', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
   })
 }

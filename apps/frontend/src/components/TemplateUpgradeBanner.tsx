@@ -5,10 +5,11 @@ import { ChangelogModal } from "./ChangelogModal";
 
 interface Props {
   projectId: string;
+  workflowId?: string | null;
 }
 
-export function TemplateUpgradeBanner({ projectId }: Props) {
-  const { data: status, isLoading } = useTemplateStatus(projectId);
+export function TemplateUpgradeBanner({ projectId, workflowId }: Props) {
+  const { data: status, isLoading } = useTemplateStatus(projectId, workflowId ?? undefined);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
   const upgradeMutation = useUpgradeTemplate();
@@ -28,9 +29,14 @@ export function TemplateUpgradeBanner({ projectId }: Props) {
     if (isMajor) {
       setShowConfirmModal(true);
     } else {
-      upgradeMutation.mutate({ projectId, force: false });
+      if (!workflowId) return;
+      upgradeMutation.mutate({ projectId, workflowId, force: false });
     }
   };
+
+  if (!workflowId) {
+    return null;
+  }
 
   return (
     <>
@@ -73,6 +79,7 @@ export function TemplateUpgradeBanner({ projectId }: Props) {
       {showChangelog && (
         <ChangelogModal
           projectId={projectId}
+          workflowId={workflowId}
           onClose={() => setShowChangelog(false)}
         />
       )}
@@ -84,7 +91,7 @@ export function TemplateUpgradeBanner({ projectId }: Props) {
           newVersion={status.available!}
           onConfirm={() => {
             upgradeMutation.mutate(
-              { projectId, force: true },
+              { projectId, workflowId, force: true },
               {
                 onSuccess: () => setShowConfirmModal(false),
               }

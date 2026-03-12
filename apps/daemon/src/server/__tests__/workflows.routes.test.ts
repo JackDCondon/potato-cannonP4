@@ -11,6 +11,11 @@ import {
   type ProjectWorkflowStore,
 } from "../../stores/project-workflow.store.js";
 import { createProjectStore } from "../../stores/project.store.js";
+import { createTicketStore } from "../../stores/ticket.store.js";
+import {
+  getWorkflowDeleteConfirmation,
+  getWorkflowTemplateStatus,
+} from "../routes/workflows.routes.js";
 
 describe("workflow routes — store-level integration", () => {
   let db: Database.Database;
@@ -48,6 +53,7 @@ describe("workflow routes — store-level integration", () => {
   });
 
   beforeEach(() => {
+    db.prepare("DELETE FROM tickets").run();
     db.prepare("DELETE FROM project_workflows").run();
   });
 
@@ -247,6 +253,59 @@ describe("workflow routes — store-level integration", () => {
       const check = store.getWorkflow(workflow.id);
       assert.ok(check, "last workflow was NOT deleted");
       assert.strictEqual(check.id, workflow.id);
+    });
+  });
+
+  describe("DELETE preview and confirmation contract", () => {
+    it("returns ticket count and sample IDs for workflow delete preview", () => {
+      const workflow = store.createWorkflow({
+        projectId,
+        name: "Delete Preview",
+        templateName: "t-preview",
+      });
+      const ticketStore = createTicketStore(db);
+      ticketStore.createTicket(projectId, {
+        title: "Ticket A",
+        workflowId: workflow.id,
+      });
+      const ticketB = ticketStore.createTicket(projectId, {
+        title: "Ticket B",
+        workflowId: workflow.id,
+      });
+
+      const preview = store.getWorkflowDeletePreview(projectId, workflow.id);
+      assert.strictEqual(preview.ticketCount, 2);
+      assert.ok(preview.sampleTicketIds.includes(ticketB.id));
+    });
+
+    it("uses a stable destructive confirmation token format", () => {
+      assert.strictEqual(
+        getWorkflowDeleteConfirmation("wf-123"),
+        "delete-workflow:wf-123"
+      );
+    });
+
+    it("returns workflow-scoped template status based on workflow metadata and catalog", async () => {
+      const workflow = store.createWorkflow({
+        projectId,
+        name: "Status Workflow",
+        templateName: "status-template",
+        templateVersion: "1.5.0",
+      });
+
+      const status = await getWorkflowTemplateStatus(projectId, workflow.id, {
+        store,
+        getWorkflowTemplateFn: async () => null,
+        getTemplateFn: async () =>
+          ({
+            name: "status-template",
+            version: "2.0.0",
+            phases: [],
+          } as never),
+      });
+      assert.strictEqual(status.current, "1.5.0");
+      assert.strictEqual(status.available, "2.0.0");
+      assert.strictEqual(status.upgradeType, "major");
     });
   });
 });

@@ -34,6 +34,7 @@ import {
   getProjects,
 } from "./routes/index.js";
 import { registerSystemRoutes } from "./routes/system.routes.js";
+import { createTicketThreadCommandHandler } from "./chat-thread-commands.js";
 import {
   buildContinuityDecisionLogFields,
   isStalePendingTicketInput,
@@ -50,7 +51,10 @@ import {
 } from "../stores/config.store.js";
 import { initDatabase, closeDatabase } from "../stores/db.js";
 import { updateProjectTemplate } from "../stores/project.store.js";
-import { installDefaultTemplates } from "../stores/template.store.js";
+import {
+  installDefaultTemplates,
+  getTemplateWithFullPhasesForContext,
+} from "../stores/template.store.js";
 import {
   hasProjectTemplate,
   copyTemplateToProject,
@@ -68,8 +72,10 @@ import {
   createStoredSession,
   getActiveSessionForTicket,
   getActiveSessionForBrainstorm,
+  getSessionsByTicket,
   endAllOpenSessions,
 } from "../stores/session.store.js";
+import { getMessages } from "../stores/conversation.store.js";
 import {
   scanPendingResponses,
   clearQuestion,
@@ -651,6 +657,35 @@ export async function main(): Promise<void> {
   console.log(`Loaded ${projects.size} registered project(s)`);
 
   sessionService = new SessionService(eventBus as EventEmitter);
+  const handleTicketThreadCommand = createTicketThreadCommandHandler({
+    getTicket,
+    isTerminalPhase: (phase) => isTerminalPhase(phase as any),
+    getTemplateWithFullPhasesForContext,
+    getPhaseConfig: (projectId, phaseName, workflowId) =>
+      getPhaseConfig(projectId, phaseName, workflowId ?? undefined),
+    readQuestion,
+    getActiveSessionForTicket,
+    getSessionsByTicket,
+    getMessages,
+    getWorkerState,
+    isActiveWorkerStateRoot: (state) =>
+      isActiveWorkerStateRoot(state as any),
+    sendReply: async (providerId, context, message) => {
+      const provider = chatService.getProvider(providerId);
+      if (!provider) return;
+      const thread = await provider.getThread(context);
+      if (!thread) return;
+      await provider.send(thread, { text: message });
+    },
+    invalidateTicketLifecycle: async (projectId, ticketId, options) =>
+      sessionService!.invalidateTicketLifecycle(projectId, ticketId, options),
+    spawnForTicket: async (projectId, ticketId, phase, projectPath) =>
+      sessionService!.spawnForTicket(projectId, ticketId, phase, projectPath),
+    getProjects,
+    emitEvent: (event, payload) => {
+      eventBus.emit(event, payload);
+    },
+  });
 
   // Session events - sessions are tracked in the sessions table by SessionService
   eventBus.on(
@@ -893,7 +928,7 @@ export async function main(): Promise<void> {
   registerRalphRoutes(app);
   registerArtifactChatRoutes(app, sessionService, getProjects);
   registerFolderRoutes(app);
-  registerWorkflowRoutes(app);
+  registerWorkflowRoutes(app, sessionService);
   registerDependencyRoutes(app);
   registerChatTelemetryRoutes(app);
   registerSystemRoutes(app);
@@ -935,6 +970,15 @@ export async function main(): Promise<void> {
 
       telegramProvider.setResponseCallback(
         async (providerId, context, answer) => {
+          const commandHandled = await handleTicketThreadCommand(
+            providerId,
+            context,
+            answer,
+          );
+          if (commandHandled) {
+            return true;
+          }
+
           const handled = await chatService.handleResponse(
             providerId,
             context,
@@ -1064,6 +1108,15 @@ export async function main(): Promise<void> {
 
       slackProvider.setResponseCallback(
         async (providerId, context, answer) => {
+          const commandHandled = await handleTicketThreadCommand(
+            providerId,
+            context,
+            answer,
+          );
+          if (commandHandled) {
+            return true;
+          }
+
           const handled = await chatService.handleResponse(
             providerId,
             context,

@@ -33,6 +33,15 @@ export function getProjectTemplateDir(projectId: string): string {
 }
 
 /**
+ * Get the workflow-local template directory for a specific workflow.
+ * Contains workflow-scoped template files and overrides.
+ */
+export function getWorkflowTemplateDir(projectId: string, workflowId: string): string {
+  const safeWorkflowId = workflowId.replace(/\//g, "__");
+  return path.join(getProjectDataDir(projectId), "workflows", safeWorkflowId, "template");
+}
+
+/**
  * Get the files directory for a specific project.
  * Contains: tickets/, brainstorms/
  */

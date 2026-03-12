@@ -1,30 +1,50 @@
 import type { Phase } from '../../types/template.types.js';
-import { getProjectById, updateProjectTemplate } from '../../stores/project.store.js';
-import { getTemplateWithFullPhasesForProject, getWorkflowWithFullPhases } from '../../stores/template.store.js';
-import { hasProjectTemplate, copyTemplateToProject } from '../../stores/project-template.store.js';
+import { getProjectById } from '../../stores/project.store.js';
+import {
+  getWorkflowWithFullPhases,
+  WorkflowContextError,
+} from '../../stores/template.store.js';
 import { projectWorkflowGet } from '../../stores/project-workflow.store.js';
 
 /**
  * Resolve the full-phases template to use for a given project + optional workflowId.
  *
- * - If workflowId is provided and found: use the global catalog template for that workflow's
- *   templateName (non-default workflows read directly from the global catalog).
- * - Otherwise: use the per-project template copy (default behaviour, supports overrides).
+ * Strictly requires a valid workflowId for this project.
  */
 async function resolveTemplate(
   projectId: string,
   workflowId?: string,
 ): Promise<{ phases: Phase[] } | null> {
-  if (workflowId) {
-    const workflow = projectWorkflowGet(workflowId);
-    if (workflow) {
-      // Non-default workflow: read directly from global catalog
-      return getWorkflowWithFullPhases(workflow.templateName);
-    }
-    // workflowId not found — fall through to default project template
+  if (!workflowId) {
+    throw new WorkflowContextError(
+      "WORKFLOW_ID_REQUIRED",
+      `workflowId is required for project ${projectId}`,
+    );
   }
 
-  return getTemplateWithFullPhasesForProject(projectId);
+  const workflow = projectWorkflowGet(workflowId);
+  if (!workflow) {
+    throw new WorkflowContextError(
+      "WORKFLOW_NOT_FOUND",
+      `Workflow ${workflowId} was not found`,
+    );
+  }
+
+  if (workflow.projectId !== projectId) {
+    throw new WorkflowContextError(
+      "WORKFLOW_SCOPE_MISMATCH",
+      `Workflow ${workflowId} does not belong to project ${projectId}`,
+    );
+  }
+
+  const template = await getWorkflowWithFullPhases(workflow.templateName);
+  if (!template) {
+    throw new WorkflowContextError(
+      "WORKFLOW_TEMPLATE_NOT_FOUND",
+      `Template ${workflow.templateName} for workflow ${workflowId} was not found`,
+    );
+  }
+  return template;
 }
 
 /**
@@ -49,23 +69,8 @@ export async function getPhaseConfig(
   workflowId?: string,
 ): Promise<Phase | null> {
   const project = await getProjectById(projectId);
-
-  // For the default (no workflowId) path, auto-migrate: copy template if project lacks local copy.
-  // Non-default workflows use the global catalog directly so no migration is needed.
-  if (!workflowId || !projectWorkflowGet(workflowId)) {
-    if (!project?.template) {
-      throw new Error(`Project ${projectId} has no template assigned`);
-    }
-    if (!(await hasProjectTemplate(projectId))) {
-      try {
-        const copied = await copyTemplateToProject(projectId, project.template.name);
-        await updateProjectTemplate(projectId, project.template.name, copied.version);
-        console.log(`[phase-config] Migrated template for project ${projectId}`);
-      } catch (error) {
-        console.error(`[phase-config] Failed to migrate template: ${(error as Error).message}`);
-        // Continue with global template as fallback
-      }
-    }
+  if (!project) {
+    throw new Error(`Project ${projectId} not found`);
   }
 
   const template = await resolveTemplate(projectId, workflowId);
@@ -100,20 +105,20 @@ export async function resolveTargetPhase(
   workflowId?: string,
 ): Promise<string> {
   const project = await getProjectById(projectId);
-  if (!project?.template) {
-    return requestedPhase; // No template, can't resolve
+  if (!project) {
+    throw new Error(`Project ${projectId} not found`);
   }
 
   const template = await resolveTemplate(projectId, workflowId);
   if (!template) {
-    return requestedPhase;
+    throw new Error(`Template not found for project ${projectId}`);
   }
 
   const phases = template.phases;
   const startIndex = phases.findIndex(p => p.name === requestedPhase || p.id === requestedPhase);
 
   if (startIndex === -1) {
-    return requestedPhase; // Phase not found, return as-is
+    throw new Error(`Phase ${requestedPhase} not found in workflow template`);
   }
 
   // Find first enabled phase starting from requestedPhase

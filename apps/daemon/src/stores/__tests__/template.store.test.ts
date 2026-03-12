@@ -469,6 +469,8 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
   const childTemplateName = `test-child-${suffix}`;
   const parentTemplateName = `test-parent-${suffix}`;
   const noParentTemplateName = `test-noparent-${suffix}`;
+  const workflowChildTemplateName = `test-workflow-child-${suffix}`;
+  const workflowScopedId = `wf-scope-${suffix}`;
   const agentPath = "agents/spec.md";
   const agentContent = "# Parent Agent Prompt";
 
@@ -544,6 +546,26 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
       JSON.stringify(noParentWorkflow, null, 2)
     );
     // no agent file here either
+
+    // Set up workflow-scoped child template with parent fallback
+    const workflowChildDir = path.join(templatesDir, workflowChildTemplateName, "agents");
+    fs.mkdirSync(workflowChildDir, { recursive: true });
+    const workflowChildTemplate = {
+      name: workflowChildTemplateName,
+      version: "1.0.0",
+      description: "Workflow scoped child template",
+      parentTemplate: parentTemplateName,
+      phases: [],
+    };
+    fs.writeFileSync(
+      path.join(templatesDir, workflowChildTemplateName, "workflow.json"),
+      JSON.stringify(workflowChildTemplate, null, 2)
+    );
+
+    db.prepare(
+      `INSERT INTO project_workflows (id, project_id, name, template_name, template_version, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, datetime('now'), datetime('now'))`
+    ).run(workflowScopedId, projectWithParent.id, "Workflow Scoped", workflowChildTemplateName, "1.0.0");
   });
 
   after(async () => {
@@ -551,11 +573,13 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
     if (db) {
       db.prepare("DELETE FROM projects WHERE id = ?").run(projectWithParent.id);
       db.prepare("DELETE FROM projects WHERE id = ?").run(projectNoParent.id);
+      db.prepare("DELETE FROM project_workflows WHERE id = ?").run(workflowScopedId);
     }
     // Clean up template directories
     await fsPromises.rm(path.join(templatesDir, childTemplateName), { recursive: true, force: true }).catch(() => {});
     await fsPromises.rm(path.join(templatesDir, parentTemplateName), { recursive: true, force: true }).catch(() => {});
     await fsPromises.rm(path.join(templatesDir, noParentTemplateName), { recursive: true, force: true }).catch(() => {});
+    await fsPromises.rm(path.join(templatesDir, workflowChildTemplateName), { recursive: true, force: true }).catch(() => {});
   });
 
   it("parent template hit — level-4 getAgentPrompt succeeds and returns the prompt", async () => {
@@ -609,6 +633,17 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
         return true;
       }
     );
+  });
+
+  it("workflow-scoped template chain resolves parentTemplate for selected workflow", async () => {
+    const { getAgentPromptForProject } = await import("../template.store.js");
+
+    const result = await getAgentPromptForProject(
+      projectWithParent.id,
+      agentPath,
+      workflowScopedId
+    );
+    assert.strictEqual(result, agentContent);
   });
 });
 

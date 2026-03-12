@@ -10,6 +10,7 @@ import {
   hasProjectTemplate,
   getProjectTemplate,
   getProjectAgentPrompt,
+  hasWorkflowTemplate,
   hasProjectAgentOverride,
   getProjectAgentOverride,
 } from "./project-template.store.js";
@@ -21,6 +22,22 @@ import type {
 } from "../types/template.types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export type WorkflowContextErrorCode =
+  | "WORKFLOW_ID_REQUIRED"
+  | "WORKFLOW_NOT_FOUND"
+  | "WORKFLOW_SCOPE_MISMATCH"
+  | "WORKFLOW_TEMPLATE_NOT_FOUND";
+
+export class WorkflowContextError extends Error {
+  code: WorkflowContextErrorCode;
+
+  constructor(code: WorkflowContextErrorCode, message: string) {
+    super(message);
+    this.name = "WorkflowContextError";
+    this.code = code;
+  }
+}
 
 // ============================================================================
 // Types
@@ -755,26 +772,44 @@ export async function getTemplateWithFullPhasesForContext(
   projectId: string,
   workflowId?: string | null,
 ): Promise<WorkflowTemplate | null> {
-  if (workflowId) {
-    const workflow = projectWorkflowGet(workflowId);
-    if (workflow?.projectId === projectId) {
-      const project = await getProjectById(projectId);
-      if (project?.template?.name === workflow.templateName) {
-        return getTemplateWithFullPhasesForProject(projectId);
-      }
-      return getWorkflowWithFullPhases(workflow.templateName);
-    }
+  if (!workflowId) {
+    throw new WorkflowContextError(
+      "WORKFLOW_ID_REQUIRED",
+      `workflowId is required for project ${projectId}`,
+    );
   }
 
-  return getTemplateWithFullPhasesForProject(projectId);
+  const workflow = projectWorkflowGet(workflowId);
+  if (!workflow) {
+    throw new WorkflowContextError(
+      "WORKFLOW_NOT_FOUND",
+      `Workflow ${workflowId} was not found`,
+    );
+  }
+  if (workflow.projectId !== projectId) {
+    throw new WorkflowContextError(
+      "WORKFLOW_SCOPE_MISMATCH",
+      `Workflow ${workflowId} does not belong to project ${projectId}`,
+    );
+  }
+
+  const template = await getWorkflowWithFullPhases(workflow.templateName);
+  if (!template) {
+    throw new WorkflowContextError(
+      "WORKFLOW_TEMPLATE_NOT_FOUND",
+      `Template ${workflow.templateName} for workflow ${workflowId} was not found`,
+    );
+  }
+
+  return template;
 }
 
 /**
  * Get agent prompt for a project, preferring override > local > global > parentTemplate.
  *
  * Lookup order:
- * 1. Project override: agents/{agentType}.override.md
- * 2. Project standard: agents/{agentType}.md
+ * 1. Workflow/project override: agents/{agentType}.override.md
+ * 2. Workflow/project standard: agents/{agentType}.md
  * 3. Global catalog: templates/{templateName}/agents/{agentType}.md
  * 4. Parent template: templates/{workflow.parentTemplate}/agents/{agentType}.md
  */
@@ -792,28 +827,42 @@ export async function getAgentPromptForProject(
   let templateNameForLookup = project.template.name;
   if (workflowId) {
     const workflow = projectWorkflowGet(workflowId);
-    if (workflow?.projectId === projectId) {
-      templateNameForLookup = workflow.templateName;
+    if (!workflow) {
+      throw new WorkflowContextError(
+        "WORKFLOW_NOT_FOUND",
+        `Workflow ${workflowId} was not found`,
+      );
     }
+    if (workflow.projectId !== projectId) {
+      throw new WorkflowContextError(
+        "WORKFLOW_SCOPE_MISMATCH",
+        `Workflow ${workflowId} does not belong to project ${projectId}`,
+      );
+    }
+    templateNameForLookup = workflow.templateName;
   }
 
   const includeOverride = options?.includeOverride !== false;
 
-  // 1. Try project override first
+  // 1. Try scoped override first
   if (includeOverride) {
-    if (await hasProjectAgentOverride(projectId, agentPath)) {
+    if (await hasProjectAgentOverride(projectId, agentPath, workflowId)) {
       try {
-        return await getProjectAgentOverride(projectId, agentPath);
+        return await getProjectAgentOverride(projectId, agentPath, workflowId);
       } catch {
         // Fall through to standard lookup (handles race condition)
       }
     }
   }
 
-  // 2. Try project standard agent, but only for the project's active template.
-  // Non-default workflow templates should resolve against their own template chain.
-  const canUseProjectLocalTemplate = templateNameForLookup === project.template.name;
-  if (canUseProjectLocalTemplate && await hasProjectTemplate(projectId)) {
+  // 2. Try local template copy (workflow scope first, then project scope).
+  if (workflowId && await hasWorkflowTemplate(projectId, workflowId)) {
+    try {
+      return await getProjectAgentPrompt(projectId, agentPath, workflowId);
+    } catch {
+      // Fall through to global
+    }
+  } else if (templateNameForLookup === project.template.name && await hasProjectTemplate(projectId)) {
     try {
       return await getProjectAgentPrompt(projectId, agentPath);
     } catch {
@@ -829,12 +878,12 @@ export async function getAgentPromptForProject(
   }
 
   // 4. Fall back to parent template defined in workflow.parentTemplate
-  const workflow = await getWorkflow(templateNameForLookup);
-  if (workflow?.parentTemplate) {
+  const workflowTemplate = await getWorkflow(templateNameForLookup);
+  if (workflowTemplate?.parentTemplate) {
     try {
-      return await getAgentPrompt(workflow.parentTemplate, agentPath);
+      return await getAgentPrompt(workflowTemplate.parentTemplate, agentPath);
     } catch {
-      throw new Error(`Agent ${agentPath} not found in template chain for ${templateNameForLookup} or its parent ${workflow.parentTemplate}`);
+      throw new Error(`Agent ${agentPath} not found in template chain for ${templateNameForLookup} or its parent ${workflowTemplate.parentTemplate}`);
     }
   }
 

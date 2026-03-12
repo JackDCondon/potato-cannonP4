@@ -504,7 +504,12 @@ export class ChatService {
   async cleanupTicketLifecycle(
     projectId: string,
     ticketId: string,
-  ): Promise<{ queueCancelled: number; routesRemoved: number }> {
+  ): Promise<{
+    queueCancelled: number;
+    routesRemoved: number;
+    threadDeletesAttempted: number;
+    threadDeleteErrors: string[];
+  }> {
     const db = getDatabase();
     const queueStore = createChatQueueStore(db);
     const channelStore = createProviderChannelStore(db);
@@ -516,9 +521,12 @@ export class ChatService {
     );
 
     const channels = channelStore.listChannels({ ticketId });
+    const threadDeleteErrors: string[] = [];
+    let threadDeletesAttempted = 0;
     for (const channel of channels) {
       const provider = this.getProvider(channel.providerId);
       if (provider?.deleteThread) {
+        threadDeletesAttempted++;
         try {
           await provider.deleteThread({
             providerId: channel.providerId,
@@ -526,8 +534,12 @@ export class ChatService {
             metadata: channel.metadata,
           });
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          threadDeleteErrors.push(
+            `${channel.providerId}/${channel.channelId}: ${message}`
+          );
           console.warn(
-            `[ChatService] Failed provider thread cleanup for ${channel.providerId}/${channel.channelId}: ${error instanceof Error ? error.message : String(error)}`,
+            `[ChatService] Failed provider thread cleanup for ${channel.providerId}/${channel.channelId}: ${message}`,
           );
         }
       }
@@ -539,7 +551,12 @@ export class ChatService {
       await this.getOrchestrator().tickQueue();
     }
 
-    return { queueCancelled, routesRemoved };
+    return {
+      queueCancelled,
+      routesRemoved,
+      threadDeletesAttempted,
+      threadDeleteErrors,
+    };
   }
 
   async recoverQueuedChat(): Promise<void> {

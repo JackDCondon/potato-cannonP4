@@ -129,4 +129,18 @@ describe("template workflow context resolution", () => {
     const prompt = await getAgentPromptForProject(projectId, "agents/builder.md", workflowId);
     assert.strictEqual(prompt, "# Builder prompt from parent template");
   });
+
+  it("throws explicit error when workflowId is missing for context resolution", async () => {
+    await assert.rejects(
+      () => getTemplateWithFullPhasesForContext(projectId),
+      /WORKFLOW_ID_REQUIRED|workflowId is required/,
+    );
+  });
+
+  it("throws explicit error when workflowId does not exist", async () => {
+    await assert.rejects(
+      () => getTemplateWithFullPhasesForContext(projectId, "wf-missing"),
+      /WORKFLOW_NOT_FOUND|was not found/,
+    );
+  });
 });

@@ -102,6 +102,62 @@ describe("TicketStore", () => {
       assert.ok(ticket.history[0].at);
       assert.strictEqual(ticket.history[0].endedAt, undefined);
     });
+
+    it("should attach the project default workflow when workflowId is omitted", () => {
+      const defaultWorkflow = db
+        .prepare("SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1")
+        .get(projectId) as { id: string } | undefined;
+      assert.ok(defaultWorkflow, "expected project default workflow to exist");
+
+      const ticket = ticketStore.createTicket(projectId, { title: "Default workflow ticket" });
+      assert.strictEqual(ticket.workflowId, defaultWorkflow.id);
+    });
+
+    it("should reject explicit workflowId that belongs to another project", () => {
+      const otherProjectStore = createProjectStore(db);
+      const otherProject = otherProjectStore.createProject({
+        displayName: "Other Project",
+        path: "/other/project",
+        templateName: "product-development",
+      });
+      const foreignWorkflow = db
+        .prepare("SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1")
+        .get(otherProject.id) as { id: string } | undefined;
+      assert.ok(foreignWorkflow, "expected other project default workflow");
+
+      assert.throws(
+        () => {
+          ticketStore.createTicket(projectId, {
+            title: "Wrong workflow",
+            workflowId: foreignWorkflow.id,
+          });
+        },
+        /does not belong to project/
+      );
+    });
+
+    it("should fail before insert when no default workflow can be resolved", () => {
+      const legacyProjectId = "legacy-no-workflow";
+      db.prepare(
+        "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES (?, ?, ?, ?, ?)"
+      ).run(legacyProjectId, "legacy-no-workflow", "Legacy No Workflow", "/legacy/no-workflow", new Date().toISOString());
+
+      const before = db
+        .prepare("SELECT COUNT(*) AS count FROM tickets WHERE project_id = ?")
+        .get(legacyProjectId) as { count: number };
+
+      assert.throws(
+        () => {
+          ticketStore.createTicket(legacyProjectId, { title: "Should fail" });
+        },
+        /No default workflow found/
+      );
+
+      const after = db
+        .prepare("SELECT COUNT(*) AS count FROM tickets WHERE project_id = ?")
+        .get(legacyProjectId) as { count: number };
+      assert.strictEqual(after.count, before.count, "ticket insert should not occur on failure");
+    });
   });
 
   describe("getTicket", () => {

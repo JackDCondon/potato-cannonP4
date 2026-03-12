@@ -204,37 +204,22 @@ describe("TicketDependencyStore", () => {
     });
   });
 
-  describe("createDependency - null workflow rejected", () => {
-    it("should reject dependency when ticket has no workflow_id", () => {
-      // Insert a ticket directly with null workflow_id
-      const ticketId = "NULL-WF-1";
-      db.prepare(
-        `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived)
-         VALUES (?, ?, ?, '', 'Ideas', ?, ?, 0)`
-      ).run(ticketId, projectId, "No Workflow Ticket", new Date().toISOString(), new Date().toISOString());
-
-      const ticketB = createTicket("Normal Ticket");
-
+  describe("createDependency - strict workflow invariant", () => {
+    it("should reject direct ticket inserts without workflow_id at the DB layer", () => {
       assert.throws(
-        () => store.createDependency(ticketId, ticketB, "artifact-ready"),
-        (err: Error) => err.message.includes("no workflow_id"),
-        "Should reject ticket with null workflow_id"
-      );
-    });
-
-    it("should reject dependency when dependsOn ticket has no workflow_id", () => {
-      const ticketA = createTicket("Normal Ticket");
-
-      const ticketId = "NULL-WF-2";
-      db.prepare(
-        `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived)
-         VALUES (?, ?, ?, '', 'Ideas', ?, ?, 0)`
-      ).run(ticketId, projectId, "No Workflow Ticket", new Date().toISOString(), new Date().toISOString());
-
-      assert.throws(
-        () => store.createDependency(ticketA, ticketId, "artifact-ready"),
-        (err: Error) => err.message.includes("no workflow_id"),
-        "Should reject dependsOn ticket with null workflow_id"
+        () => {
+          db.prepare(
+            `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived)
+             VALUES (?, ?, ?, '', 'Ideas', ?, ?, 0)`
+          ).run(
+            "NULL-WF-1",
+            projectId,
+            "No Workflow Ticket",
+            new Date().toISOString(),
+            new Date().toISOString()
+          );
+        },
+        /NOT NULL constraint failed: tickets.workflow_id/
       );
     });
   });

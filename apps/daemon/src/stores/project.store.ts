@@ -1,7 +1,9 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "crypto";
+import fs from "fs/promises";
 import { getDatabase } from "./db.js";
 import type { Project } from "../types/config.types.js";
+import { getProjectDataDir, getProjectFilesDir } from "../config/paths.js";
 
 export interface CreateProjectInput {
   displayName: string;
@@ -128,27 +130,45 @@ export class ProjectStore {
     const id = randomUUID();
     const slug = generateSlug(input.displayName, this.getExistingSlugs());
     const registeredAt = new Date().toISOString();
+    const workflowId = randomUUID();
+    const workflowTemplateName = input.templateName ?? "product-development";
 
-    this.db.prepare(`
-      INSERT INTO projects (
-        id, slug, display_name, path, registered_at,
-        icon, color, template_name, template_version,
-        p4_stream, agent_workspace_root, helix_swarm_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      slug,
-      input.displayName,
-      input.path,
-      registeredAt,
-      input.icon || null,
-      input.color || null,
-      input.templateName || null,
-      input.templateVersion || null,
-      input.p4Stream || null,
-      input.agentWorkspaceRoot || null,
-      input.helixSwarmUrl || null
-    );
+    const create = this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO projects (
+          id, slug, display_name, path, registered_at,
+          icon, color, template_name, template_version,
+          p4_stream, agent_workspace_root, helix_swarm_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        slug,
+        input.displayName,
+        input.path,
+        registeredAt,
+        input.icon || null,
+        input.color || null,
+        input.templateName || null,
+        input.templateVersion || null,
+        input.p4Stream || null,
+        input.agentWorkspaceRoot || null,
+        input.helixSwarmUrl || null
+      );
+
+      this.db.prepare(`
+        INSERT INTO project_workflows (
+          id, project_id, name, template_name, is_default, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 1, ?, ?)
+      `).run(
+        workflowId,
+        id,
+        "Default",
+        workflowTemplateName,
+        registeredAt,
+        registeredAt,
+      );
+    });
+    create();
 
     return this.getProjectById(id)!;
   }
@@ -338,4 +358,14 @@ export function updateProjectTemplate(
  */
 export function deleteProject(id: string): boolean {
   return new ProjectStore(getDatabase()).deleteProject(id);
+}
+
+/**
+ * Delete project-scoped filesystem data used for templates/workspaces.
+ */
+export async function deleteProjectScopedData(projectId: string): Promise<void> {
+  const projectDataDir = getProjectDataDir(projectId);
+  const projectFilesDir = getProjectFilesDir(projectId);
+  await fs.rm(projectDataDir, { recursive: true, force: true });
+  await fs.rm(projectFilesDir, { recursive: true, force: true });
 }

@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => ({
       ],
     },
   })),
+  bannerProps: [] as Array<{ projectId: string; workflowId?: string | null }>,
 }));
 
 vi.mock("@dnd-kit/core", () => ({
@@ -90,7 +91,10 @@ vi.mock("@/stores/appStore", () => ({
 }));
 
 vi.mock("@/components/TemplateUpgradeBanner", () => ({
-  TemplateUpgradeBanner: () => null,
+  TemplateUpgradeBanner: (props: { projectId: string; workflowId?: string | null }) => {
+    mockState.bannerProps.push(props);
+    return null;
+  },
 }));
 
 vi.mock("./ArchivedSwimlane", () => ({
@@ -151,6 +155,7 @@ describe("Board - Add Ticket button placement", () => {
     mockState.updateTicketMutate.mockReset();
     mockState.onDragEnd = null;
     mockState.useTemplate.mockClear();
+    mockState.bannerProps = [];
   });
 
   it("does not render an Add Ticket button in the board header", () => {
@@ -201,6 +206,18 @@ describe("Board - Add Ticket button placement", () => {
   it("uses the selected workflow template when workflowId is provided", () => {
     render(<Board projectId="test-project" workflowId="workflow-bug" />);
     expect(mockState.useTemplate).toHaveBeenCalledWith("bug-fix");
+    expect(mockState.bannerProps[0]).toEqual({
+      projectId: "test-project",
+      workflowId: "workflow-bug",
+    });
+  });
+
+  it("passes default workflow id to upgrade banner when workflowId is not provided", () => {
+    render(<Board projectId="test-project" />);
+    expect(mockState.bannerProps[0]).toEqual({
+      projectId: "test-project",
+      workflowId: "workflow-default",
+    });
   });
 });
 

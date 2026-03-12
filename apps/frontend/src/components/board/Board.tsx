@@ -345,7 +345,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
       </div>
 
       {/* Template Upgrade Banner */}
-      <TemplateUpgradeBanner projectId={projectId} />
+      <TemplateUpgradeBanner projectId={projectId} workflowId={activeWorkflow?.id ?? null} />
 
       {/* Divider */}
       <div className="border-b border-border" />

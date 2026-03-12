@@ -82,7 +82,7 @@ export function AgentPromptEditor({
     // Fetch override (may 404 if none exists)
     setIsLoadingOverride(true)
     api
-      .getAgentOverride(projectId, agentType)
+      .getAgentOverride(projectId, agentType, workflowId)
       .then((res) => {
         setOverrideContent(res.content)
         setOriginalOverride(res.content)
@@ -150,7 +150,7 @@ export function AgentPromptEditor({
   // Reset to default (delete override)
   const handleReset = useCallback(async () => {
     try {
-      await deleteOverride.mutateAsync({ projectId, agentType })
+      await deleteOverride.mutateAsync({ projectId, agentType, workflowId })
       setOverrideContent('')
       setOriginalOverride(null)
       setShowResetDialog(false)
@@ -159,7 +159,7 @@ export function AgentPromptEditor({
       console.error('Failed to reset override:', err)
       toast.error('Failed to reset override')
     }
-  }, [projectId, agentType, deleteOverride])
+  }, [projectId, agentType, workflowId, deleteOverride])
 
   if (!open) return null
 

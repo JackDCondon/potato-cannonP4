@@ -10,7 +10,6 @@ import {
   updateTicket,
   setCurrentHistoryMetadata,
   isTerminalPhase,
-  deleteTicket,
   archiveTicket,
   restoreTicket,
   listTicketImages,
@@ -27,7 +26,7 @@ import {
   ticketDependencyGetWithSatisfaction,
 } from "../../stores/ticket-dependency.store.js";
 import { projectWorkflowGet } from "../../stores/project-workflow.store.js";
-import { getTemplateWithFullPhasesForProject, getWorkflowWithFullPhases } from "../../stores/template.store.js";
+import { getWorkflowWithFullPhases, WorkflowContextError } from "../../stores/template.store.js";
 import { DEFAULT_PHASES } from "../../types/index.js";
 import {
   readQuestion,
@@ -37,6 +36,7 @@ import {
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
 import { getMessages } from "../../stores/conversation.store.js";
 import type { SessionService } from "../../services/session/index.js";
+import { deleteTicketWithLifecycle } from "../../services/ticket-deletion.service.js";
 import { chatService } from "../../services/chat.service.js";
 import {
   TicketLifecycleConflictError,
@@ -57,24 +57,81 @@ async function resolveTemplatePhases(
   workflowId: string | null | undefined,
   cache?: Map<string, TemplatePhase[] | null>,
 ): Promise<TemplatePhase[] | null> {
+  if (!workflowId) {
+    throw new WorkflowContextError(
+      "WORKFLOW_ID_REQUIRED",
+      `workflowId is required for project ${projectId}`,
+    );
+  }
+
   const cacheKey = workflowId ?? "__project_default__";
   if (cache?.has(cacheKey)) {
     return cache.get(cacheKey) ?? null;
   }
 
-  if (workflowId) {
-    const workflow = projectWorkflowGet(workflowId);
-    if (workflow) {
-      const template = await getWorkflowWithFullPhases(workflow.templateName);
-      const phases = (template?.phases as TemplatePhase[] | undefined) ?? null;
-      cache?.set(cacheKey, phases);
-      return phases;
-    }
+  const workflow = projectWorkflowGet(workflowId);
+  if (!workflow) {
+    throw new WorkflowContextError(
+      "WORKFLOW_NOT_FOUND",
+      `Workflow ${workflowId} was not found`,
+    );
   }
-  const template = await getTemplateWithFullPhasesForProject(projectId);
+  if (workflow.projectId !== projectId) {
+    throw new WorkflowContextError(
+      "WORKFLOW_SCOPE_MISMATCH",
+      `Workflow ${workflowId} does not belong to project ${projectId}`,
+    );
+  }
+  const template = await getWorkflowWithFullPhases(workflow.templateName);
+  if (!template) {
+    throw new WorkflowContextError(
+      "WORKFLOW_TEMPLATE_NOT_FOUND",
+      `Template ${workflow.templateName} for workflow ${workflowId} was not found`,
+    );
+  }
   const phases = (template?.phases as TemplatePhase[] | undefined) ?? null;
   cache?.set(cacheKey, phases);
   return phases;
+}
+
+function mapWorkflowContextError(error: unknown): {
+  status: 400 | 404 | 409;
+  body: { code: string; error: string; message: string; retryable: false };
+} | null {
+  const isStructuredWorkflowError =
+    error instanceof WorkflowContextError ||
+    (!!error &&
+      typeof error === "object" &&
+      typeof (error as { code?: unknown }).code === "string");
+  const message = (error as Error | undefined)?.message ?? "";
+  const looksLikeWorkflowContextFailure =
+    typeof message === "string" && /workflow/i.test(message);
+
+  if (!isStructuredWorkflowError && !looksLikeWorkflowContextFailure) {
+    return null;
+  }
+
+  const code =
+    (error as { code?: string }).code ??
+    "WORKFLOW_CONTEXT_ERROR";
+
+  const statusByCode: Record<string, 400 | 404 | 409> = {
+    WORKFLOW_ID_REQUIRED: 400,
+    WORKFLOW_NOT_FOUND: 404,
+    WORKFLOW_SCOPE_MISMATCH: 409,
+    WORKFLOW_TEMPLATE_NOT_FOUND: 404,
+    WORKFLOW_CONTEXT_ERROR: 409,
+  };
+
+  return {
+    status: statusByCode[code] ?? 400,
+    body: {
+      code,
+      error: message,
+      message,
+      retryable: false,
+    },
+  };
 }
 
 export function mapLifecycleConflict(error: unknown): {
@@ -213,6 +270,11 @@ export function registerTicketRoutes(
 
       res.json(tickets);
     } catch (error) {
+      const workflowError = mapWorkflowContextError(error);
+      if (workflowError) {
+        res.status(workflowError.status).json(workflowError.body);
+        return;
+      }
       res.status(500).json({ error: (error as Error).message });
     }
   });
@@ -255,6 +317,11 @@ export function registerTicketRoutes(
         : [];
       res.json(ticket);
     } catch (error) {
+      const workflowError = mapWorkflowContextError(error);
+      if (workflowError) {
+        res.status(workflowError.status).json(workflowError.body);
+        return;
+      }
       res.status(404).json({ error: "Ticket not found" });
     }
   });
@@ -396,6 +463,11 @@ export function registerTicketRoutes(
 
       res.json(ticket);
     } catch (error) {
+      const workflowError = mapWorkflowContextError(error);
+      if (workflowError) {
+        res.status(workflowError.status).json(workflowError.body);
+        return;
+      }
       res.status(500).json({ error: (error as Error).message });
     }
   });
@@ -407,12 +479,16 @@ export function registerTicketRoutes(
       try {
         const projectId = decodeURIComponent(req.params.project);
         const ticketId = req.params.id;
-        await sessionService.terminateTicketSession(ticketId);
-        await chatService.cleanupTicketLifecycle(projectId, ticketId);
-        await deleteTicket(projectId, ticketId);
-        eventBus.emit("ticket:deleted", { projectId, ticketId });
-        res.json({ ok: true });
+        const cleanup = await deleteTicketWithLifecycle(projectId, ticketId, {
+          sessionService,
+        });
+        res.json({ ok: true, cleanup });
       } catch (error) {
+        const workflowError = mapWorkflowContextError(error);
+        if (workflowError) {
+          res.status(workflowError.status).json(workflowError.body);
+          return;
+        }
         res.status(500).json({ error: (error as Error).message });
       }
     },

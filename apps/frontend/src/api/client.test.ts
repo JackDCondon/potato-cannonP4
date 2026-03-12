@@ -34,6 +34,22 @@ describe("api client workflow context", () => {
     );
   });
 
+  it("passes workflowId when loading agent override", async () => {
+    await api.getAgentOverride("project-1", "builder", "workflow-abc");
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/api/projects/project-1/agents/builder/override?workflowId=workflow-abc",
+    );
+  });
+
+  it("passes workflowId when deleting agent override", async () => {
+    await api.deleteAgentOverride("project-1", "builder", "workflow-abc");
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain(
+      "/api/projects/project-1/agents/builder/override?workflowId=workflow-abc",
+    );
+  });
+
   it("passes question identity and generation when sending ticket input", async () => {
     await api.sendTicketInput("project-1", "POT-1", "yes", {
       questionId: "q-123",

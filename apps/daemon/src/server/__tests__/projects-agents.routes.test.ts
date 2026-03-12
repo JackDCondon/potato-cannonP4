@@ -67,6 +67,65 @@ describe("projects agent override routes", () => {
     });
   });
 
+  describe("workflow-scoped override isolation", () => {
+    const workflowA = "workflow-a";
+    const workflowB = "workflow-b";
+    const workflowATemplateDir = path.join(
+      potatoDir,
+      "project-data",
+      projectId,
+      "workflows",
+      workflowA,
+      "template",
+      "agents"
+    );
+    const workflowBTemplateDir = path.join(
+      potatoDir,
+      "project-data",
+      projectId,
+      "workflows",
+      workflowB,
+      "template",
+      "agents"
+    );
+
+    beforeEach(async () => {
+      await fs.mkdir(workflowATemplateDir, { recursive: true });
+      await fs.mkdir(workflowBTemplateDir, { recursive: true });
+      await fs.writeFile(path.join(workflowATemplateDir, "refinement.md"), "# A default");
+      await fs.writeFile(path.join(workflowBTemplateDir, "refinement.md"), "# B default");
+      await fs.rm(path.join(workflowATemplateDir, "refinement.override.md"), { force: true });
+      await fs.rm(path.join(workflowBTemplateDir, "refinement.override.md"), { force: true });
+    });
+
+    it("workflow A override does not leak to workflow B", async () => {
+      const {
+        saveProjectAgentOverride,
+        hasProjectAgentOverride,
+        getProjectAgentOverride
+      } = await import("../../stores/project-template.store.js");
+
+      await saveProjectAgentOverride(projectId, "agents/refinement.md", "# A override", workflowA);
+
+      assert.strictEqual(
+        await hasProjectAgentOverride(projectId, "agents/refinement.md", workflowA),
+        true
+      );
+      assert.strictEqual(
+        await hasProjectAgentOverride(projectId, "agents/refinement.md", workflowB),
+        false
+      );
+
+      const contentA = await getProjectAgentOverride(projectId, "agents/refinement.md", workflowA);
+      assert.strictEqual(contentA, "# A override");
+
+      await assert.rejects(
+        async () => getProjectAgentOverride(projectId, "agents/refinement.md", workflowB),
+        /ENOENT|no such file/i
+      );
+    });
+  });
+
   describe("isValidAgentType validation", () => {
     it("should accept valid agent types", () => {
       const validTypes = ["refinement", "brainstorm", "builder-agent", "my_agent123"];

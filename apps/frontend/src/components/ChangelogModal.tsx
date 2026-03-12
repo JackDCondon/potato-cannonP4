@@ -5,13 +5,14 @@ import { api } from "@/api/client";
 
 export interface ChangelogModalProps {
   projectId: string;
+  workflowId: string;
   onClose: () => void;
 }
 
-export function ChangelogModal({ projectId, onClose }: ChangelogModalProps) {
+export function ChangelogModal({ projectId, workflowId, onClose }: ChangelogModalProps) {
   const { data, isLoading } = useQuery({
-    queryKey: ["template-changelog", projectId],
-    queryFn: () => api.getTemplateChangelog(projectId),
+    queryKey: ["template-changelog", projectId, workflowId],
+    queryFn: () => api.getWorkflowTemplateChangelog(projectId, workflowId),
   });
 
   const renderedChangelog = useMemo(() => {

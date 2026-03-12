@@ -11,6 +11,7 @@ import {
   ProjectWorkflowStore,
 } from "../project-workflow.store.js";
 import { createProjectStore } from "../project.store.js";
+import { getWorkflowTemplateDir } from "../../config/paths.js";
 
 // UUID v4 regex pattern
 const UUID_REGEX =
@@ -70,6 +71,7 @@ describe("ProjectWorkflowStore", () => {
       assert.strictEqual(workflow.projectId, projectId);
       assert.strictEqual(workflow.name, "Main Board");
       assert.strictEqual(workflow.templateName, "product-development");
+      assert.strictEqual(workflow.templateVersion, "1.0.0");
       assert.strictEqual(workflow.isDefault, false);
       assert.ok(workflow.createdAt);
       assert.ok(workflow.updatedAt);
@@ -220,6 +222,21 @@ describe("ProjectWorkflowStore", () => {
       });
       assert.ok(updated);
       assert.strictEqual(updated.templateName, "custom-template");
+      assert.strictEqual(updated.templateVersion, "1.0.0");
+    });
+
+    it("should update explicit templateVersion", () => {
+      const created = store.createWorkflow({
+        projectId,
+        name: "Board",
+        templateName: "product-development",
+      });
+
+      const updated = store.updateWorkflow(created.id, {
+        templateVersion: "4.3.2",
+      });
+      assert.ok(updated);
+      assert.strictEqual(updated.templateVersion, "4.3.2");
     });
 
     it("should update isDefault", () => {
@@ -405,6 +422,19 @@ describe("ProjectWorkflowStore", () => {
 
       const workflow = store.getDefaultWorkflow(projectId);
       assert.strictEqual(workflow, null);
+    });
+  });
+
+  describe("workflow template storage path", () => {
+    it("returns deterministic and unique workflow template directories", () => {
+      const pathA = getWorkflowTemplateDir("project/1", "workflow/a");
+      const pathAAgain = getWorkflowTemplateDir("project/1", "workflow/a");
+      const pathB = getWorkflowTemplateDir("project/1", "workflow/b");
+
+      assert.strictEqual(pathA, pathAAgain);
+      assert.notStrictEqual(pathA, pathB);
+      assert.ok(pathA.includes("project-data"));
+      assert.ok(pathA.endsWith(path.join("workflows", "workflow__a", "template")));
     });
   });
 });

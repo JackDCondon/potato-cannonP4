@@ -31,7 +31,7 @@ import { TERMINAL_PHASES } from "../types/ticket.types.js";
 
 export interface ListTicketsOptions {
   phase?: TicketPhase | null;
-  archived?: boolean;
+  archived?: boolean | null;
   workflowId?: string | null;
   includeDependencies?: boolean;
 }
@@ -57,7 +57,7 @@ interface TicketRow {
   archived_at: string | null;
   conversation_id: string | null;
   worker_state: string | null;
-  workflow_id: string | null;
+  workflow_id: string;
 }
 
 interface HistoryRow {
@@ -166,6 +166,17 @@ export class TicketStore {
     return rows.map((row) => this.rowToTicket(row));
   }
 
+  listTicketsForWorkflow(projectId: string, workflowId: string): Ticket[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tickets
+         WHERE project_id = ? AND workflow_id = ?
+         ORDER BY updated_at DESC`
+      )
+      .all(projectId, workflowId) as TicketRow[];
+    return rows.map((row) => this.rowToTicket(row));
+  }
+
   getTicket(projectId: string, ticketId: string): Ticket | null {
     const row = this.db
       .prepare("SELECT * FROM tickets WHERE id = ? AND project_id = ?")
@@ -190,12 +201,36 @@ export class TicketStore {
     const initialPhase = "Ideas";
     const description = input.description || "";
 
-    // Resolve workflowId: use provided value or fall back to project's default workflow
-    const resolvedWorkflowId: string | null = input.workflowId ??
-      (this.db
-        .prepare("SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1")
-        .get(projectId) as { id: string } | undefined)?.id ??
-      null;
+    // Resolve workflowId:
+    // 1) explicit workflowId if it belongs to this project
+    // 2) project's default workflow
+    // 3) throw explicit error before any DB writes
+    let resolvedWorkflowId: string;
+    if (input.workflowId) {
+      const ownedWorkflow = this.db
+        .prepare(
+          "SELECT id FROM project_workflows WHERE id = ? AND project_id = ? LIMIT 1"
+        )
+        .get(input.workflowId, projectId) as { id: string } | undefined;
+      if (!ownedWorkflow) {
+        throw new Error(
+          `Workflow ${input.workflowId} does not belong to project ${projectId}`
+        );
+      }
+      resolvedWorkflowId = ownedWorkflow.id;
+    } else {
+      const defaultWorkflow = this.db
+        .prepare(
+          "SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1"
+        )
+        .get(projectId) as { id: string } | undefined;
+      if (!defaultWorkflow) {
+        throw new Error(
+          `No default workflow found for project ${projectId}. Create or repair workflows before creating tickets.`
+        );
+      }
+      resolvedWorkflowId = defaultWorkflow.id;
+    }
 
     // Create associated conversation
     const conversation = this.conversationStore.createConversation(projectId);
@@ -498,6 +533,14 @@ export function listTickets(
 ): Ticket[] {
   const store = new TicketStore(getDatabase());
   return store.listTickets(projectId, options);
+}
+
+export function listTicketsForWorkflow(
+  projectId: string,
+  workflowId: string
+): Ticket[] {
+  const store = new TicketStore(getDatabase());
+  return store.listTicketsForWorkflow(projectId, workflowId);
 }
 
 export function getTicket(

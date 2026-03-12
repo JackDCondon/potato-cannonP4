@@ -2,6 +2,108 @@ import Database from 'better-sqlite3';
 import { runMigrations, runBackfillV13 } from '../migrations.js';
 import assert from 'node:assert/strict';
 import { describe, it, before } from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { getWorkflowTemplateDir } from '../../config/paths.js';
+
+function rebuildTicketsAsLegacyV17(db: Database.Database): void {
+  const foreignKeysEnabled = db.pragma('foreign_keys', { simple: true }) as number;
+  if (foreignKeysEnabled === 1) {
+    db.pragma('foreign_keys = OFF');
+  }
+
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE tickets_legacy_v17 (
+        id                   TEXT PRIMARY KEY,
+        project_id           TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title                TEXT NOT NULL,
+        phase                TEXT NOT NULL,
+        created_at           TEXT NOT NULL,
+        updated_at           TEXT NOT NULL,
+        archived             INTEGER DEFAULT 0,
+        archived_at          TEXT,
+        conversation_id      TEXT REFERENCES conversations(id),
+        description          TEXT DEFAULT '',
+        worker_state         TEXT,
+        complexity           TEXT NOT NULL DEFAULT 'standard' CHECK(complexity IN ('simple', 'standard', 'complex')),
+        workflow_id          TEXT REFERENCES project_workflows(id) ON DELETE SET NULL,
+        execution_generation INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    db.exec(`
+      INSERT INTO tickets_legacy_v17 (
+        id, project_id, title, phase, created_at, updated_at, archived, archived_at,
+        conversation_id, description, worker_state, complexity, workflow_id, execution_generation
+      )
+      SELECT
+        id, project_id, title, phase, created_at, updated_at, archived, archived_at,
+        conversation_id, description, worker_state, complexity, workflow_id, execution_generation
+      FROM tickets;
+    `);
+    db.exec(`
+      DROP TABLE tickets;
+      ALTER TABLE tickets_legacy_v17 RENAME TO tickets;
+      CREATE INDEX IF NOT EXISTS idx_tickets_project ON tickets(project_id);
+      CREATE INDEX IF NOT EXISTS idx_tickets_phase ON tickets(project_id, phase);
+      CREATE INDEX IF NOT EXISTS idx_tickets_archived ON tickets(project_id, archived);
+    `);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    if (foreignKeysEnabled === 1) {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+}
+
+function rebuildWorkflowsAsLegacyV18(db: Database.Database): void {
+  const foreignKeysEnabled = db.pragma('foreign_keys', { simple: true }) as number;
+  if (foreignKeysEnabled === 1) {
+    db.pragma('foreign_keys = OFF');
+  }
+
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE project_workflows_legacy_v18 (
+        id            TEXT PRIMARY KEY,
+        project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        template_name TEXT NOT NULL,
+        is_default    INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL,
+        updated_at    TEXT NOT NULL,
+        UNIQUE(project_id, name)
+      );
+    `);
+    db.exec(`
+      INSERT INTO project_workflows_legacy_v18 (
+        id, project_id, name, template_name, is_default, created_at, updated_at
+      )
+      SELECT
+        id, project_id, name, template_name, is_default, created_at, updated_at
+      FROM project_workflows;
+    `);
+    db.exec(`
+      DROP TABLE project_workflows;
+      ALTER TABLE project_workflows_legacy_v18 RENAME TO project_workflows;
+      CREATE INDEX IF NOT EXISTS idx_project_workflows_project ON project_workflows(project_id);
+      CREATE INDEX IF NOT EXISTS idx_project_workflows_default ON project_workflows(project_id, is_default) WHERE is_default = 1;
+    `);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    if (foreignKeysEnabled === 1) {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+}
 
 describe('V13 migration — project_workflows table + workflow_id on tickets', () => {
   let db: Database.Database;
@@ -66,25 +168,194 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.equal(ticket.workflow_id, 'wf1');
   });
 
-  it('workflow_id on tickets is nullable (existing tickets are not broken)', () => {
+  it('workflow_id on tickets is required and linked to a project workflow', () => {
     db.exec(
       "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-legacy','pl','Legacy','/legacy','2026-01-01')"
+    );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-legacy','proj-legacy','Default','product-development',1,'2026-01-01','2026-01-01')"
     );
     db.exec(
       "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-legacy', 1)"
     );
     db.exec(
-      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at) VALUES ('t-legacy','proj-legacy','Old Ticket','Backlog','2026-01-01','2026-01-01')"
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-legacy','proj-legacy','Old Ticket','Backlog','2026-01-01','2026-01-01','wf-legacy')"
     );
     const ticket = db
       .prepare("SELECT workflow_id FROM tickets WHERE id = 't-legacy'")
-      .get() as { workflow_id: string | null };
-    assert.equal(ticket.workflow_id, null, 'workflow_id should be null for pre-V13 tickets');
+      .get() as { workflow_id: string };
+    assert.equal(ticket.workflow_id, 'wf-legacy');
   });
 
-  it('schema version is 17', () => {
+  it('schema version is 19', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 17);
+    assert.equal(version, 19);
+  });
+});
+
+describe('V19 migration - workflow template version metadata', () => {
+  it('adds template_version to project_workflows and sets schema version to 19', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    rebuildWorkflowsAsLegacyV18(db);
+    db.pragma('user_version = 18');
+
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(project_workflows)') as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    assert.ok(names.has('template_version'));
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 19);
+  });
+
+  it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    rebuildWorkflowsAsLegacyV18(db);
+
+    db.exec(`
+      INSERT INTO templates (id, name, version, description, is_default, created_at, updated_at) VALUES
+      ('tpl-a', 'product-development', '3.2.1', 'A', 1, '2026-03-12', '2026-03-12'),
+      ('tpl-b', 'other-template', '5.4.3', 'B', 0, '2026-03-12', '2026-03-12');
+    `);
+    db.exec(`
+      INSERT INTO projects (id, slug, display_name, path, registered_at, template_name, template_version) VALUES
+      ('proj-v19', 'proj-v19', 'Project V19', '/tmp/proj-v19', '2026-03-12', 'product-development', '2.1.0');
+    `);
+    db.exec(`
+      INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES
+      ('wf-local', 'proj-v19', 'Local', 'product-development', 1, '2026-03-12', '2026-03-12'),
+      ('wf-project', 'proj-v19', 'ProjectFallback', 'product-development', 0, '2026-03-12', '2026-03-12'),
+      ('wf-catalog', 'proj-v19', 'CatalogFallback', 'other-template', 0, '2026-03-12', '2026-03-12');
+    `);
+
+    const workflowTemplateDir = getWorkflowTemplateDir('proj-v19', 'wf-local');
+    fs.mkdirSync(workflowTemplateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(workflowTemplateDir, 'workflow.json'),
+      JSON.stringify({ name: 'product-development', version: '9.9.9' }),
+      'utf-8'
+    );
+
+    db.pragma('user_version = 18');
+    runMigrations(db);
+
+    const local = db
+      .prepare("SELECT template_version FROM project_workflows WHERE id = 'wf-local'")
+      .get() as { template_version: string };
+    const projectFallback = db
+      .prepare("SELECT template_version FROM project_workflows WHERE id = 'wf-project'")
+      .get() as { template_version: string };
+    const catalogFallback = db
+      .prepare("SELECT template_version FROM project_workflows WHERE id = 'wf-catalog'")
+      .get() as { template_version: string };
+
+    assert.equal(local.template_version, '9.9.9');
+    assert.equal(projectFallback.template_version, '2.1.0');
+    assert.equal(catalogFallback.template_version, '5.4.3');
+
+    fs.rmSync(workflowTemplateDir, { recursive: true, force: true });
+  });
+});
+
+describe('V18 migration - strict workflow identity', () => {
+  it('hard-deletes tickets with NULL workflow_id when migrating from v17', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    rebuildTicketsAsLegacyV17(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v18-del','pv18del','V18 Delete','/v18del','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v18-del', 1)"
+    );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v18-del','proj-v18-del','Default','product-development',1,'2026-03-11','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v18-keep','proj-v18-del','Keep','Backlog','2026-03-11','2026-03-11','wf-v18-del')"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v18-drop','proj-v18-del','Drop','Backlog','2026-03-11','2026-03-11',NULL)"
+    );
+
+    db.pragma('user_version = 17');
+    runMigrations(db);
+
+    const ticketIds = db
+      .prepare("SELECT id FROM tickets WHERE project_id = 'proj-v18-del' ORDER BY id")
+      .all() as Array<{ id: string }>;
+    assert.deepEqual(ticketIds.map((row) => row.id), ['t-v18-keep']);
+  });
+
+  it('enforces tickets.workflow_id as NOT NULL after v18 migration', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.pragma('user_version = 17');
+    runMigrations(db);
+
+    const cols = db.pragma('table_info(tickets)') as Array<{ name: string; notnull: number }>;
+    const workflowCol = cols.find((col) => col.name === 'workflow_id');
+    assert.ok(workflowCol, 'tickets.workflow_id should exist');
+    assert.equal(workflowCol.notnull, 1, 'tickets.workflow_id should be NOT NULL');
+  });
+
+  it('uses ON DELETE RESTRICT for tickets.workflow_id foreign key after v18 migration', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v18-fk','pv18fk','V18 FK','/v18fk','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v18-fk', 1)"
+    );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v18-fk','proj-v18-fk','Default','product-development',1,'2026-03-11','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v18-fk','proj-v18-fk','FK Ticket','Backlog','2026-03-11','2026-03-11','wf-v18-fk')"
+    );
+
+    db.pragma('user_version = 17');
+    runMigrations(db);
+
+    assert.throws(
+      () => {
+        db.exec("DELETE FROM project_workflows WHERE id = 'wf-v18-fk'");
+      },
+      /FOREIGN KEY constraint failed/
+    );
+  });
+
+  it('is idempotent when run repeatedly after v18 migration', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v18-idem','pv18idem','V18 Idem','/v18idem','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v18-idem', 1)"
+    );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v18-idem','proj-v18-idem','Default','product-development',1,'2026-03-11','2026-03-11')"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v18-idem','proj-v18-idem','Idempotent','Backlog','2026-03-11','2026-03-11','wf-v18-idem')"
+    );
+
+    db.pragma('user_version = 17');
+    runMigrations(db);
+    runMigrations(db);
+
+    const count = db
+      .prepare("SELECT COUNT(*) as count FROM tickets WHERE project_id = 'proj-v18-idem'")
+      .get() as { count: number };
+    assert.equal(count.count, 1, 'ticket rows should remain stable across repeated migrations');
   });
 });
 
@@ -133,10 +404,13 @@ describe('V16 migration - execution generation schema support', () => {
       "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v16','pv16','V16 Project','/v16','2026-03-11')"
     );
     db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v16','proj-v16','Default','product-development',1,'2026-03-11','2026-03-11')"
+    );
+    db.exec(
       "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v16', 1)"
     );
     db.exec(
-      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at) VALUES ('t-v16','proj-v16','Ticket V16','Ideas','2026-03-11','2026-03-11')"
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v16','proj-v16','Ticket V16','Ideas','2026-03-11','2026-03-11','wf-v16')"
     );
 
     db.exec(
@@ -171,10 +445,13 @@ describe('V16 migration - execution generation schema support', () => {
       "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v16-legacy','pv16l','V16 Legacy','/v16l','2026-03-11')"
     );
     db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v16-legacy','proj-v16-legacy','Default','product-development',1,'2026-03-11','2026-03-11')"
+    );
+    db.exec(
       "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v16-legacy', 1)"
     );
     db.exec(
-      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at) VALUES ('t-v16-legacy','proj-v16-legacy','Legacy Ticket','Ideas','2026-03-11','2026-03-11')"
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v16-legacy','proj-v16-legacy','Legacy Ticket','Ideas','2026-03-11','2026-03-11','wf-v16-legacy')"
     );
 
     db.exec(
@@ -197,6 +474,7 @@ describe('V13 backfill — runBackfillV13', () => {
   it('backfills default workflow for a project with template_name and backfills ticket workflow_id', () => {
     const db = new Database(':memory:');
     runMigrations(db);
+    rebuildTicketsAsLegacyV17(db);
 
     // Insert a project with a template_name
     db.prepare(
@@ -317,6 +595,7 @@ describe('V13 backfill — runBackfillV13', () => {
   it('uses pre-existing is_default=1 workflow (non-Default name) for backfill, does not create extra row', () => {
     const db = new Database(':memory:');
     runMigrations(db);
+    rebuildTicketsAsLegacyV17(db);
 
     db.prepare(
       `INSERT INTO projects (id, slug, display_name, path, registered_at, template_name)

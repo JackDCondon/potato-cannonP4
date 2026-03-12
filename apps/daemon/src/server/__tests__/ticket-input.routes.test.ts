@@ -8,6 +8,16 @@ let reconcileResult: { accepted: boolean; stale: boolean; found: boolean } = {
   stale: false,
   found: true,
 };
+let phaseConfigError: Error | null = null;
+
+class MockWorkflowContextError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "WorkflowContextError";
+    this.code = code;
+  }
+}
 
 mock.module("../../stores/ticket.store.js", {
   namedExports: {
@@ -63,6 +73,7 @@ mock.module("../../stores/template.store.js", {
   namedExports: {
     getTemplateWithFullPhasesForProject: async () => null,
     getWorkflowWithFullPhases: async () => null,
+    WorkflowContextError: MockWorkflowContextError,
   },
 });
 
@@ -92,7 +103,12 @@ mock.module("../../stores/conversation.store.js", {
 mock.module("../../services/session/phase-config.js", {
   namedExports: {
     resolveTargetPhase: async (_p: string, phase: string) => phase,
-    getPhaseConfig: async () => ({ workers: [{ id: "w1" }] }),
+    getPhaseConfig: async () => {
+      if (phaseConfigError) {
+        throw phaseConfigError;
+      }
+      return { workers: [{ id: "w1" }] };
+    },
   },
 });
 
@@ -150,6 +166,7 @@ describe("ticket input route queue reconciliation", () => {
     pendingQuestion = null;
     writeResponseCalls = [];
     reconcileResult = { accepted: true, stale: false, found: true };
+    phaseConfigError = null;
   });
 
   it("accepts web answer that resolves queued question without writing stale pending response", async () => {
@@ -268,4 +285,5 @@ describe("ticket input route queue reconciliation", () => {
       },
     ]);
   });
+
 });

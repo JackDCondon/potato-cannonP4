@@ -11,28 +11,39 @@ import {
 } from '@/components/ui/select'
 import { SettingsSection } from './SettingsSection'
 import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useTemplates } from '@/hooks/queries'
+import { api, type WorkflowDeletePreviewResponse } from '@/api/client'
+import { DeleteWorkflowDialog } from './DeleteWorkflowDialog'
+import { WorkflowTemplateUpgradePanel } from './WorkflowTemplateUpgradePanel'
 import type { Project, ProjectWorkflow } from '@potato-cannon/shared'
 
 interface WorkflowRowProps {
+  projectId: string
   workflow: ProjectWorkflow
   isOnlyWorkflow: boolean
   onDelete: (workflowId: string) => void
   isDeleting: boolean
 }
 
-function WorkflowRow({ workflow, isOnlyWorkflow, onDelete, isDeleting }: WorkflowRowProps) {
+function WorkflowRow({ projectId, workflow, isOnlyWorkflow, onDelete, isDeleting }: WorkflowRowProps) {
   const deleteDisabled = workflow.isDefault || isOnlyWorkflow || isDeleting
 
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-sm text-text-primary truncate">{workflow.name}</span>
-        {workflow.isDefault && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-xs text-accent">
-            <Star className="h-3 w-3" />
-            default
-          </span>
-        )}
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm text-text-primary truncate">{workflow.name}</span>
+          {workflow.isDefault && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent/20 px-2 py-0.5 text-xs text-accent">
+              <Star className="h-3 w-3" />
+              default
+            </span>
+          )}
+        </div>
+        <WorkflowTemplateUpgradePanel
+          projectId={projectId}
+          workflowId={workflow.id}
+          workflowName={workflow.name}
+        />
       </div>
       <Button
         variant="ghost"
@@ -125,15 +136,55 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
   const { data: templates } = useTemplates()
   const createWorkflow = useCreateWorkflow()
   const deleteWorkflow = useDeleteWorkflow()
+  const [pendingDelete, setPendingDelete] = useState<ProjectWorkflow | null>(null)
+  const [deletePreview, setDeletePreview] = useState<WorkflowDeletePreviewResponse | null>(null)
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
 
   function handleAdd(name: string, templateName: string, onSuccess: () => void) {
     createWorkflow.mutate({ projectId: project.id, name, templateName }, { onSuccess })
   }
 
-  function handleDelete(workflowId: string) {
+  async function handleDelete(workflow: ProjectWorkflow) {
+    setIsPreviewLoading(true)
+    try {
+      const preview = await api.getWorkflowDeletePreview(project.id, workflow.id)
+      if (preview.ticketCount === 0) {
+        deleteWorkflow.mutate(
+          { projectId: project.id, workflowId: workflow.id },
+          { onError: (err) => console.error('delete workflow failed', err) },
+        )
+        return
+      }
+      setPendingDelete(workflow)
+      setDeletePreview(preview)
+    } catch (err) {
+      console.error('failed to load workflow delete preview', err)
+    } finally {
+      setIsPreviewLoading(false)
+    }
+  }
+
+  function handleCancelDeleteDialog() {
+    setPendingDelete(null)
+    setDeletePreview(null)
+  }
+
+  function handleConfirmDelete(confirmation: string) {
+    if (!pendingDelete || !deletePreview) return
     deleteWorkflow.mutate(
-      { projectId: project.id, workflowId },
-      { onError: (err) => console.error('delete workflow failed', err) },
+      {
+        projectId: project.id,
+        workflowId: pendingDelete.id,
+        force: true,
+        confirmation,
+      },
+      {
+        onSuccess: () => {
+          setPendingDelete(null)
+          setDeletePreview(null)
+        },
+        onError: (err) => console.error('delete workflow failed', err),
+      },
     )
   }
 
@@ -148,10 +199,16 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
             {workflows.map(wf => (
               <WorkflowRow
                 key={wf.id}
+                projectId={project.id}
                 workflow={wf}
                 isOnlyWorkflow={workflows.length === 1}
-                onDelete={handleDelete}
-                isDeleting={deleteWorkflow.isPending}
+                onDelete={(workflowId) => {
+                  const workflow = workflows.find((item) => item.id === workflowId)
+                  if (workflow) {
+                    void handleDelete(workflow)
+                  }
+                }}
+                isDeleting={deleteWorkflow.isPending || isPreviewLoading}
               />
             ))}
           </div>
@@ -166,6 +223,14 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
           error={createWorkflow.error}
         />
       </div>
+      <DeleteWorkflowDialog
+        open={!!pendingDelete}
+        workflowName={pendingDelete?.name ?? ''}
+        preview={deletePreview}
+        isDeleting={deleteWorkflow.isPending}
+        onCancel={handleCancelDeleteDialog}
+        onConfirm={handleConfirmDelete}
+      />
     </SettingsSection>
   )
 }

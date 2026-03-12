@@ -9,7 +9,16 @@ import {
   updateProject,
   updateProjectTemplate,
   deleteProject,
+  deleteProjectScopedData,
 } from "../../stores/project.store.js";
+import {
+  projectWorkflowGetDefault,
+  projectWorkflowGet,
+  projectWorkflowList,
+  projectWorkflowUpdate,
+  projectWorkflowDeleteForProject,
+  projectWorkflowEnsureDefault,
+} from "../../stores/project-workflow.store.js";
 import {
   getTemplate,
   getDefaultTemplate,
@@ -20,6 +29,9 @@ import {
 } from "../../stores/template.store.js";
 import {
   copyTemplateToProject,
+  copyTemplateToWorkflow,
+  getWorkflowChangelog,
+  getWorkflowTemplate,
   getProjectTemplate,
   hasProjectTemplate,
   hasProjectAgentOverride,
@@ -29,11 +41,11 @@ import {
 } from "../../stores/project-template.store.js";
 import { listTickets, getTicket, updateTicket } from "../../stores/ticket.store.js";
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
+import { deleteTicketWithLifecycle } from "../../services/ticket-deletion.service.js";
 import {
   resolveTargetPhase,
   getPhaseConfig,
 } from "../../services/session/phase-config.js";
-import { clearWorkerState } from "../../services/session/worker-state.js";
 import { getUpgradeType } from "../../utils/semver.js";
 import type { Project } from "../../types/config.types.js";
 import type { TicketPhase } from "../../types/ticket.types.js";
@@ -42,6 +54,91 @@ import type { Worker } from "../../types/template.types.js";
 import type { Complexity } from "@potato-cannon/shared";
 
 let projects: Map<string, Project> = new Map();
+
+function normalizeTemplateVersion(
+  value: string | number | null | undefined,
+): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return `${value}.0.0`;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^\d+$/.test(trimmed) ? `${trimmed}.0.0` : trimmed;
+}
+
+export interface ProjectDeletionReport {
+  deletedTickets: number;
+  deletedWorkflows: number;
+}
+
+interface DeleteProjectWithLifecycleDeps {
+  deleteTicketFn?: typeof deleteTicketWithLifecycle;
+  listTicketsFn?: typeof listTickets;
+  deleteWorkflowsFn?: typeof projectWorkflowDeleteForProject;
+  deleteProjectFn?: typeof deleteProject;
+  deleteProjectScopedDataFn?: typeof deleteProjectScopedData;
+}
+
+export async function deleteProjectWithLifecycle(
+  projectId: string,
+  sessionService: Pick<SessionService, "terminateTicketSession">,
+  deps: DeleteProjectWithLifecycleDeps = {},
+): Promise<ProjectDeletionReport> {
+  const deleteTicketFn = deps.deleteTicketFn ?? deleteTicketWithLifecycle;
+  const listTicketsFn = deps.listTicketsFn ?? listTickets;
+  const deleteWorkflowsFn =
+    deps.deleteWorkflowsFn ?? projectWorkflowDeleteForProject;
+  const deleteProjectFn = deps.deleteProjectFn ?? deleteProject;
+  const deleteProjectScopedDataFn =
+    deps.deleteProjectScopedDataFn ?? deleteProjectScopedData;
+  const tickets = listTicketsFn(projectId, { archived: null });
+
+  for (const ticket of tickets) {
+    await deleteTicketFn(projectId, ticket.id, {
+      sessionService,
+      emitEvent: false,
+    });
+  }
+
+  const deletedWorkflows = deleteWorkflowsFn(projectId);
+  deleteProjectFn(projectId);
+  await deleteProjectScopedDataFn(projectId);
+
+  return {
+    deletedTickets: tickets.length,
+    deletedWorkflows,
+  };
+}
+
+export async function ensureProjectHasDefaultWorkflow(
+  projectId: string,
+  preferredTemplateName?: string,
+): Promise<void> {
+  const fallbackTemplateName =
+    preferredTemplateName ?? (await getDefaultTemplate())?.name;
+  projectWorkflowEnsureDefault(projectId, fallbackTemplateName);
+}
+
+function resolveCompatibilityWorkflow(projectId: string): {
+  id: string;
+  templateName: string;
+  templateVersion: string;
+} {
+  const workflows = projectWorkflowList(projectId);
+  const defaultWorkflow = projectWorkflowGetDefault(projectId);
+  if (defaultWorkflow) {
+    return defaultWorkflow;
+  }
+  if (workflows.length === 1) {
+    return workflows[0];
+  }
+  throw new Error("WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS");
+}
+
+function validateWorkflowScope(projectId: string, workflowId?: string | null): boolean {
+  if (!workflowId) return true;
+  const workflow = projectWorkflowGet(workflowId);
+  return !!workflow && workflow.projectId === projectId;
+}
 
 /**
  * Validate agentType parameter to prevent path traversal.
@@ -148,6 +245,17 @@ export function registerProjectRoutes(
   app.get("/api/projects", async (_req: Request, res: Response) => {
     try {
       await refreshProjects();
+
+      // Repair legacy projects that somehow have zero/default-less workflows.
+      for (const project of projects.values()) {
+        try {
+          await ensureProjectHasDefaultWorkflow(project.id, project.template?.name);
+        } catch (err) {
+          console.error(
+            `[projects] Failed to ensure default workflow for ${project.id}: ${(err as Error).message}`
+          );
+        }
+      }
 
       // Migrate existing projects to local templates if needed
       for (const project of projects.values()) {
@@ -267,18 +375,20 @@ export function registerProjectRoutes(
         }
       } catch { /* p4 not available or not configured */ }
 
-      // Create project with auto-generated UUID
-      const project = createProject({
-        displayName: name,
-        path: projectPath,
-      });
-
-      // Copy template to project
       let templateToCopy = templateName;
       if (!templateToCopy) {
         const defaultTemplate = await getDefaultTemplate();
         templateToCopy = defaultTemplate?.name;
       }
+
+      // Create project with auto-generated UUID
+      const project = createProject({
+        displayName: name,
+        path: projectPath,
+        templateName: templateToCopy,
+      });
+
+      await ensureProjectHasDefaultWorkflow(project.id, templateToCopy);
 
       if (templateToCopy) {
         try {
@@ -308,9 +418,9 @@ export function registerProjectRoutes(
   app.delete("/api/projects/:id", async (req: Request, res: Response) => {
     try {
       const id = decodeURIComponent(req.params.id);
-      deleteProject(id);
+      const summary = await deleteProjectWithLifecycle(id, sessionService);
       await refreshProjects();
-      res.json({ ok: true });
+      res.json({ ok: true, cleanup: summary });
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -489,46 +599,34 @@ export function registerProjectRoutes(
     async (req: Request, res: Response) => {
       try {
         const id = decodeURIComponent(req.params.id);
-        const project = getProjectById(id);
-
-        if (!project?.template) {
-          res.json({ current: null, available: null, upgradeType: null });
-          return;
-        }
-
-        // Get local template version
-        let currentVersion: string | null = null;
-        if (await hasProjectTemplate(id)) {
-          const localTemplate = await getProjectTemplate(id);
-          currentVersion = localTemplate?.version || null;
-        } else {
-          // Legacy: no local copy, use project metadata
-          currentVersion = typeof project.template.version === "number"
-            ? `${project.template.version}.0.0`
-            : project.template.version;
-        }
-
-        // Get global catalog version
-        const catalogTemplate = await getTemplate(project.template.name);
-        const availableVersion = catalogTemplate?.version
-          ? (typeof catalogTemplate.version === "number"
-              ? `${catalogTemplate.version}.0.0`
-              : catalogTemplate.version)
-          : null;
-
-        if (!currentVersion || !availableVersion) {
-          res.json({ current: currentVersion, available: availableVersion, upgradeType: null });
-          return;
-        }
-
-        const upgradeType = getUpgradeType(currentVersion, availableVersion);
+        const workflow = resolveCompatibilityWorkflow(id);
+        const localTemplate = await getWorkflowTemplate(id, workflow.id);
+        const currentVersion =
+          normalizeTemplateVersion(localTemplate?.version) ??
+          normalizeTemplateVersion(workflow.templateVersion);
+        const catalogTemplate = await getTemplate(workflow.templateName);
+        const availableVersion = normalizeTemplateVersion(catalogTemplate?.version);
+        const upgradeType =
+          currentVersion && availableVersion
+            ? getUpgradeType(currentVersion, availableVersion)
+            : null;
 
         res.json({
           current: currentVersion,
           available: availableVersion,
           upgradeType,
+          workflowId: workflow.id,
+          deprecated: true,
         });
       } catch (error) {
+        if ((error as Error).message === "WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS") {
+          res.status(409).json({
+            error:
+              "Project-level template status is deprecated and could not resolve a single workflow target safely.",
+            code: "WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS",
+          });
+          return;
+        }
         res.status(500).json({ error: (error as Error).message });
       }
     },
@@ -540,23 +638,20 @@ export function registerProjectRoutes(
     async (req: Request, res: Response) => {
       try {
         const id = decodeURIComponent(req.params.id);
-        const project = getProjectById(id);
-
-        if (!project?.template) {
-          res.status(404).json({ error: "Project has no template assigned" });
-          return;
-        }
-
-        // Get changelog from global catalog (shows what's coming in the upgrade)
-        const changelog = await getTemplateChangelog(project.template.name);
-
-        if (!changelog) {
-          res.json({ changelog: null });
-          return;
-        }
-
-        res.json({ changelog });
+        const workflow = resolveCompatibilityWorkflow(id);
+        const changelog =
+          (await getWorkflowChangelog(id, workflow.id)) ??
+          (await getTemplateChangelog(workflow.templateName));
+        res.json({ changelog, workflowId: workflow.id, deprecated: true });
       } catch (error) {
+        if ((error as Error).message === "WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS") {
+          res.status(409).json({
+            error:
+              "Project-level template changelog is deprecated and could not resolve a single workflow target safely.",
+            code: "WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS",
+          });
+          return;
+        }
         res.status(500).json({ error: (error as Error).message });
       }
     },
@@ -568,89 +663,47 @@ export function registerProjectRoutes(
     async (req: Request, res: Response) => {
       try {
         const id = decodeURIComponent(req.params.id);
-        const { force } = req.body as { force?: boolean };
+        const workflow = resolveCompatibilityWorkflow(id);
+        const localTemplate = await getWorkflowTemplate(id, workflow.id);
+        const currentVersion =
+          normalizeTemplateVersion(localTemplate?.version) ??
+          normalizeTemplateVersion(workflow.templateVersion) ??
+          "1.0.0";
+        const catalogTemplate = await getTemplate(workflow.templateName);
+        const availableVersion = normalizeTemplateVersion(catalogTemplate?.version);
+        const upgradeType =
+          currentVersion && availableVersion
+            ? getUpgradeType(currentVersion, availableVersion)
+            : null;
 
-        const project = getProjectById(id);
-        if (!project?.template) {
-          res.status(400).json({ error: "Project has no template assigned" });
+        if (!upgradeType || !availableVersion) {
+          res.json({ message: "Already up to date", upgraded: false, deprecated: true });
           return;
         }
 
-        // Get current and available versions
-        const localTemplate = await getProjectTemplate(id);
-        const catalogTemplate = await getTemplate(project.template.name);
-
-        if (!catalogTemplate) {
-          res.status(404).json({ error: "Template not found in catalog" });
-          return;
-        }
-
-        const currentVersion = localTemplate?.version || "1.0.0";
-        const availableVersion = typeof catalogTemplate.version === "number"
-          ? `${catalogTemplate.version}.0.0`
-          : catalogTemplate.version;
-
-        const upgradeType = getUpgradeType(currentVersion, availableVersion);
-
-        if (!upgradeType) {
-          res.json({ message: "Already up to date", upgraded: false });
-          return;
-        }
-
-        // Major upgrade requires force flag and resets tickets
-        if (upgradeType === "major") {
-          if (!force) {
-            // Return info about what will be reset
-            const tickets = await listTickets(id);
-            const inProgressTickets = tickets.filter(
-              (t) => t.phase !== "Ideas" && t.phase !== "Done"
-            );
-            res.status(409).json({
-              error: "Major upgrade requires confirmation",
-              upgradeType: "major",
-              ticketsToReset: inProgressTickets.map((t) => ({
-                id: t.id,
-                title: t.title,
-                phase: t.phase,
-              })),
-            });
-            return;
-          }
-
-          // Reset all in-progress tickets
-          const tickets = await listTickets(id);
-          for (const ticket of tickets) {
-            if (ticket.phase !== "Ideas" && ticket.phase !== "Done") {
-              // Stop active session if any
-              const activeSession = getActiveSessionForTicket(ticket.id);
-              if (activeSession) {
-                sessionService.stopSession(activeSession.id);
-              }
-
-              // Clear worker state
-              await clearWorkerState(id, ticket.id);
-
-              // Move to Ideas
-              await updateTicket(id, ticket.id, {
-                phase: "Ideas" as TicketPhase,
-              });
-            }
-          }
-        }
-
-        // Copy new template
-        const newTemplate = await copyTemplateToProject(id, project.template.name);
-        updateProjectTemplate(id, project.template.name, newTemplate.version);
+        const copied = await copyTemplateToWorkflow(id, workflow.id, workflow.templateName);
+        projectWorkflowUpdate(workflow.id, {
+          templateVersion: normalizeTemplateVersion(copied.version) ?? availableVersion,
+        });
 
         await refreshProjects();
-
         res.json({
           upgraded: true,
           previousVersion: currentVersion,
-          newVersion: newTemplate.version,
+          newVersion: normalizeTemplateVersion(copied.version) ?? availableVersion,
           upgradeType,
+          workflowId: workflow.id,
+          deprecated: true,
         });
       } catch (error) {
+        if ((error as Error).message === "WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS") {
+          res.status(409).json({
+            error:
+              "Project-level template upgrade is deprecated and could not resolve a single workflow target safely.",
+            code: "WORKFLOW_COMPATIBILITY_TARGET_AMBIGUOUS",
+          });
+          return;
+        }
         res.status(500).json({ error: (error as Error).message });
       }
     },
@@ -715,6 +768,9 @@ export function registerProjectRoutes(
       try {
         const id = decodeURIComponent(req.params.id);
         const agentType = decodeURIComponent(req.params.agentType);
+        const workflowId = typeof req.query.workflowId === "string"
+          ? req.query.workflowId
+          : null;
 
         if (!isValidAgentType(agentType)) {
           res.status(400).json({ error: "Invalid agent type" });
@@ -727,14 +783,22 @@ export function registerProjectRoutes(
           return;
         }
 
+        if (!validateWorkflowScope(id, workflowId)) {
+          res.status(400).json({
+            error: "workflowId must reference a workflow in this project",
+            code: "WORKFLOW_SCOPE_MISMATCH",
+          });
+          return;
+        }
+
         const agentPath = `agents/${agentType}.md`;
 
-        if (!(await hasProjectAgentOverride(id, agentPath))) {
+        if (!(await hasProjectAgentOverride(id, agentPath, workflowId))) {
           res.status(404).json({ error: "Override not found" });
           return;
         }
 
-        const content = await getProjectAgentOverride(id, agentPath);
+        const content = await getProjectAgentOverride(id, agentPath, workflowId);
         res.json({ content });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
@@ -770,6 +834,14 @@ export function registerProjectRoutes(
           return;
         }
 
+        if (!validateWorkflowScope(id, workflowId)) {
+          res.status(400).json({
+            error: "workflowId must reference a workflow in this project",
+            code: "WORKFLOW_SCOPE_MISMATCH",
+          });
+          return;
+        }
+
         const agentPath = `agents/${agentType}.md`;
 
         // Verify base agent exists before creating override
@@ -780,7 +852,7 @@ export function registerProjectRoutes(
           return;
         }
 
-        await saveProjectAgentOverride(id, agentPath, content);
+        await saveProjectAgentOverride(id, agentPath, content, workflowId);
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
@@ -795,6 +867,9 @@ export function registerProjectRoutes(
       try {
         const id = decodeURIComponent(req.params.id);
         const agentType = decodeURIComponent(req.params.agentType);
+        const workflowId = typeof req.query.workflowId === "string"
+          ? req.query.workflowId
+          : null;
 
         if (!isValidAgentType(agentType)) {
           res.status(400).json({ error: "Invalid agent type" });
@@ -807,8 +882,16 @@ export function registerProjectRoutes(
           return;
         }
 
+        if (!validateWorkflowScope(id, workflowId)) {
+          res.status(400).json({
+            error: "workflowId must reference a workflow in this project",
+            code: "WORKFLOW_SCOPE_MISMATCH",
+          });
+          return;
+        }
+
         const agentPath = `agents/${agentType}.md`;
-        await deleteProjectAgentOverride(id, agentPath);
+        await deleteProjectAgentOverride(id, agentPath, workflowId);
         res.json({ ok: true });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
@@ -933,7 +1016,7 @@ export function registerProjectRoutes(
                 node.agentType = match[1];
                 // Check if override exists
                 const agentPath = `agents/${match[1]}.md`;
-                node.hasOverride = await hasProjectAgentOverride(id, agentPath);
+                node.hasOverride = await hasProjectAgentOverride(id, agentPath, workflowId);
               }
               // Model is typically in the worker config but may need template lookup
               // For now, we'll leave model as undefined - can be added later if available

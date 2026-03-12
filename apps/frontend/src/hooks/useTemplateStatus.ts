@@ -8,16 +8,16 @@ export interface TemplateStatus {
   upgradeType: "major" | "minor" | "patch" | null;
 }
 
-export function useTemplateStatus(projectId: string | undefined) {
+export function useTemplateStatus(projectId: string | undefined, workflowId: string | undefined) {
   return useQuery({
-    queryKey: ["template-status", projectId],
+    queryKey: ["template-status", projectId, workflowId],
     queryFn: async (): Promise<TemplateStatus> => {
-      if (!projectId) {
+      if (!projectId || !workflowId) {
         return { current: null, available: null, upgradeType: null };
       }
-      return api.getTemplateStatus(projectId);
+      return api.getWorkflowTemplateStatus(projectId, workflowId);
     },
-    enabled: !!projectId,
+    enabled: !!projectId && !!workflowId,
     staleTime: 30000, // Check every 30 seconds
   });
 }
@@ -26,11 +26,21 @@ export function useUpgradeTemplate() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ projectId, force }: { projectId: string; force?: boolean }) => {
-      return api.upgradeTemplate(projectId, force);
+    mutationFn: async ({
+      projectId,
+      workflowId,
+      force,
+    }: {
+      projectId: string;
+      workflowId: string;
+      force?: boolean;
+    }) => {
+      return api.upgradeWorkflowTemplate(projectId, workflowId, force);
     },
-    onSuccess: (_, { projectId }) => {
-      queryClient.invalidateQueries({ queryKey: ["template-status", projectId] });
+    onSuccess: (_, { projectId, workflowId }) => {
+      queryClient.invalidateQueries({ queryKey: ["template-status", projectId, workflowId] });
+      queryClient.invalidateQueries({ queryKey: ["workflow-template-status", projectId, workflowId] });
+      queryClient.invalidateQueries({ queryKey: ["workflow-template-changelog", projectId, workflowId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });

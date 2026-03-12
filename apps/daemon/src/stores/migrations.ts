@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
+import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 17;
+const CURRENT_SCHEMA_VERSION = 19;
 
 /**
  * Run database migrations.
@@ -76,6 +78,14 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 17) {
     migrateV17(db);
+  }
+
+  if (version < 18) {
+    migrateV18(db);
+  }
+
+  if (version < 19) {
+    migrateV19(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -736,4 +746,232 @@ function migrateV17(db: Database.Database): void {
       ON provider_channels(provider_id, channel_id, CAST(json_extract(metadata, '$.threadTs') AS TEXT))
       WHERE metadata IS NOT NULL;
   `);
+}
+
+/**
+ * V18: Enforce strict workflow identity on tickets.
+ * - Delete legacy tickets with NULL workflow_id.
+ * - Rebuild tickets table so workflow_id is NOT NULL with ON DELETE RESTRICT.
+ */
+function migrateV18(db: Database.Database): void {
+  const nullableTicketCount = (
+    db
+      .prepare(`SELECT COUNT(*) AS count FROM tickets WHERE workflow_id IS NULL`)
+      .get() as { count: number }
+  ).count;
+
+  if (nullableTicketCount > 0) {
+    const deleteResult = db.prepare(`DELETE FROM tickets WHERE workflow_id IS NULL`).run();
+    console.log(
+      `[migrateV18] Deleted ${deleteResult.changes} tickets with NULL workflow_id before strict constraint migration`
+    );
+  }
+
+  const ticketColumns = db.pragma('table_info(tickets)') as Array<{ name: string; notnull: number }>;
+  const workflowColumn = ticketColumns.find((column) => column.name === 'workflow_id');
+  const workflowForeignKey = (db.pragma('foreign_key_list(tickets)') as Array<{
+    from: string;
+    on_delete: string;
+  }>).find((foreignKey) => foreignKey.from === 'workflow_id');
+  const alreadyStrict =
+    workflowColumn?.notnull === 1 && workflowForeignKey?.on_delete?.toUpperCase() === 'RESTRICT';
+
+  if (alreadyStrict) {
+    console.log('[migrateV18] tickets.workflow_id already strict, skipping table rebuild');
+    return;
+  }
+
+  const foreignKeysEnabled = db.pragma('foreign_keys', { simple: true }) as number;
+  if (foreignKeysEnabled === 1) {
+    db.pragma('foreign_keys = OFF');
+  }
+
+  try {
+    db.exec('BEGIN');
+
+    db.exec(`
+      CREATE TABLE tickets_v18 (
+        id                   TEXT PRIMARY KEY,
+        project_id           TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title                TEXT NOT NULL,
+        phase                TEXT NOT NULL,
+        created_at           TEXT NOT NULL,
+        updated_at           TEXT NOT NULL,
+        archived             INTEGER DEFAULT 0,
+        archived_at          TEXT,
+        conversation_id      TEXT REFERENCES conversations(id),
+        description          TEXT DEFAULT '',
+        worker_state         TEXT,
+        complexity           TEXT NOT NULL DEFAULT 'standard' CHECK(complexity IN ('simple', 'standard', 'complex')),
+        workflow_id          TEXT NOT NULL REFERENCES project_workflows(id) ON DELETE RESTRICT,
+        execution_generation INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+
+    db.exec(`
+      INSERT INTO tickets_v18 (
+        id,
+        project_id,
+        title,
+        phase,
+        created_at,
+        updated_at,
+        archived,
+        archived_at,
+        conversation_id,
+        description,
+        worker_state,
+        complexity,
+        workflow_id,
+        execution_generation
+      )
+      SELECT
+        id,
+        project_id,
+        title,
+        phase,
+        created_at,
+        updated_at,
+        archived,
+        archived_at,
+        conversation_id,
+        description,
+        worker_state,
+        complexity,
+        workflow_id,
+        execution_generation
+      FROM tickets
+      WHERE workflow_id IS NOT NULL
+    `);
+
+    db.exec(`
+      DROP TABLE tickets;
+      ALTER TABLE tickets_v18 RENAME TO tickets;
+
+      CREATE INDEX IF NOT EXISTS idx_tickets_project ON tickets(project_id);
+      CREATE INDEX IF NOT EXISTS idx_tickets_phase ON tickets(project_id, phase);
+      CREATE INDEX IF NOT EXISTS idx_tickets_archived ON tickets(project_id, archived);
+    `);
+
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    if (foreignKeysEnabled === 1) {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+
+  console.log('[migrateV18] Rebuilt tickets with workflow_id NOT NULL and ON DELETE RESTRICT');
+}
+
+/**
+ * V19: Add workflow-scoped template version metadata on project_workflows.
+ */
+function migrateV19(db: Database.Database): void {
+  const workflowColumns = db.pragma("table_info(project_workflows)") as Array<{
+    name: string;
+  }>;
+  const hasTemplateVersion = workflowColumns.some(
+    (column) => column.name === "template_version"
+  );
+  if (!hasTemplateVersion) {
+    db.exec(
+      "ALTER TABLE project_workflows ADD COLUMN template_version TEXT NOT NULL DEFAULT '1.0.0'"
+    );
+  }
+
+  const templates = db
+    .prepare("SELECT name, version FROM templates")
+    .all() as Array<{ name: string; version: string }>;
+  const templateVersionByName = new Map(
+    templates.map((template) => [template.name, normalizeTemplateVersion(template.version)])
+  );
+
+  const workflows = db
+    .prepare(
+      `SELECT
+         pw.id,
+         pw.project_id,
+         pw.template_name,
+         pw.template_version,
+         p.template_name AS project_template_name,
+         p.template_version AS project_template_version
+       FROM project_workflows pw
+       JOIN projects p ON p.id = pw.project_id`
+    )
+    .all() as Array<{
+    id: string;
+    project_id: string;
+    template_name: string;
+    template_version: string | null;
+    project_template_name: string | null;
+    project_template_version: string | null;
+  }>;
+
+  const updateTemplateVersion = db.prepare(
+    "UPDATE project_workflows SET template_version = ? WHERE id = ?"
+  );
+
+  const backfill = db.transaction(() => {
+    for (const workflow of workflows) {
+      const workflowLocalVersion = readWorkflowLocalTemplateVersion(
+        workflow.project_id,
+        workflow.id
+      );
+      const projectVersion =
+        workflow.project_template_name === workflow.template_name
+          ? normalizeTemplateVersion(workflow.project_template_version)
+          : null;
+      const catalogVersion = templateVersionByName.get(workflow.template_name) ?? null;
+      const existingVersion = normalizeTemplateVersion(workflow.template_version);
+      const resolvedVersion =
+        workflowLocalVersion ??
+        projectVersion ??
+        catalogVersion ??
+        existingVersion ??
+        "1.0.0";
+      updateTemplateVersion.run(resolvedVersion, workflow.id);
+    }
+  });
+
+  backfill();
+}
+
+function normalizeTemplateVersion(version: string | null | undefined): string | null {
+  if (!version) {
+    return null;
+  }
+  const trimmed = version.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^\d+$/.test(trimmed)) {
+    return `${trimmed}.0.0`;
+  }
+  return trimmed;
+}
+
+function readWorkflowLocalTemplateVersion(
+  projectId: string,
+  workflowId: string
+): string | null {
+  try {
+    const workflowTemplatePath = `${getWorkflowTemplateDir(
+      projectId,
+      workflowId
+    )}/workflow.json`;
+    if (!existsSync(workflowTemplatePath)) {
+      return null;
+    }
+    const raw = readFileSync(workflowTemplatePath, "utf-8");
+    const parsed = JSON.parse(raw) as { version?: string | number };
+    if (typeof parsed.version === "number") {
+      return `${parsed.version}.0.0`;
+    }
+    return normalizeTemplateVersion(parsed.version);
+  } catch {
+    return null;
+  }
 }

@@ -10,8 +10,9 @@ describe('task store complexity', () => {
     db = new Database(':memory:');
     runMigrations(db);
     db.exec("INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('p1','p1','P1','/p1','2026-01-01')");
+    db.exec("INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf1','p1','Default','product-development',1,'2026-01-01','2026-01-01')");
     db.exec("INSERT INTO ticket_counters (project_id, next_number) VALUES ('p1', 1)");
-    db.exec("INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at) VALUES ('t1','p1','Test','Build','2026-01-01','2026-01-01')");
+    db.exec("INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t1','p1','Test','Build','2026-01-01','2026-01-01','wf1')");
   });
 
   it('creates task with default complexity standard', () => {

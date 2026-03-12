@@ -42,6 +42,20 @@ export interface GlobalConfigResponse {
   }
 }
 
+export interface WorkflowDeletePreviewResponse {
+  workflowId: string
+  ticketCount: number
+  sampleTicketIds: string[]
+  requiresForce: boolean
+  expectedConfirmation: string
+}
+
+export interface WorkflowTemplateStatusResponse {
+  current: string | null
+  available: string | null
+  upgradeType: 'major' | 'minor' | 'patch' | null
+}
+
 const BASE_URL = ''
 
 type ApiErrorPayload = {
@@ -559,10 +573,12 @@ export const api = {
     )
   },
 
-  getAgentOverride: (projectId: string, agentType: string) =>
-    request<{ content: string }>(
-      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override`
-    ),
+  getAgentOverride: (projectId: string, agentType: string, workflowId?: string | null) => {
+    const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''
+    return request<{ content: string }>(
+      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override${query}`
+    )
+  },
 
   saveAgentOverride: (projectId: string, agentType: string, content: string, workflowId?: string | null) => {
     const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''
@@ -575,11 +591,13 @@ export const api = {
     )
   },
 
-  deleteAgentOverride: (projectId: string, agentType: string) =>
-    request<{ ok: true }>(
-      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override`,
+  deleteAgentOverride: (projectId: string, agentType: string, workflowId?: string | null) => {
+    const query = workflowId ? `?workflowId=${encodeURIComponent(workflowId)}` : ''
+    return request<{ ok: true }>(
+      `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentType)}/override${query}`,
       { method: 'DELETE' }
-    ),
+    )
+  },
 
   // ============ Workflows ============
 
@@ -601,11 +619,47 @@ export const api = {
       }
     ),
 
-  deleteWorkflow: (projectId: string, workflowId: string) =>
-    request<void>(
-      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}`,
-      { method: 'DELETE' }
+  getWorkflowDeletePreview: (projectId: string, workflowId: string) =>
+    request<WorkflowDeletePreviewResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/delete-preview`
     ),
+
+  deleteWorkflow: (
+    projectId: string,
+    workflowId: string,
+    options?: { force?: boolean; confirmation?: string }
+  ) =>
+    request<{ ok: boolean; deletedTickets?: number }>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify(options ?? {}),
+      }
+    ),
+
+  getWorkflowTemplateStatus: (projectId: string, workflowId: string) =>
+    request<WorkflowTemplateStatusResponse>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/template-status`
+    ),
+
+  getWorkflowTemplateChangelog: (projectId: string, workflowId: string) =>
+    request<{ changelog: string | null }>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/template-changelog`
+    ),
+
+  upgradeWorkflowTemplate: (projectId: string, workflowId: string, force?: boolean) =>
+    request<{
+      upgraded: boolean;
+      previousVersion?: string;
+      newVersion?: string;
+      upgradeType?: 'major' | 'minor' | 'patch';
+      message?: string;
+      error?: string;
+      ticketsToReset?: Array<{ id: string; title: string; phase: string }>;
+    }>(`/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/upgrade-template`, {
+      method: 'POST',
+      body: JSON.stringify({ force })
+    }),
 
   // ============ Ticket Dependencies ============
 
