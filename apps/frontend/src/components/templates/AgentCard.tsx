@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { api } from '@/api/client'
-import type { TemplateAgent } from '@potato-cannon/shared'
+import type { ModelTier, TemplateAgent } from '@potato-cannon/shared'
 
 interface AgentCardProps {
   agent: TemplateAgent
@@ -27,9 +27,10 @@ interface AgentCardProps {
  * Accepts undefined, a string shorthand, or a partial matrix object.
  */
 const TIER_OPTIONS = ['low', 'mid', 'high'] as const
+type TierMatrix = { simple: ModelTier; standard: ModelTier; complex: ModelTier }
 
-function getTierMatrix(modelTier: TemplateAgent['modelTier']): { simple: string; standard: string; complex: string } {
-  const defaults = { simple: 'low', standard: 'mid', complex: 'high' }
+function getTierMatrix(modelTier: TemplateAgent['modelTier']): TierMatrix {
+  const defaults: TierMatrix = { simple: 'low', standard: 'mid', complex: 'high' }
   if (!modelTier) return defaults
   if (typeof modelTier === 'string') return { simple: modelTier, standard: modelTier, complex: modelTier }
   return {
@@ -175,7 +176,7 @@ export function AgentCard({
                   <Select
                     value={tierMatrix[level]}
                     onValueChange={(value) => {
-                      const next = { ...tierMatrix, [level]: value }
+                      const next: TierMatrix = { ...tierMatrix, [level]: value as ModelTier }
                       onChange({ ...agent, modelTier: next })
                     }}
                   >

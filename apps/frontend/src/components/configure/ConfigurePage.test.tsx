@@ -4,7 +4,14 @@ import { ConfigurePage } from './ConfigurePage'
 
 const mockUpdateMutate = vi.fn()
 const mockDeleteMutateAsync = vi.fn()
-const projectsData = [
+const projectsData: Array<{
+  id: string
+  slug: string
+  displayName: string
+  path: string
+  template: { name: string; version: string }
+  providerOverride: string | null
+}> = [
   {
     id: 'project-1',
     slug: 'project-1',

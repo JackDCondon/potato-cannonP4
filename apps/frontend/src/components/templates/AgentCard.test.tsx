@@ -1,4 +1,3 @@
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { AgentCard } from './AgentCard'
@@ -72,7 +71,7 @@ describe('AgentCard model tier routing', () => {
     fireEvent.change(simpleSelect, { target: { value: 'high' } })
 
     expect(onChange).toHaveBeenCalled()
-    const nextAgent = onChange.mock.calls.at(-1)?.[0]
+    const nextAgent = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0]
     expect(nextAgent.modelTier).toEqual({ simple: 'high', standard: 'mid', complex: 'high' })
     expect(nextAgent.model).toBeUndefined()
   })
