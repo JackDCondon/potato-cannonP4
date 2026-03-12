@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '@/stores/appStore'
 import { formatToolActivity } from '@/lib/utils'
+import type { Ticket } from '@potato-cannon/shared'
 
 type SSEEventType =
   | 'ping'
@@ -64,13 +65,82 @@ export function useSSE() {
         reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000)
       }
 
-      // Ticket events - invalidate tickets query and artifacts query
-      const ticketEvents: SSEEventType[] = ['ticket:created', 'ticket:updated', 'ticket:moved', 'ticket:deleted']
-      ticketEvents.forEach(event => {
+      // Ticket created/deleted - refetch ticket and artifact lists
+      const listRefreshEvents: SSEEventType[] = ['ticket:created', 'ticket:deleted']
+      listRefreshEvents.forEach(event => {
         eventSource.addEventListener(event, () => {
-          queryClient.refetchQueries({ queryKey: ['tickets'] })
-          queryClient.refetchQueries({ queryKey: ['artifacts'] })
+          queryClient.invalidateQueries({ queryKey: ['tickets'] })
+          queryClient.invalidateQueries({ queryKey: ['artifacts'] })
         })
+      })
+
+      // Ticket updated - apply payload to cache immediately for responsive board updates,
+      // then invalidate queries as a safety net to reconcile any related fields.
+      eventSource.addEventListener('ticket:updated', (e) => {
+        try {
+          const data = JSON.parse(e.data) as {
+            projectId?: string
+            ticket?: Ticket
+          }
+          const { projectId, ticket } = data
+          if (projectId && ticket?.id) {
+            queryClient.setQueriesData(
+              { queryKey: ['tickets', projectId], exact: false },
+              (old: unknown) => {
+                if (!Array.isArray(old)) return old
+                const typedOld = old as Ticket[]
+                const index = typedOld.findIndex((t) => t.id === ticket.id)
+                if (index === -1) return typedOld
+                const next = [...typedOld]
+                next[index] = ticket
+                return next
+              }
+            )
+            queryClient.setQueryData(['ticket', projectId, ticket.id], ticket)
+          }
+        } catch {
+          // Ignore parse errors and rely on query invalidation below
+        } finally {
+          queryClient.invalidateQueries({ queryKey: ['tickets'] })
+          queryClient.invalidateQueries({ queryKey: ['artifacts'] })
+        }
+      })
+
+      // Ticket moved - phase is enough to patch cache quickly; ticket:updated will also fire.
+      eventSource.addEventListener('ticket:moved', (e) => {
+        try {
+          const data = JSON.parse(e.data) as {
+            projectId?: string
+            ticketId?: string
+            to?: string
+          }
+          const { projectId, ticketId, to } = data
+          if (projectId && ticketId && to) {
+            queryClient.setQueriesData(
+              { queryKey: ['tickets', projectId], exact: false },
+              (old: unknown) => {
+                if (!Array.isArray(old)) return old
+                const typedOld = old as Ticket[]
+                let changed = false
+                const next = typedOld.map((t) => {
+                  if (t.id !== ticketId || t.phase === to) return t
+                  changed = true
+                  return { ...t, phase: to }
+                })
+                return changed ? next : typedOld
+              }
+            )
+            queryClient.setQueryData(
+              ['ticket', projectId, ticketId],
+              (old: Ticket | undefined) => (old ? { ...old, phase: to } : old)
+            )
+          }
+        } catch {
+          // Ignore parse errors and rely on query invalidation below
+        } finally {
+          queryClient.invalidateQueries({ queryKey: ['tickets'] })
+          queryClient.invalidateQueries({ queryKey: ['artifacts'] })
+        }
       })
 
       // Ticket restarted - invalidate all related queries and dispatch custom event
