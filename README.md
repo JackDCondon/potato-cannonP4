@@ -141,6 +141,32 @@ Workflows define phases with nested workers:
 
 Example: A Build phase might have a `taskLoop` containing a `ralphLoop` with builder and verifier agents.
 
+### Strict Workflow Identity
+
+Potato Cannon now uses a workflow-first model:
+
+- Every ticket must belong to exactly one workflow (`tickets.workflow_id` is required).
+- Phase resolution is workflow-scoped and strict. There is no project-template fallback when workflow context is missing or invalid.
+- Workflow template upgrades are per-workflow (`/api/projects/:projectId/workflows/:workflowId/*`), not project-global.
+
+The daemon returns explicit workflow context errors when identity is invalid:
+
+- `WORKFLOW_ID_REQUIRED` (`400`)
+- `WORKFLOW_NOT_FOUND` (`404`)
+- `WORKFLOW_SCOPE_MISMATCH` (`409`)
+- `WORKFLOW_TEMPLATE_NOT_FOUND` (`404`)
+
+Example error payload:
+
+```json
+{
+  "code": "WORKFLOW_SCOPE_MISMATCH",
+  "error": "Workflow wf-123 does not belong to project abc",
+  "message": "Workflow wf-123 does not belong to project abc",
+  "retryable": false
+}
+```
+
 ## CLI Commands
 
 ```bash
@@ -222,15 +248,17 @@ Create custom templates by copying and modifying the default.
 
 ### Agent Overrides
 
-Customize agent behavior per-project without modifying templates:
+Customize agent behavior per-workflow without modifying catalog templates:
 
 ```bash
-# Create override file
+# Create workflow-scoped override file
 cp ~/.potato-cannon/templates/product-development/agents/builder.md \
-   ~/.potato-cannon/project-data/{projectId}/template/agents/builder.override.md
+   ~/.potato-cannon/project-data/{projectId}/workflows/{workflowId}/template/agents/builder.override.md
 
 # Edit the override with project-specific instructions
 ```
+
+If `workflowId` is omitted on agent-override API calls, the project-scoped compatibility path is used for legacy behavior. New flows should pass `workflowId` explicitly.
 
 ## Requirements
 

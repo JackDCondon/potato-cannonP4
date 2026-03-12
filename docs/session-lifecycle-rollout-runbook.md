@@ -85,6 +85,84 @@ Configure in global daemon config:
 - Startup recovery respawn emits the same continuity decision log keys as normal ticket spawn.
 - Restart-to-earlier-phase emits continuity decision logs before new session spawn.
 
+## Strict Workflow Identity Checks
+
+- Ticket and dependency reads fail with explicit workflow context errors when workflow identity is missing/invalid.
+- No project-template fallback is used for phase resolution when workflow context is required.
+- Workflow-template upgrade/status/changelog is invoked per workflow.
+
+Status mapping:
+
+- `WORKFLOW_ID_REQUIRED` -> `400`
+- `WORKFLOW_NOT_FOUND` -> `404`
+- `WORKFLOW_SCOPE_MISMATCH` -> `409`
+- `WORKFLOW_TEMPLATE_NOT_FOUND` -> `404`
+
+Example response:
+
+```json
+{
+  "code": "WORKFLOW_ID_REQUIRED",
+  "error": "workflowId is required for project <projectId>",
+  "message": "workflowId is required for project <projectId>",
+  "retryable": false
+}
+```
+
+## Destructive Delete Verification
+
+Workflow delete (with tickets):
+
+1. `GET /api/projects/:projectId/workflows/:workflowId/delete-preview`
+2. Confirm `requiresForce=true`, `expectedConfirmation=delete-workflow:{workflowId}`
+3. `DELETE /api/projects/:projectId/workflows/:workflowId` with:
+
+```json
+{
+  "force": true,
+  "confirmation": "delete-workflow:<workflowId>"
+}
+```
+
+4. Verify response includes `deletedTickets > 0` and that ticket lifecycle cleanup occurred.
+
+Project delete:
+
+1. `DELETE /api/projects/:id`
+2. Verify response includes `cleanup.deletedTickets` and `cleanup.deletedWorkflows`
+3. Verify project-scoped files are removed and no orphan ticket sessions/routes remain.
+
+Example project delete response:
+
+```json
+{
+  "ok": true,
+  "cleanup": {
+    "deletedTickets": 4,
+    "deletedWorkflows": 2
+  }
+}
+```
+
+## Per-Workflow Template Upgrade Flow
+
+Use workflow-scoped APIs only:
+
+1. `GET /api/projects/:projectId/workflows/:workflowId/template-status`
+2. `GET /api/projects/:projectId/workflows/:workflowId/template-changelog`
+3. `POST /api/projects/:projectId/workflows/:workflowId/upgrade-template`
+
+Example upgrade response:
+
+```json
+{
+  "upgraded": true,
+  "previousVersion": "1.2.0",
+  "newVersion": "1.3.0",
+  "upgradeType": "minor"
+}
+```
+
 ## Rollback
 
 1. Set both flags to `false`.

@@ -28,7 +28,7 @@ The database uses WAL (Write-Ahead Logging) mode for better concurrency. Multipl
 
 Migrations use SQLite's `user_version` pragma. Each migration checks the version and applies changes if needed.
 
-**Current schema version:** 17
+**Current schema version:** 19
 
 **Adding a new migration:**
 
@@ -64,6 +64,8 @@ if (version < 6) {
 | V15 | Add `metadata` field to `ticket_history` |
 | V16 | Add `execution_generation` fields and active session uniqueness fencing |
 | V17 | Add `chat_queue_items` and `chat_delivery_events`; add provider route metadata indexes |
+| V18 | Enforce strict workflow identity: delete `workflow_id IS NULL` tickets, make `tickets.workflow_id` `NOT NULL`, and change FK to `ON DELETE RESTRICT` |
+| V19 | Add `project_workflows.template_version` and backfill from workflow-local/project/catalog versions |
 
 ## Tables
 
@@ -584,7 +586,7 @@ CREATE TABLE project_workflows (
 
 **Relationship to `projects`:** Each `project_workflows` row belongs to one project via `project_id`. Deleting a project cascades to delete all its workflows.
 
-**Relationship to `tickets`:** The `tickets` table has a nullable `workflow_id TEXT REFERENCES project_workflows(id) ON DELETE SET NULL` column added in V13. Deleting a workflow sets `workflow_id` to NULL on its tickets (rather than blocking deletion).
+**Relationship to `tickets`:** `tickets.workflow_id` is required (`NOT NULL`) and references `project_workflows(id) ON DELETE RESTRICT` (strict in V18). A workflow with existing tickets cannot be deleted until those tickets are removed or reassigned.
 
 **Single-default enforcement:** Only one workflow per project may have `is_default = 1`. `createWorkflow` and `updateWorkflow` both clear the existing default for the project before setting a new one, using a SQLite transaction.
 
@@ -620,7 +622,7 @@ projectWorkflowGetDefault(projectId: string): ProjectWorkflow | null
 - `getDefaultWorkflow(projectId)` — Returns the workflow with `is_default = 1` for the project, or `null` if none is set.
 - `listWorkflows(projectId)` — Returns all workflows for the project ordered alphabetically by `name`.
 - `updateWorkflow(id, updates)` — Partial update. If `updates.isDefault === true`, clears other defaults first (in a transaction). Returns `null` if the workflow does not exist. Returns existing record unchanged if `updates` is empty.
-- `deleteWorkflow(id)` — Deletes the workflow row. Returns `true` if deleted, `false` if not found. Associated tickets have their `workflow_id` set to NULL by the FK cascade.
+- `deleteWorkflow(id)` — Deletes the workflow row. Returns `true` if deleted, `false` if not found. Deletion fails when tickets still reference the workflow (FK `ON DELETE RESTRICT`).
 
 **Input types:**
 ```typescript
@@ -646,6 +648,26 @@ V13 creates the `project_workflows` table and adds the `workflow_id` column to `
 2. All tickets with `workflow_id IS NULL` for each project are updated to reference their project's default workflow.
 
 The backfill is **idempotent**: it checks for an existing default with a SELECT before inserting (application-level idempotency check), and only updates tickets with `NULL workflow_id`. Re-running the migration on an already-migrated database is safe.
+
+### Strict Workflow Model (V18+)
+
+- `tickets.workflow_id` is mandatory. Runtime code should treat missing workflow context as an error, not a fallback condition.
+- `tickets.workflow_id` FK uses `ON DELETE RESTRICT`; workflows with tickets must be deleted through the destructive lifecycle route, not by direct row deletion.
+- V18 migration permanently deletes legacy tickets where `workflow_id IS NULL` before rebuilding `tickets`.
+- Workflow/template resolution errors are surfaced explicitly via workflow context codes:
+  - `WORKFLOW_ID_REQUIRED`
+  - `WORKFLOW_NOT_FOUND`
+  - `WORKFLOW_SCOPE_MISMATCH`
+  - `WORKFLOW_TEMPLATE_NOT_FOUND`
+
+### Destructive Delete Semantics
+
+- Workflow delete path (`DELETE /api/projects/:projectId/workflows/:workflowId`) requires:
+  - non-default workflow
+  - not the last workflow in the project
+  - when tickets exist: `force=true` plus matching `confirmation` token (`delete-workflow:{workflowId}`)
+- If tickets exist, each ticket is deleted via canonical lifecycle cleanup (`deleteTicketWithLifecycle`) before workflow row deletion.
+- Project delete path (`DELETE /api/projects/:id`) also routes all tickets through the same canonical lifecycle cleanup, then deletes workflows/project rows and project-scoped files.
 
 ## Conventions
 
