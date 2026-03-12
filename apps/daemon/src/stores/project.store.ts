@@ -15,6 +15,7 @@ export interface CreateProjectInput {
   p4Stream?: string;
   agentWorkspaceRoot?: string;
   helixSwarmUrl?: string;
+  providerOverride?: string;
 }
 
 /**
@@ -72,6 +73,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     suggestedP4Stream: (row.suggested_p4_stream as string) || undefined,
     agentWorkspaceRoot: (row.agent_workspace_root as string) || undefined,
     helixSwarmUrl: (row.helix_swarm_url as string) || undefined,
+    providerOverride: (row.provider_override as string) || undefined,
   };
 }
 
@@ -138,8 +140,8 @@ export class ProjectStore {
         INSERT INTO projects (
           id, slug, display_name, path, registered_at,
           icon, color, template_name, template_version,
-          p4_stream, agent_workspace_root, helix_swarm_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          p4_stream, agent_workspace_root, helix_swarm_url, provider_override
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         slug,
@@ -152,7 +154,8 @@ export class ProjectStore {
         input.templateVersion || null,
         input.p4Stream || null,
         input.agentWorkspaceRoot || null,
-        input.helixSwarmUrl || null
+        input.helixSwarmUrl || null,
+        input.providerOverride || null,
       );
 
       this.db.prepare(`
@@ -250,6 +253,10 @@ export class ProjectStore {
     if (updates.helixSwarmUrl !== undefined) {
       fields.push("helix_swarm_url = ?");
       values.push(updates.helixSwarmUrl || null);
+    }
+    if (updates.providerOverride !== undefined) {
+      fields.push("provider_override = ?");
+      values.push(updates.providerOverride || null);
     }
 
     if (fields.length === 0) {

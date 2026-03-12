@@ -187,14 +187,20 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.equal(ticket.workflow_id, 'wf-legacy');
   });
 
-  it('schema version is 19', () => {
+  it('projects table has provider_override column', () => {
+    const cols = db.pragma('table_info(projects)') as { name: string }[];
+    const colNames = new Set(cols.map((c) => c.name));
+    assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
+  });
+
+  it('schema version is 20', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 19);
+    assert.equal(version, 20);
   });
 });
 
 describe('V19 migration - workflow template version metadata', () => {
-  it('adds template_version to project_workflows and sets schema version to 19', () => {
+  it('adds template_version to project_workflows and advances schema version', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     rebuildWorkflowsAsLegacyV18(db);
@@ -206,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 19);
+    assert.equal(version, 20);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {

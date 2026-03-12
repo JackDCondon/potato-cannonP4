@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 19;
+const CURRENT_SCHEMA_VERSION = 20;
 
 /**
  * Run database migrations.
@@ -86,6 +86,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 19) {
     migrateV19(db);
+  }
+
+  if (version < 20) {
+    migrateV20(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -937,6 +941,17 @@ function migrateV19(db: Database.Database): void {
   });
 
   backfill();
+}
+
+/**
+ * V20: Add provider_override to projects for per-project AI provider selection.
+ */
+function migrateV20(db: Database.Database): void {
+  const columns = db.pragma("table_info(projects)") as Array<{ name: string }>;
+  const hasProviderOverride = columns.some((column) => column.name === "provider_override");
+  if (!hasProviderOverride) {
+    db.exec("ALTER TABLE projects ADD COLUMN provider_override TEXT");
+  }
 }
 
 function normalizeTemplateVersion(version: string | null | undefined): string | null {

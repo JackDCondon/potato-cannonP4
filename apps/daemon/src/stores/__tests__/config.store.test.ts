@@ -11,6 +11,8 @@ import {
   ConfigStore,
   normalizeLifecycleContinuityConfig,
   DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
+  normalizeAiConfig,
+  DEFAULT_AI_CONFIG,
 } from "../config.store.js";
 
 describe("ConfigStore", () => {
@@ -311,5 +313,70 @@ describe("normalizeLifecycleContinuityConfig", () => {
       maxCharsPerItem: 600,
       maxPromptChars: 12000,
     });
+  });
+});
+
+describe("normalizeAiConfig", () => {
+  it("applies default ai config when missing", () => {
+    const config: any = { daemon: { port: 8443 } };
+
+    normalizeAiConfig(config);
+
+    assert.deepStrictEqual(config.ai, DEFAULT_AI_CONFIG);
+  });
+
+  it("normalizes invalid ai fields to defaults", () => {
+    const config: any = {
+      daemon: { port: 8443 },
+      ai: {
+        defaultProvider: "",
+        providers: [
+          { id: "anthropic", models: { low: "", mid: "sonnet", high: "" } },
+          { id: "", models: { low: "x", mid: "y", high: "z" } },
+        ],
+      },
+    };
+
+    normalizeAiConfig(config);
+
+    assert.strictEqual(config.ai.defaultProvider, "anthropic");
+    assert.deepStrictEqual(config.ai.providers, [
+      {
+        id: "anthropic",
+        models: { low: "haiku", mid: "sonnet", high: "opus" },
+      },
+    ]);
+  });
+});
+
+describe("ConfigStore AI round-trip", () => {
+  it("stores and reads ai config", () => {
+    const testDbPath = path.join(os.tmpdir(), `potato-config-ai-test-${Date.now()}.db`);
+    const db = new Database(testDbPath);
+    db.pragma("journal_mode = WAL");
+    runMigrations(db);
+    const store = createConfigStore(db);
+
+    const aiConfig = {
+      defaultProvider: "anthropic",
+      providers: [
+        {
+          id: "anthropic",
+          models: { low: "haiku", mid: "sonnet", high: "opus" },
+        },
+      ],
+    };
+
+    store.set("ai", aiConfig);
+    assert.deepStrictEqual(store.get("ai"), aiConfig);
+
+    db.close();
+    try {
+      fs.unlinkSync(testDbPath);
+      fs.unlinkSync(testDbPath + "-wal");
+      fs.unlinkSync(testDbPath + "-shm");
+    } catch {
+      // Ignore cleanup errors
+    }
   });
 });

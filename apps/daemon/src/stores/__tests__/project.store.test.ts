@@ -357,6 +357,26 @@ describe("ProjectStore", () => {
       const project = store.getProjectById(created.id);
       assert.strictEqual(project?.branchPrefix, "potato");
     });
+
+    it("should round-trip providerOverride through create and update", () => {
+      const created = store.createProject({
+        displayName: "Provider Project",
+        path: "/provider",
+        providerOverride: "anthropic",
+      });
+
+      assert.strictEqual(created.providerOverride, "anthropic");
+
+      const updated = store.updateProject(created.id, {
+        providerOverride: "openai",
+      });
+      assert.strictEqual(updated?.providerOverride, "openai");
+
+      const cleared = store.updateProject(created.id, {
+        providerOverride: null as any,
+      });
+      assert.strictEqual(cleared?.providerOverride, undefined);
+    });
   });
 
   describe("updateProjectTemplate", () => {

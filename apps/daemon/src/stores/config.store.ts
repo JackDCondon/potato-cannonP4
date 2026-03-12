@@ -16,6 +16,8 @@ import type {
   SlackConfig,
   DaemonConfig,
   LifecycleContinuityConfig,
+  AiConfig,
+  AiProviderConfig,
 } from "../types/index.js";
 import { getDatabase } from "./db.js";
 
@@ -229,6 +231,33 @@ const DEFAULT_CONFIG: GlobalConfig = {
       maxPromptChars: 16000,
     },
   },
+  ai: {
+    defaultProvider: "anthropic",
+    providers: [
+      {
+        id: "anthropic",
+        models: {
+          low: "haiku",
+          mid: "sonnet",
+          high: "opus",
+        },
+      },
+    ],
+  },
+};
+
+export const DEFAULT_AI_CONFIG: AiConfig = {
+  defaultProvider: "anthropic",
+  providers: [
+    {
+      id: "anthropic",
+      models: {
+        low: "haiku",
+        mid: "sonnet",
+        high: "opus",
+      },
+    },
+  ],
 };
 
 export const DEFAULT_LIFECYCLE_CONTINUITY_CONFIG: Required<LifecycleContinuityConfig> = {
@@ -354,6 +383,51 @@ function normalizeDaemonConfig(config: GlobalConfig): void {
   normalizeLifecycleContinuityConfig(config);
 }
 
+export function normalizeAiConfig(config: GlobalConfig): void {
+  const ai: Partial<AiConfig> = config.ai ?? {};
+  const providersRaw: unknown[] = Array.isArray(ai.providers) ? ai.providers : [];
+
+  const normalizedProviders: AiProviderConfig[] = providersRaw
+    .filter(
+      (provider): provider is { id: string; models?: Partial<AiProviderConfig["models"]> } =>
+        typeof provider === "object" &&
+        provider !== null &&
+        typeof (provider as { id?: unknown }).id === "string" &&
+        (provider as { id: string }).id.trim().length > 0
+    )
+    .map((provider) => ({
+      id: provider.id,
+      models: {
+        low:
+          typeof provider.models?.low === "string" && provider.models.low.trim().length > 0
+            ? provider.models.low
+            : "haiku",
+        mid:
+          typeof provider.models?.mid === "string" && provider.models.mid.trim().length > 0
+            ? provider.models.mid
+            : "sonnet",
+        high:
+          typeof provider.models?.high === "string" && provider.models.high.trim().length > 0
+            ? provider.models.high
+            : "opus",
+      },
+    }));
+
+  config.ai = {
+    defaultProvider:
+      typeof ai.defaultProvider === "string" && ai.defaultProvider.trim().length > 0
+        ? ai.defaultProvider
+        : DEFAULT_AI_CONFIG.defaultProvider,
+    providers:
+      normalizedProviders.length > 0
+        ? normalizedProviders
+        : DEFAULT_AI_CONFIG.providers.map((provider) => ({
+            id: provider.id,
+            models: { ...provider.models },
+          })),
+  };
+}
+
 export async function ensureGlobalDir(): Promise<void> {
   await fs.mkdir(GLOBAL_DIR, { recursive: true });
   await fs.mkdir(TASKS_DIR, { recursive: true });
@@ -380,6 +454,7 @@ export async function loadGlobalConfig(): Promise<GlobalConfig | null> {
 
     normalizeDaemonConfig(config);
     normalizeTelegramConfig(config);
+    normalizeAiConfig(config);
 
     return config;
   } catch {
