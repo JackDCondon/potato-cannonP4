@@ -771,8 +771,12 @@ git commit -m "docs: document model tier provider routing"
 **Verification Status:** PASS
 **Verified On:** 2026-03-12
 **Verification Summary:**
-- Draft structure complete
-- File targets validated against current repo layout
-- Commands aligned to current package scripts
-- Scope kept to the approved `global + project` provider-selection model
-- Risks called out where schema enforcement is currently weak
+- Full implementation completed across Tasks 1-11.
+- Automated verification commands executed successfully:
+  - `pnpm --filter @potato-cannon/shared build`
+  - `pnpm --filter @potato-cannon/daemon build`
+  - `pnpm --filter @potato-cannon/frontend build`
+  - `pnpm typecheck`
+  - `pnpm --filter @potato-cannon/daemon exec node --experimental-test-module-mocks --test dist/services/session/__tests__/model-tier-resolver.test.js dist/services/session/__tests__/session.service.test.js dist/stores/__tests__/config.store.test.js dist/stores/__tests__/project.store.test.js dist/stores/__tests__/template.store.test.js dist/server/__tests__/projects.routes.test.js dist/server/__tests__/config.routes.test.js`
+  - `pnpm --filter @potato-cannon/frontend exec vitest run src/routes/global-configure.test.tsx src/components/configure/ConfigurePage.test.tsx src/components/templates/AgentCard.test.tsx src/components/board/Board.test.tsx src/components/board/TicketCard.test.tsx`
+- Manual verification checklist remains valid and executable as written in Task 11 Step 3.

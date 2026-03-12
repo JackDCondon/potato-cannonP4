@@ -139,6 +139,12 @@ Workflows define phases with nested workers:
 - **ralphLoop** - Adversarial review: iterate until approved or max attempts
 - **taskLoop** - Process each task through nested workers
 
+Agent workers now use `modelTier` routing (`low`, `mid`, `high`) instead of provider model names. At runtime:
+
+- worker `modelTier` + ticket/task `complexity` resolve the target tier
+- project `providerOverride` (if set) chooses provider, otherwise global `ai.defaultProvider` is used
+- the selected provider's tier mapping resolves the final concrete model string for spawn
+
 Example: A Build phase might have a `taskLoop` containing a `ralphLoop` with builder and verifier agents.
 
 ### Strict Workflow Identity
@@ -183,16 +189,33 @@ Configuration is stored at `~/.potato-cannon/config.json`:
 
 ```json
 {
-  "telegram": {
-    "botToken": "your-bot-token",
-    "userId": "your-telegram-user-id",
-    "forumGroupId": "optional-forum-group-id"
+  "providers": {
+    "telegram": {
+      "botToken": "your-bot-token",
+      "userId": "your-telegram-user-id",
+      "forumGroupId": "optional-forum-group-id"
+    }
   },
   "daemon": {
     "port": 5173
+  },
+  "ai": {
+    "defaultProvider": "anthropic",
+    "providers": [
+      {
+        "id": "anthropic",
+        "models": {
+          "low": "haiku",
+          "mid": "sonnet",
+          "high": "opus"
+        }
+      }
+    ]
   }
 }
 ```
+
+Project-level provider routing can override the global default via `projects.provider_override` (`providerOverride` in API payloads). If unset, the project inherits `ai.defaultProvider`.
 
 ### Telegram Setup (Optional)
 
@@ -243,6 +266,7 @@ Templates define the phase sequence and agent behavior. The default `product-dev
 - Ideas, Refinement, Architecture, Specification, Build, Review, Done phases
 - Agent prompts in `templates/workflows/product-development/agents/`
 - Configurable worker trees with ralph loops and task loops
+- `modelTier` routing for agent workers (`low`, `mid`, `high` or complexity maps to those tiers)
 
 Create custom templates by copying and modifying the default.
 

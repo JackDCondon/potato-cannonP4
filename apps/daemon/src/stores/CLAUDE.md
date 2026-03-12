@@ -66,6 +66,7 @@ if (version < 6) {
 | V17 | Add `chat_queue_items` and `chat_delivery_events`; add provider route metadata indexes |
 | V18 | Enforce strict workflow identity: delete `workflow_id IS NULL` tickets, make `tickets.workflow_id` `NOT NULL`, and change FK to `ON DELETE RESTRICT` |
 | V19 | Add `project_workflows.template_version` and backfill from workflow-local/project/catalog versions |
+| V20 | Add `projects.provider_override` for per-project AI provider routing override |
 
 ## Tables
 
@@ -154,6 +155,8 @@ deleteProject(id: string): boolean
 **IDs:** Project IDs are auto-generated UUIDs. Do not pass an ID when creating a project.
 
 **Slugs:** Projects have a URL-safe `slug` field auto-generated from the display name. Use `getProjectBySlug()` for URL routing.
+
+**Provider override:** Projects can optionally set `providerOverride` (`projects.provider_override`) to choose a non-default AI provider for model-tier routing. If unset (`NULL`), runtime uses global `ai.defaultProvider`.
 
 ### ticket.store.ts
 
@@ -487,9 +490,13 @@ getConfigStore(): ConfigStore
 ```
 
 **File-based (legacy):**
-- `~/.potato-cannon/config.json` - Global settings (Telegram, daemon port)
+- `~/.potato-cannon/config.json` - Global settings (providers, daemon, ai)
 - `~/.potato-cannon/daemon.json` - Running daemon info (port, pid, start time)
 - `~/.potato-cannon/daemon.pid` - Daemon PID file
+
+**AI routing config:** `GlobalConfig.ai` stores provider routing:
+- `defaultProvider` - global fallback provider id
+- `providers[]` - provider id plus `models.low|mid|high` mappings used by session-tier resolution
 
 ```typescript
 // File-based functions
