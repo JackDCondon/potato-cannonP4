@@ -49,6 +49,18 @@ function detectP4VFS(): boolean {
 }
 
 /**
+ * Normalize P4 stream paths for client specs.
+ *
+ * Perforce rejects stream values ending in "/" with:
+ * "Null directory (//) not allowed".
+ */
+export function normalizeP4Stream(p4Stream: string): string {
+  const trimmed = p4Stream.trim();
+  if (trimmed.length <= 2) return trimmed;
+  return trimmed.replace(/\/+$/, "");
+}
+
+/**
  * Build the client spec string to pipe to `p4 client -i`.
  */
 function buildClientSpec(
@@ -58,10 +70,11 @@ function buildClientSpec(
   useVClient: boolean,
   ticketId: string
 ): string {
+  const normalizedStream = normalizeP4Stream(p4Stream);
   const lines: string[] = [
     `Client: ${workspaceName}`,
     `Root: ${workspaceRootPath}`,
-    `Stream: ${p4Stream}`,
+    `Stream: ${normalizedStream}`,
   ];
 
   if (useVClient) {

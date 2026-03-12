@@ -2,7 +2,7 @@ import { afterEach, describe, it } from "node:test";
 import assert from "node:assert";
 import path from "path";
 
-import { P4Provider } from "../p4.provider.js";
+import { P4Provider, normalizeP4Stream } from "../p4.provider.js";
 
 const ORIGINAL_P4_MCP = process.env.POTATO_P4_MCP_SERVER_PATH;
 
@@ -38,5 +38,15 @@ describe("P4Provider.getMcpServers", () => {
       "potato-demo-project-POT-123",
       "expected workspace-scoped P4CLIENT",
     );
+  });
+});
+
+describe("normalizeP4Stream", () => {
+  it("removes trailing slash from stream path", () => {
+    assert.strictEqual(normalizeP4Stream("//streams/JcInventory/"), "//streams/JcInventory");
+  });
+
+  it("removes multiple trailing slashes but preserves leading depot prefix", () => {
+    assert.strictEqual(normalizeP4Stream("//streams/JcInventory///"), "//streams/JcInventory");
   });
 });
