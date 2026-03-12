@@ -143,4 +143,43 @@ describe("template workflow context resolution", () => {
       /WORKFLOW_NOT_FOUND|was not found/,
     );
   });
+
+  it("rejects legacy model config when resolving workflow template context", async () => {
+    const workflowPath = path.join(templatesDir, workflowTemplateName, "workflow.json");
+    const original = await fs.readFile(workflowPath, "utf-8");
+
+    await fs.writeFile(
+      workflowPath,
+      JSON.stringify({
+        name: workflowTemplateName,
+        version: "1.0.0",
+        parentTemplate: parentTemplateName,
+        phases: [
+          {
+            id: "Solve-Issue",
+            name: "Solve Issue",
+            workers: [
+              {
+                id: "builder",
+                type: "agent",
+                source: "agents/builder.md",
+                model: "opus",
+              },
+            ],
+            transitions: { next: "Done" },
+          },
+        ],
+      }, null, 2),
+      "utf-8",
+    );
+
+    try {
+      await assert.rejects(
+        () => getTemplateWithFullPhasesForContext(projectId, workflowId),
+        /deprecated field "model"|invalid legacy model value "opus"/,
+      );
+    } finally {
+      await fs.writeFile(workflowPath, original, "utf-8");
+    }
+  });
 });

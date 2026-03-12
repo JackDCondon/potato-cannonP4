@@ -7,7 +7,7 @@ import os from "os";
 import Database from "better-sqlite3";
 
 import { runMigrations } from "../migrations.js";
-import { createTemplateStore, TemplateStore } from "../template.store.js";
+import { createTemplateStore, TemplateStore, getWorkflow } from "../template.store.js";
 import { initDatabase, getDatabase } from "../db.js";
 import { createProjectStore } from "../project.store.js";
 
@@ -644,6 +644,87 @@ describe("getAgentPromptForProject parentTemplate fallback (level-4)", () => {
       workflowScopedId
     );
     assert.strictEqual(result, agentContent);
+  });
+});
+
+describe("getWorkflow model tier validation", () => {
+  const templatesDir = path.join(os.homedir(), ".potato-cannon", "templates");
+  const suffix = Date.now();
+
+  async function writeWorkflow(name: string, workerConfig: Record<string, unknown>) {
+    const dir = path.join(templatesDir, name);
+    await fsPromises.mkdir(dir, { recursive: true });
+    await fsPromises.writeFile(
+      path.join(dir, "workflow.json"),
+      JSON.stringify(
+        {
+          name,
+          version: "1.0.0",
+          description: "validation test",
+          phases: [
+            {
+              id: "Build",
+              name: "Build",
+              description: "Build phase",
+              workers: [{ id: "worker-1", type: "agent", source: "agents/build.md", ...workerConfig }],
+              transitions: { next: "Done" },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+  }
+
+  it("accepts modelTier string and map values", async () => {
+    const stringTemplate = `workflow-valid-string-${suffix}`;
+    const mapTemplate = `workflow-valid-map-${suffix}`;
+
+    await writeWorkflow(stringTemplate, { modelTier: "high" });
+    await writeWorkflow(mapTemplate, { modelTier: { simple: "low", standard: "mid", complex: "high" } });
+
+    const stringResult = await getWorkflow(stringTemplate);
+    const mapResult = await getWorkflow(mapTemplate);
+
+    assert.ok(stringResult);
+    assert.ok(mapResult);
+
+    await fsPromises.rm(path.join(templatesDir, stringTemplate), { recursive: true, force: true });
+    await fsPromises.rm(path.join(templatesDir, mapTemplate), { recursive: true, force: true });
+  });
+
+  it("rejects deprecated model field", async () => {
+    const name = `workflow-invalid-model-${suffix}`;
+    await writeWorkflow(name, { model: "opus" });
+
+    await assert.rejects(
+      () => getWorkflow(name),
+      /deprecated field "model"/,
+    );
+
+    await fsPromises.rm(path.join(templatesDir, name), { recursive: true, force: true });
+  });
+
+  it("rejects legacy values and invalid modelTier values", async () => {
+    const legacyName = `workflow-invalid-legacy-${suffix}`;
+    const invalidName = `workflow-invalid-tier-${suffix}`;
+
+    await writeWorkflow(legacyName, { modelTier: "opus" });
+    await writeWorkflow(invalidName, { modelTier: "ultra" });
+
+    await assert.rejects(
+      () => getWorkflow(legacyName),
+      /invalid legacy model value "opus"/,
+    );
+    await assert.rejects(
+      () => getWorkflow(invalidName),
+      /invalid modelTier value "ultra"/,
+    );
+
+    await fsPromises.rm(path.join(templatesDir, legacyName), { recursive: true, force: true });
+    await fsPromises.rm(path.join(templatesDir, invalidName), { recursive: true, force: true });
   });
 });
 

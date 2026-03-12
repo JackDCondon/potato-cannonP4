@@ -19,6 +19,7 @@ import { incrementVersion, getUpgradeType, legacyVersionToSemver } from "../util
 import type {
   WorkflowTemplate,
   Phase,
+  Worker,
 } from "../types/template.types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -352,9 +353,119 @@ export async function getWorkflow(name: string): Promise<WorkflowTemplate | null
   try {
     const content = await fs.readFile(getWorkflowPath(name), "utf-8");
     const template = JSON.parse(content) as WorkflowTemplate;
+    validateWorkflowTemplate(template, name);
     return template;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+const MODEL_TIERS = new Set(["low", "mid", "high"]);
+const LEGACY_MODEL_VALUES = new Set(["haiku", "sonnet", "opus"]);
+
+function isModelTier(value: unknown): value is "low" | "mid" | "high" {
+  return typeof value === "string" && MODEL_TIERS.has(value);
+}
+
+function assertNoLegacyModelConfig(
+  worker: Worker,
+  templateName: string,
+): void {
+  if (worker.type !== "agent") {
+    if ("workers" in worker && Array.isArray(worker.workers)) {
+      for (const child of worker.workers) {
+        assertNoLegacyModelConfig(child, templateName);
+      }
+    }
+    return;
+  }
+
+  const agentWorker = worker as unknown as { model?: unknown };
+  if ("model" in agentWorker) {
+    throw new Error(
+      `Workflow template "${templateName}" uses deprecated field "model"; use "modelTier".`,
+    );
+  }
+}
+
+function assertValidModelTierConfig(
+  worker: Worker,
+  templateName: string,
+): void {
+  if (worker.type !== "agent") {
+    if ("workers" in worker && Array.isArray(worker.workers)) {
+      for (const child of worker.workers) {
+        assertValidModelTierConfig(child, templateName);
+      }
+    }
+    return;
+  }
+
+  const modelTier = (worker as { modelTier?: unknown }).modelTier;
+  if (modelTier === undefined) {
+    return;
+  }
+
+  if (typeof modelTier === "string") {
+    if (LEGACY_MODEL_VALUES.has(modelTier)) {
+      throw new Error(
+        `Workflow template "${templateName}" uses invalid legacy model value "${modelTier}"; use "${modelTier === "opus" ? "high" : modelTier === "sonnet" ? "mid" : "low"}".`,
+      );
+    }
+    if (!isModelTier(modelTier)) {
+      throw new Error(
+        `Workflow template "${templateName}" has invalid modelTier value "${modelTier}"; expected one of low, mid, high.`,
+      );
+    }
+    return;
+  }
+
+  if (typeof modelTier === "object" && modelTier !== null) {
+    const tierMap = modelTier as Record<string, unknown>;
+    const allowedKeys = new Set(["simple", "standard", "complex"]);
+    for (const key of Object.keys(tierMap)) {
+      if (!allowedKeys.has(key)) {
+        throw new Error(
+          `Workflow template "${templateName}" has invalid modelTier map key "${key}"; expected simple, standard, complex.`,
+        );
+      }
+      const value = tierMap[key];
+      if (value === undefined) {
+        continue;
+      }
+      if (typeof value !== "string") {
+        throw new Error(
+          `Workflow template "${templateName}" has non-string modelTier value for "${key}".`,
+        );
+      }
+      if (LEGACY_MODEL_VALUES.has(value)) {
+        throw new Error(
+          `Workflow template "${templateName}" uses invalid legacy model value "${value}"; use "${value === "opus" ? "high" : value === "sonnet" ? "mid" : "low"}".`,
+        );
+      }
+      if (!isModelTier(value)) {
+        throw new Error(
+          `Workflow template "${templateName}" has invalid modelTier value "${value}" for "${key}"; expected low, mid, high.`,
+        );
+      }
+    }
+    return;
+  }
+
+  throw new Error(
+    `Workflow template "${templateName}" has invalid modelTier config; expected a tier string or complexity map.`,
+  );
+}
+
+function validateWorkflowTemplate(template: WorkflowTemplate, templateName: string): void {
+  for (const phase of template.phases) {
+    for (const worker of phase.workers) {
+      assertNoLegacyModelConfig(worker, templateName);
+      assertValidModelTierConfig(worker, templateName);
+    }
   }
 }
 
