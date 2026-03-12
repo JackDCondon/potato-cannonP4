@@ -84,33 +84,33 @@ describe("SessionService.terminateExistingSession", () => {
   });
 });
 
-describe("SessionService model resolution", () => {
-  it("should pass resolved model to spawnClaudeSession args", async () => {
-    // This test verifies the resolveModel function is correctly integrated
-    // We test the resolver directly since spawnClaudeSession is private
+describe("SessionService model tier resolver integration", () => {
+  it("resolves concrete model from tier + provider config", async () => {
+    const { resolveConcreteModelForWorker } = await import("../model-tier-resolver.js");
 
-    // Import the resolver
-    const { resolveModel } = await import("../model-resolver.js");
+    const resolved = resolveConcreteModelForWorker({
+      modelTier: { simple: "low", standard: "mid", complex: "high" },
+      complexity: "complex",
+      project: { providerOverride: "anthropic" },
+      config: {
+        daemon: { port: 8443 },
+        ai: {
+          defaultProvider: "anthropic",
+          providers: [
+            {
+              id: "anthropic",
+              models: { low: "haiku", mid: "sonnet", high: "opus" },
+            },
+          ],
+        },
+      },
+    });
 
-    // Test that shortcuts resolve correctly
-    assert.strictEqual(resolveModel("haiku"), "haiku");
-    assert.strictEqual(resolveModel("sonnet"), "sonnet");
-    assert.strictEqual(resolveModel("opus"), "opus");
-
-    // Test that explicit IDs pass through
-    assert.strictEqual(
-      resolveModel("claude-sonnet-4-20250514"),
-      "claude-sonnet-4-20250514"
-    );
-
-    // Test that undefined returns null (no --model flag)
-    assert.strictEqual(resolveModel(undefined), null);
-
-    // Test object format
-    assert.strictEqual(
-      resolveModel({ id: "claude-opus-4-20250514", provider: "anthropic" }),
-      "claude-opus-4-20250514"
-    );
+    assert.deepStrictEqual(resolved, {
+      providerId: "anthropic",
+      tier: "high",
+      model: "opus",
+    });
   });
 });
 
