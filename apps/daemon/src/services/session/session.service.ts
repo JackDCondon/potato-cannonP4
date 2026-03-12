@@ -249,6 +249,89 @@ export function resolveWorkerModelForSpawn(input: ResolveWorkerModelInput): stri
   return resolved?.model;
 }
 
+function nonEmptyStringOrNull(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function arraysExactlyMatch(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+function compatibilityKeysExactlyMatch(
+  left: ContinuityCompatibilityKey | undefined,
+  right: ContinuityCompatibilityKey | undefined,
+): boolean {
+  if (!left || !right) return false;
+  return (
+    left.ticketId === right.ticketId &&
+    left.phase === right.phase &&
+    left.agentSource === right.agentSource &&
+    left.executionGeneration === right.executionGeneration &&
+    left.workflowId === right.workflowId &&
+    left.worktreePath === right.worktreePath &&
+    left.branchName === right.branchName &&
+    left.agentDefinitionPromptHash === right.agentDefinitionPromptHash &&
+    left.model === right.model &&
+    arraysExactlyMatch(left.mcpServerNames, right.mcpServerNames) &&
+    arraysExactlyMatch(left.disallowedTools, right.disallowedTools)
+  );
+}
+
+/**
+ * Select the Claude session ID that belongs to the current compatibility chain.
+ * Prevents using a stale ID from a different phase/agent/generation.
+ */
+export function resolveStoredContinuityContext(
+  sessions: Array<{ claudeSessionId?: string; metadata?: Record<string, unknown> }>,
+): {
+  storedCompatibility?: ContinuityCompatibilityKey;
+  claudeSessionId: string | null;
+} {
+  const latestSession = sessions.at(0);
+  const storedCompatibility =
+    latestSession?.metadata &&
+    typeof latestSession.metadata === "object"
+      ? (latestSession.metadata as StoredSessionContinuityMetadata).continuityCompatibility
+      : undefined;
+
+  if (!storedCompatibility) {
+    return {
+      storedCompatibility: undefined,
+      claudeSessionId: null,
+    };
+  }
+
+  for (const session of sessions) {
+    const claudeSessionId = nonEmptyStringOrNull(session.claudeSessionId);
+    if (!claudeSessionId) {
+      continue;
+    }
+    const candidateCompatibility =
+      session.metadata && typeof session.metadata === "object"
+        ? (session.metadata as StoredSessionContinuityMetadata).continuityCompatibility
+        : undefined;
+    if (compatibilityKeysExactlyMatch(candidateCompatibility, storedCompatibility)) {
+      return {
+        storedCompatibility,
+        claudeSessionId,
+      };
+    }
+  }
+
+  return {
+    storedCompatibility,
+    claudeSessionId: null,
+  };
+}
+
 /**
  * Ensure blocked reasons include clear, line-broken quota context for users.
  */
@@ -1599,12 +1682,17 @@ export class SessionService {
       model: resolvedModel ?? "default",
       disallowedTools,
     });
-    const existingClaudeSessionId = getLatestClaudeSessionIdForTicket(ticketId);
-    const priorSessions = getSessionsByTicket(ticketId);
-    const latestSession = priorSessions.length > 0 ? priorSessions[priorSessions.length - 1] : null;
-    const storedCompatibility = latestSession?.metadata
-      ? (latestSession.metadata as StoredSessionContinuityMetadata).continuityCompatibility
-      : undefined;
+    const continuitySessions = getRecentSessionsForContinuity(
+      ticketId,
+      {
+        phase,
+        agentSource: agentWorker.source,
+        executionGeneration: ticket.executionGeneration ?? 0,
+      },
+      20,
+    );
+    const { storedCompatibility, claudeSessionId: existingClaudeSessionId } =
+      resolveStoredContinuityContext(continuitySessions);
     const continuityDecision = await this.decideContinuityForTicket({
       ticketId,
       conversationId: ticket.conversationId,
@@ -1684,6 +1772,7 @@ export class SessionService {
       projectId,
       ticketId,
       executionGeneration: ticket.executionGeneration ?? 0,
+      claudeSessionId: resumeSessionId,
       agentSource: agentWorker.source,
       phase,
       metadata: continuityMetadata,

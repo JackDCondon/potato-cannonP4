@@ -7,6 +7,7 @@ import {
   TicketLifecycleConflictError,
   StaleTicketInputError,
   resolveWorkerModelForSpawn,
+  resolveStoredContinuityContext,
 } from "../session.service.js";
 import { decideContinuityMode, evaluateResumeEligibility } from "../continuity-policy.js";
 import { SESSIONS_DIR } from "../../../config/paths.js";
@@ -133,6 +134,68 @@ describe("SessionService model tier routing integration", () => {
         }),
       /deprecated field "model"/,
     );
+  });
+});
+
+describe("resolveStoredContinuityContext", () => {
+  const compatibilityA = {
+    ticketId: "POT-1",
+    phase: "Build",
+    agentSource: "agents/taskmaster.md",
+    executionGeneration: 18,
+    workflowId: "wf-1",
+    worktreePath: "D:/AgentWorkspaces/potato-POT-1",
+    branchName: "potato-POT-1",
+    agentDefinitionPromptHash: "a".repeat(64),
+    mcpServerNames: ["p4", "potato-cannon"],
+    model: "opus",
+    disallowedTools: ["Skill(superpowers:*)"],
+  };
+  const compatibilityB = {
+    ...compatibilityA,
+    phase: "Specification",
+    agentSource: "agents/specification.md",
+    executionGeneration: 17,
+  };
+
+  it("returns null when only stale Claude IDs from other compatibility chains exist", () => {
+    const result = resolveStoredContinuityContext([
+      {
+        claudeSessionId: undefined,
+        metadata: { continuityCompatibility: compatibilityA },
+      },
+      {
+        claudeSessionId: "stale-session-id",
+        metadata: { continuityCompatibility: compatibilityB },
+      },
+    ]);
+
+    assert.deepStrictEqual(result, {
+      storedCompatibility: compatibilityA,
+      claudeSessionId: null,
+    });
+  });
+
+  it("returns the newest Claude ID that matches the latest compatibility chain", () => {
+    const result = resolveStoredContinuityContext([
+      {
+        claudeSessionId: undefined,
+        metadata: { continuityCompatibility: compatibilityA },
+      },
+      {
+        claudeSessionId: "valid-resume-id",
+        metadata: { continuityCompatibility: compatibilityA },
+      },
+      {
+        claudeSessionId: "stale-session-id",
+        metadata: { continuityCompatibility: compatibilityB },
+      },
+    ]);
+
+    assert.deepStrictEqual(result, {
+      storedCompatibility: compatibilityA,
+      claudeSessionId: "valid-resume-id",
+    });
   });
 });
 
