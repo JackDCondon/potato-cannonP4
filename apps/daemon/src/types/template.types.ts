@@ -5,52 +5,52 @@ import type { DependencyTier } from "@potato-cannon/shared";
 // Worker types
 export type WorkerType = "agent" | "ralphLoop" | "taskLoop";
 
+export type ModelTier = "low" | "mid" | "high";
+
+export interface ModelTierMap {
+  simple?: ModelTier;
+  standard?: ModelTier;
+  complex?: ModelTier;
+}
+
+// Transitional alias used by existing runtime resolver code.
+export type ModelSpec =
+  | string
+  | { id: string; provider?: string }
+  | { simple?: string; standard?: string; complex?: string }
+  | ModelTierMap;
+
+export function isModelTierMap(modelTier: unknown): modelTier is ModelTierMap {
+  return (
+    typeof modelTier === "object" &&
+    modelTier !== null &&
+    ("simple" in modelTier || "standard" in modelTier || "complex" in modelTier)
+  );
+}
+
+// Transitional alias used by existing runtime resolver code.
+export function isComplexityModelMap(
+  model: ModelSpec,
+): model is { simple?: string; standard?: string; complex?: string } | ModelTierMap {
+  return (
+    typeof model === "object" &&
+    model !== null &&
+    !("id" in model) &&
+    ("simple" in model || "standard" in model || "complex" in model)
+  );
+}
+
 export interface BaseWorker {
   id: string;
   type: WorkerType;
   description?: string;
 }
 
-/**
- * Complexity-keyed model map. Each key maps a complexity level to a model spec string.
- * At least one of the keys must be present. When a key is missing, resolveModel falls
- * back to `standard`. Use this in workflow.json to route cheap work to cheaper models.
- */
-export interface ComplexityModelMap {
-  simple?: string;
-  standard?: string;
-  complex?: string;
-}
-
-/**
- * Model specification — one of three forms:
- *   1. String shortcut or explicit ID:  "haiku" | "claude-sonnet-4-20250514"
- *   2. Object with id (+ optional provider): { id: "...", provider: "anthropic" }
- *   3. Complexity map: { simple: "haiku", standard: "sonnet", complex: "opus" }
- *
- * The complexity map form (3) enables per-ticket cost optimisation; resolveModel
- * selects the right entry at agent-spawn time using the ticket/task complexity level.
- */
-export type ModelSpec = string | { id: string; provider?: string } | ComplexityModelMap;
-
-/**
- * Type guard: returns true when `model` is a ComplexityModelMap.
- *
- * Uses a POSITIVE key check rather than checking for the absence of `id`, making
- * it robust against future additions to the ModelSpec union.
- */
-export function isComplexityModelMap(model: ModelSpec): model is ComplexityModelMap {
-  return (
-    typeof model === "object" &&
-    !("id" in model) &&
-    ("simple" in model || "standard" in model || "complex" in model)
-  );
-}
-
 export interface AgentWorker extends BaseWorker {
   type: "agent";
   source: string;
   disallowTools?: string[];
+  modelTier?: ModelTier | ModelTierMap;
   model?: ModelSpec;
 }
 

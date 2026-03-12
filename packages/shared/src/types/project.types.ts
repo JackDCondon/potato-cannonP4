@@ -15,6 +15,7 @@ export interface Project {
   branchPrefix?: string
   folderId?: string | null
   p4Stream?: string
+  providerOverride?: string
   agentWorkspaceRoot?: string
   helixSwarmUrl?: string
   suggestedP4Stream?: string

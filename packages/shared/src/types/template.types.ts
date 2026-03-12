@@ -45,10 +45,18 @@ export interface TemplateAgent {
   role: 'primary' | 'adversarial' | 'validation'
   description?: string
   prompt?: string
-  model?: string | { simple?: string; standard?: string; complex?: string }
+  modelTier?: ModelTier | ModelTierMap
   context?: {
     artifacts?: string[]
   }
+}
+
+export type ModelTier = 'low' | 'mid' | 'high'
+
+export interface ModelTierMap {
+  simple?: ModelTier
+  standard?: ModelTier
+  complex?: ModelTier
 }
 
 export interface RalphLoopConfig {

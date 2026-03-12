@@ -49,12 +49,27 @@ export interface LifecycleContinuityConfig {
   maxPromptChars?: number;
 }
 
+export interface AiProviderConfig {
+  id: string;
+  models: {
+    low: string;
+    mid: string;
+    high: string;
+  };
+}
+
+export interface AiConfig {
+  defaultProvider: string;
+  providers: AiProviderConfig[];
+}
+
 export interface GlobalConfig {
   // Keep old structure for backward compatibility
   telegram?: TelegramConfig;
   slack?: SlackConfig;
   // New structure
   providers?: ProvidersConfig;
+  ai?: AiConfig;
   daemon: DaemonConfig;
 }
 
@@ -79,6 +94,7 @@ export interface Project {
   suggestedP4Stream?: string;  // AI-detected P4 stream (populated on project creation)
   agentWorkspaceRoot?: string; // Root directory for P4 agent workspaces
   helixSwarmUrl?: string;      // Helix Swarm review server URL
+  providerOverride?: string;
 }
 
 export interface DaemonInfo {

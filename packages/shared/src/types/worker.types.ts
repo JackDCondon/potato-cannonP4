@@ -1,9 +1,11 @@
+import type { ModelTier, ModelTierMap } from './template.types.js'
+
 export interface WorkerNode {
   id: string
   type: 'agent' | 'ralphLoop' | 'taskLoop'
   description?: string
   agentType?: string
-  model?: string
+  modelTier?: ModelTier | ModelTierMap
   hasOverride?: boolean
   maxAttempts?: number
   workers?: WorkerNode[]
