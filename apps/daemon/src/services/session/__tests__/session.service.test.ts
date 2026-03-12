@@ -6,6 +6,7 @@ import {
   SessionService,
   TicketLifecycleConflictError,
   StaleTicketInputError,
+  resolveWorkerModelForSpawn,
 } from "../session.service.js";
 import { decideContinuityMode, evaluateResumeEligibility } from "../continuity-policy.js";
 import { SESSIONS_DIR } from "../../../config/paths.js";
@@ -84,33 +85,54 @@ describe("SessionService.terminateExistingSession", () => {
   });
 });
 
-describe("SessionService model tier resolver integration", () => {
-  it("resolves concrete model from tier + provider config", async () => {
-    const { resolveConcreteModelForWorker } = await import("../model-tier-resolver.js");
-
-    const resolved = resolveConcreteModelForWorker({
-      modelTier: { simple: "low", standard: "mid", complex: "high" },
-      complexity: "complex",
-      project: { providerOverride: "anthropic" },
-      config: {
-        daemon: { port: 8443 },
-        ai: {
-          defaultProvider: "anthropic",
-          providers: [
-            {
-              id: "anthropic",
-              models: { low: "haiku", mid: "sonnet", high: "opus" },
-            },
-          ],
+describe("SessionService model tier routing integration", () => {
+  const baseConfig = {
+    daemon: { port: 8443 },
+    ai: {
+      defaultProvider: "anthropic",
+      providers: [
+        {
+          id: "anthropic",
+          models: { low: "haiku", mid: "sonnet", high: "opus" },
         },
+        {
+          id: "openai",
+          models: { low: "gpt-4.1-mini", mid: "gpt-4.1", high: "o3" },
+        },
+      ],
+    },
+  };
+
+  it("resolves concrete model from modelTier and project provider override", () => {
+    const resolvedModel = resolveWorkerModelForSpawn({
+      worker: {
+        id: "implementer",
+        source: "agents/builder.md",
+        modelTier: { simple: "low", standard: "mid", complex: "high" },
       },
+      complexity: "complex",
+      project: { providerOverride: "openai" },
+      config: baseConfig,
     });
 
-    assert.deepStrictEqual(resolved, {
-      providerId: "anthropic",
-      tier: "high",
-      model: "opus",
-    });
+    assert.strictEqual(resolvedModel, "o3");
+  });
+
+  it("throws before spawn when legacy model field is still present", () => {
+    assert.throws(
+      () =>
+        resolveWorkerModelForSpawn({
+          worker: {
+            id: "legacy-worker",
+            source: "agents/legacy.md",
+            model: "opus",
+          },
+          complexity: "standard",
+          project: {},
+          config: baseConfig,
+        }),
+      /deprecated field "model"/,
+    );
   });
 });
 

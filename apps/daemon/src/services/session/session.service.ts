@@ -40,6 +40,7 @@ import {
 import {
   DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
   getConfigStore,
+  loadGlobalConfig,
 } from "../../stores/config.store.js";
 import {
   readResponse,
@@ -57,6 +58,7 @@ import type {
 import type { TicketPhase } from "../../types/ticket.types.js";
 import type { AgentWorker } from "../../types/template.types.js";
 import type { TaskContext } from "../../types/orchestration.types.js";
+import type { GlobalConfig } from "../../types/config.types.js";
 import type {
   ContinuityDecision,
   ContinuityPacket,
@@ -74,7 +76,7 @@ import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
-import { resolveModel } from "./model-resolver.js";
+import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
 import { logToDaemon, savePrompt } from "./ticket-logger.js";
 import {
   startPhase,
@@ -221,6 +223,30 @@ export function extractRateLimitNotice(event: unknown): string | null {
   }
 
   return `Claude rate limit reached (${limitType}).`;
+}
+
+interface ResolveWorkerModelInput {
+  worker: Pick<AgentWorker, "id" | "source" | "modelTier" | "model">;
+  complexity?: TaskContext["complexity"] | null;
+  project: { providerOverride?: string | null };
+  config: GlobalConfig;
+}
+
+export function resolveWorkerModelForSpawn(input: ResolveWorkerModelInput): string | undefined {
+  if (input.worker.model !== undefined) {
+    throw new Error(
+      `Worker "${input.worker.id}" (${input.worker.source}) uses deprecated field "model"; use "modelTier".`,
+    );
+  }
+
+  const resolved = resolveConcreteModelForWorker({
+    modelTier: input.worker.modelTier,
+    complexity: input.complexity,
+    project: { providerOverride: input.project.providerOverride ?? undefined },
+    config: input.config,
+  });
+
+  return resolved?.model;
 }
 
 /**
@@ -1546,9 +1572,19 @@ export class SessionService {
       throw new Error(`Agent ${agentWorker.source} not found in template`);
     }
 
-    // Resolve model for this agent, using task complexity if available, else ticket complexity
+    const globalConfig = await loadGlobalConfig();
+    if (!globalConfig) {
+      throw new Error("Global config is unavailable; cannot resolve AI model routing.");
+    }
+
+    // Resolve model for this agent, using task complexity if available, else ticket complexity.
     const taskComplexity = taskContext?.complexity ?? ticket.complexity;
-    const resolvedModel = resolveModel(agentWorker.model, taskComplexity);
+    const resolvedModel = resolveWorkerModelForSpawn({
+      worker: agentWorker,
+      complexity: taskComplexity,
+      project: { providerOverride: project.providerOverride },
+      config: globalConfig,
+    });
     const disallowedTools = ["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])];
     const compatibilityKey = this.buildContinuityCompatibilityKey({
       ticketId,
