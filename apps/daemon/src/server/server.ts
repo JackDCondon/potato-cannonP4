@@ -1313,7 +1313,7 @@ export async function startServer(
 
   if (options.daemon) {
     const { spawn } = await import("child_process");
-    const child = spawn(process.argv[0], [fileURLToPath(import.meta.url)], {
+    const child = spawn(process.argv[0], [resolveDaemonEntryPath(import.meta.url)], {
       detached: true,
       stdio: "ignore",
       env: { ...process.env, POTATO_DAEMON_PORT: port.toString() },
@@ -1324,6 +1324,11 @@ export async function startServer(
   }
 
   await main();
+}
+
+export function resolveDaemonEntryPath(moduleUrl: string): string {
+  const currentModulePath = fileURLToPath(moduleUrl);
+  return path.join(path.dirname(currentModulePath), "..", "index.js");
 }
 
 export async function stopServer(): Promise<void> {

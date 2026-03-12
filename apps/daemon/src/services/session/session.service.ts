@@ -32,7 +32,11 @@ import {
   getActiveSessionForTicket,
   getSessionsByTicket,
 } from "../../stores/session.store.js";
-import { getMessages, getMessagesForContinuity } from "../../stores/conversation.store.js";
+import {
+  addMessage,
+  getMessages,
+  getMessagesForContinuity,
+} from "../../stores/conversation.store.js";
 import {
   DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
   getConfigStore,
@@ -181,10 +185,79 @@ interface StoredSessionContinuityMetadata extends Record<string, unknown> {
   continuityCompatibility?: ContinuityCompatibilityKey;
 }
 
+interface RateLimitInfoLike {
+  type?: unknown;
+  result?: unknown;
+  rate_limit_info?: {
+    rateLimitType?: unknown;
+    resetsAt?: unknown;
+  };
+}
+
+/**
+ * Build a user-facing rate-limit notice from Claude stream events.
+ */
+export function extractRateLimitNotice(event: unknown): string | null {
+  const candidate = event as RateLimitInfoLike | null;
+  if (!candidate || typeof candidate !== "object") return null;
+
+  if (candidate.type === "result" && typeof candidate.result === "string") {
+    if (/hit your limit/i.test(candidate.result)) {
+      return candidate.result.replace(/\s+/g, " ").trim();
+    }
+  }
+
+  if (candidate.type !== "rate_limit_event") return null;
+
+  const info = candidate.rate_limit_info;
+  const limitType = typeof info?.rateLimitType === "string" ? info.rateLimitType : "usage";
+  const resetAt =
+    typeof info?.resetsAt === "number"
+      ? new Date(info.resetsAt * 1000).toLocaleString()
+      : null;
+
+  if (resetAt) {
+    return `Claude rate limit reached (${limitType}). Resets at ${resetAt}.`;
+  }
+
+  return `Claude rate limit reached (${limitType}).`;
+}
+
+/**
+ * Ensure blocked reasons include clear, line-broken quota context for users.
+ */
+export function formatBlockedReasonWithRateLimit(
+  reason: string,
+  detectedRateLimit?: string | null,
+): string {
+  const quotaSuffix =
+    "This is a model/account quota limit, not an app failure.";
+  let normalized = reason.trim();
+
+  const hasRateLimit = /rate limit|hit your limit/i.test(normalized);
+
+  if (detectedRateLimit && !hasRateLimit) {
+    normalized = `${normalized}\n${detectedRateLimit.trim()}`;
+  }
+
+  // If the reason already contains a rate-limit sentence, ensure it starts on a new line.
+  normalized = normalized.replace(
+    /\.\s+(Claude rate limit reached\b)/i,
+    ".\n$1",
+  );
+
+  if (/rate limit|hit your limit/i.test(normalized) && !/quota limit, not an app failure/i.test(normalized)) {
+    normalized = `${normalized}\n${quotaSuffix}`;
+  }
+
+  return normalized;
+}
+
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private remoteControlState: Map<string, RemoteControlState> = new Map();
   private consumedRestartSnapshots: Map<string, ContinuityPacket> = new Map();
+  private rateLimitNoticeByTicket: Map<string, string> = new Map();
   private eventEmitter: EventEmitter;
 
   constructor(eventEmitter: EventEmitter) {
@@ -948,6 +1021,19 @@ export class SessionService {
       for (const line of lines) {
         try {
           const event = JSON.parse(line);
+          const rateLimitNotice = extractRateLimitNotice(event);
+          const isStructuredRateLimitEvent = event?.type === "rate_limit_event";
+          if (rateLimitNotice && ticketId) {
+            const existingNotice = this.rateLimitNoticeByTicket.get(ticketId);
+            if (!existingNotice || isStructuredRateLimitEvent) {
+              this.rateLimitNoticeByTicket.set(ticketId, rateLimitNotice);
+            }
+            logToDaemon(projectId, ticketId, `Rate limit detected`, {
+              agentType,
+              phase,
+              notice: rateLimitNotice,
+            }).catch(() => {});
+          }
           const logEntry = { ...event, timestamp: new Date().toISOString() };
           logStream.write(JSON.stringify(logEntry) + "\n");
           this.eventEmitter.emit("session:output", {
@@ -1426,6 +1512,7 @@ export class SessionService {
     phaseEntryContext?: PhaseEntryContext,
   ): Promise<string> {
     console.log(`[spawnAgentWorker] Spawning ${agentWorker.source} for phase ${phase}`);
+    this.rateLimitNoticeByTicket.delete(ticketId);
 
     // Terminate any existing session first (uses sessions table as lock)
     await this.terminateExistingSession('ticket', ticketId);
@@ -1858,6 +1945,10 @@ export class SessionService {
     ticketId: string,
     reason: string
   ): Promise<void> {
+    const detectedRateLimit = this.rateLimitNoticeByTicket.get(ticketId);
+    reason = formatBlockedReasonWithRateLimit(reason, detectedRateLimit);
+    this.rateLimitNoticeByTicket.delete(ticketId);
+
     console.log(`[handleTicketBlocked] Blocking ticket ${ticketId}: ${reason}`);
 
     // Get current phase before updating
@@ -1869,7 +1960,6 @@ export class SessionService {
 
     // Write error to conversation so it appears in Activity feed
     try {
-      const { addMessage } = await import('../../stores/conversation.store.js');
       const blockedTicket = getTicket(projectId, ticketId);
       if (blockedTicket?.conversationId) {
         addMessage(blockedTicket.conversationId, {

@@ -752,7 +752,14 @@ async function processNestedCompletion(
   }
 
   if (workerState.type === "agent") {
-    // This shouldn't happen at this level
+    if (exitCode !== 0) {
+      await callbacks.onTicketBlocked(
+        projectId,
+        ticketId,
+        `Agent "${workerState.id}" failed with exit code ${exitCode}`
+      );
+      return { newState: null, loopComplete: false, blocked: true };
+    }
     return { newState: null, loopComplete: true, blocked: false };
   }
 

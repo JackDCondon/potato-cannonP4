@@ -100,6 +100,21 @@ export class P4Provider implements IVCSProvider {
   constructor(private readonly config: P4ProviderConfig) {}
 
   /**
+   * Sync a workspace to latest depot state before agent execution.
+   */
+  private async syncWorkspace(workspaceName: string, workspaceRootPath: string): Promise<void> {
+    await fs.mkdir(workspaceRootPath, { recursive: true });
+    const syncResult = spawnSync("p4", ["-c", workspaceName, "sync"], {
+      cwd: workspaceRootPath,
+      encoding: "utf-8",
+    });
+    if (syncResult.status !== 0 || syncResult.error) {
+      const stderr = syncResult.stderr || syncResult.error?.message || `(exit ${syncResult.status})`;
+      throw new Error(`Failed to sync P4 workspace ${workspaceName}: ${stderr}`);
+    }
+  }
+
+  /**
    * Derive the workspace name for a given ticket.
    */
   private workspaceName(ticketId: string): string {
@@ -118,7 +133,7 @@ export class P4Provider implements IVCSProvider {
    * Ensure the P4 client workspace exists for the given ticket.
    *
    * If the workspace already exists (non-empty output from `p4 clients -e`),
-   * returns the existing WorkspaceInfo without re-creating.
+   * syncs it and returns existing WorkspaceInfo without re-creating.
    *
    * If new: detects P4VFS availability, creates the local root directory,
    * then pipes a client spec to `p4 client -i`.
@@ -144,6 +159,7 @@ export class P4Provider implements IVCSProvider {
 
     if (existsResult.stdout && existsResult.stdout.trim().length > 0) {
       console.log(`[P4Provider] Workspace ${workspaceName} already exists; reusing.`);
+      await this.syncWorkspace(workspaceName, workspaceRootPath);
       return {
         workspacePath: workspaceRootPath,
         workspaceLabel: workspaceName,
@@ -185,6 +201,7 @@ export class P4Provider implements IVCSProvider {
     }
 
     console.log(`[P4Provider] Workspace ${workspaceName} created successfully.`);
+    await this.syncWorkspace(workspaceName, workspaceRootPath);
 
     return {
       workspacePath: workspaceRootPath,

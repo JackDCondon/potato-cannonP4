@@ -227,6 +227,36 @@ describe("worker-executor stale callback fencing", () => {
     assert.strictEqual(blockedCalls, 1);
   });
 
+  it("blocks and stops progression when active agent exits non-zero", async () => {
+    mockedWorkerState = {
+      kind: "active",
+      phaseId: "Build",
+      executionGeneration: ticketGeneration,
+      workerIndex: 0,
+      activeWorker: {
+        id: "agent-1",
+        type: "agent",
+        sessionId: "sess-current",
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    await handleAgentCompletion(
+      "proj-1",
+      "POT-1",
+      "Build",
+      "D:/tmp/project",
+      1,
+      "agent-1",
+      { approved: false, feedback: "failed" },
+      callbacks,
+      { sessionId: "sess-current", executionGeneration: 2 },
+    );
+
+    assert.strictEqual(blockedCalls, 1);
+    assert.strictEqual(saveCalls, 0);
+  });
+
   it("passes ticket workflowId into phase config resolution", async () => {
     await handleAgentCompletion(
       "proj-1",
