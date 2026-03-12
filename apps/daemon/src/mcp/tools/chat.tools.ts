@@ -4,6 +4,49 @@ import type { ToolDefinition, McpContext, McpToolResult } from '../../types/mcp.
 import { chatService } from '../../services/chat.service.js';
 import type { ChatContext } from '../../providers/chat-provider.types.js';
 
+const AGENT_HEADER_REGEX = /^(\s*)\[([^\]\n]*\bAgent\b[^\]\n]*)\]:(\s*)/;
+
+export function toModelDisplayLabel(model: string | undefined): string | null {
+  const trimmed = model?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("opus")) return "Opus";
+  if (lower.includes("sonnet")) return "Sonnet";
+  if (lower.includes("haiku")) return "Haiku";
+  if (/^o\d+$/i.test(trimmed)) return trimmed.toUpperCase();
+  if (lower.startsWith("gpt-")) return `GPT${trimmed.slice(3)}`;
+
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+export function formatAgentNotificationHeader(
+  message: string,
+  model: string | undefined,
+): string {
+  const modelLabel = toModelDisplayLabel(model);
+  if (!modelLabel) {
+    return message;
+  }
+
+  const match = message.match(AGENT_HEADER_REGEX);
+  if (!match) {
+    return message;
+  }
+
+  const leadingWhitespace = match[1];
+  const agentLabel = match[2];
+  const spacing = match[3];
+
+  if (/\([^)\n]+\)\s*$/.test(agentLabel)) {
+    return message;
+  }
+
+  return `${leadingWhitespace}[${agentLabel} (${modelLabel})]:${spacing}${message.slice(match[0].length)}`;
+}
+
 export const chatTools: ToolDefinition[] = [
   {
     name: 'chat_ask',
@@ -69,6 +112,7 @@ function toContext(ctx: McpContext): ChatContext {
     projectId: ctx.projectId,
     ticketId: ctx.ticketId || undefined,
     brainstormId: ctx.brainstormId || undefined,
+    agentModel: ctx.agentModel || undefined,
   };
 }
 
@@ -97,7 +141,11 @@ export const chatHandlers: Record<
   },
 
   chat_notify: async (ctx, args) => {
-    await chatService.notify(toContext(ctx), args.message as string);
+    const message = formatAgentNotificationHeader(
+      args.message as string,
+      ctx.agentModel,
+    );
+    await chatService.notify(toContext(ctx), message);
     return {
       content: [{ type: 'text', text: 'Notification sent' }],
     };

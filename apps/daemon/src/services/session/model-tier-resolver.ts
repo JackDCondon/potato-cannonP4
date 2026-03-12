@@ -5,13 +5,16 @@ import type { ModelTier, ModelTierMap } from "../../types/template.types.js";
 const LEGACY_MODEL_VALUES = new Set(["haiku", "sonnet", "opus"]);
 const MODEL_TIERS = new Set<ModelTier>(["low", "mid", "high"]);
 
+function mapLegacyModelToTier(value: string): ModelTier | null {
+  if (value === "haiku") return "low";
+  if (value === "sonnet") return "mid";
+  if (value === "opus") return "high";
+  return null;
+}
+
 function assertTierValue(tier: unknown, context: string): asserts tier is ModelTier {
   if (typeof tier !== "string") {
     throw new Error(`${context} must be a string model tier.`);
-  }
-  if (LEGACY_MODEL_VALUES.has(tier)) {
-    const replacement = tier === "opus" ? "high" : tier === "sonnet" ? "mid" : "low";
-    throw new Error(`Invalid legacy model value "${tier}"; use "${replacement}".`);
   }
   if (!MODEL_TIERS.has(tier as ModelTier)) {
     throw new Error(`Invalid model tier "${tier}"; expected one of low, mid, high.`);
@@ -24,6 +27,9 @@ export function resolveModelTier(
 ): ModelTier | null {
   if (!modelTier) return null;
   if (typeof modelTier === "string") {
+    if (LEGACY_MODEL_VALUES.has(modelTier)) {
+      return mapLegacyModelToTier(modelTier) as ModelTier;
+    }
     assertTierValue(modelTier, "modelTier");
     return modelTier;
   }
@@ -31,6 +37,9 @@ export function resolveModelTier(
   const level = complexity ?? "standard";
   const selectedTier = modelTier[level] ?? modelTier.standard;
   if (selectedTier === undefined) return null;
+  if (LEGACY_MODEL_VALUES.has(selectedTier)) {
+    return mapLegacyModelToTier(selectedTier) as ModelTier;
+  }
   assertTierValue(selectedTier, `modelTier.${level}`);
   return selectedTier;
 }

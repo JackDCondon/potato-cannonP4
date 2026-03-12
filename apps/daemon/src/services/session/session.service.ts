@@ -1024,6 +1024,7 @@ export class SessionService {
             POTATO_TICKET_ID: ticketId,
             POTATO_BRAINSTORM_ID: brainstormId,
             POTATO_WORKFLOW_ID: workflowId,
+            POTATO_AGENT_MODEL: model || "",
           },
         },
         ...additionalMcpServers,
@@ -1070,6 +1071,7 @@ export class SessionService {
       POTATO_TICKET_ID: ticketId,
       POTATO_BRAINSTORM_ID: brainstormId,
       POTATO_WORKFLOW_ID: workflowId,
+      POTATO_AGENT_MODEL: model || "",
     };
     if (spawnProject?.helixSwarmUrl) {
       ptyEnv.HELIX_SWARM_URL = spawnProject.helixSwarmUrl;
@@ -1462,6 +1464,7 @@ export class SessionService {
             POTATO_TICKET_ID: "",
             POTATO_BRAINSTORM_ID: brainstormId,
             POTATO_WORKFLOW_ID: workflowId,
+            POTATO_AGENT_MODEL: "",
           },
         },
       },
@@ -1518,6 +1521,7 @@ export class SessionService {
         POTATO_PROJECT_ID: projectId,
         POTATO_BRAINSTORM_ID: brainstormId,
         POTATO_WORKFLOW_ID: workflowId,
+        POTATO_AGENT_MODEL: "",
       },
     });
 

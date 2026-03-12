@@ -21,6 +21,7 @@ export function registerMcpRoutes(app: Express): void {
           ticketId?: string;
           brainstormId?: string;
           workflowId?: string;
+          agentModel?: string;
         };
       };
 
@@ -60,6 +61,7 @@ export function registerMcpRoutes(app: Express): void {
         ticketId: context.ticketId || "",
         brainstormId: context.brainstormId || "",
         workflowId: context.workflowId || "",
+        agentModel: context.agentModel,
         daemonUrl: `http://localhost:${port}`,
       };
 

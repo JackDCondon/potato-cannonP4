@@ -13,6 +13,7 @@ export interface McpContext {
   ticketId: string;
   brainstormId: string;
   workflowId: string;
+  agentModel?: string;
   daemonUrl: string;
 }
 

@@ -36,8 +36,10 @@ describe("resolveModelTier", () => {
     assert.strictEqual(resolveModelTier(modelTier, "complex"), "high");
   });
 
-  it("rejects legacy and invalid values", () => {
-    assert.throws(() => resolveModelTier("opus" as any, "standard"), /legacy model value/);
+  it("maps legacy values to model tiers and rejects invalid values", () => {
+    assert.strictEqual(resolveModelTier("haiku" as any, "standard"), "low");
+    assert.strictEqual(resolveModelTier("sonnet" as any, "standard"), "mid");
+    assert.strictEqual(resolveModelTier("opus" as any, "standard"), "high");
     assert.throws(() => resolveModelTier("ultra" as any, "standard"), /Invalid model tier/);
   });
 });

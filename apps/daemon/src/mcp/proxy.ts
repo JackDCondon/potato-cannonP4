@@ -24,6 +24,7 @@ const PROJECT_ID = process.env.POTATO_PROJECT_ID || '';
 const TICKET_ID = process.env.POTATO_TICKET_ID || '';
 const BRAINSTORM_ID = process.env.POTATO_BRAINSTORM_ID || '';
 const WORKFLOW_ID = process.env.POTATO_WORKFLOW_ID || '';
+const AGENT_MODEL = process.env.POTATO_AGENT_MODEL || '';
 
 async function getDaemonUrl(): Promise<string> {
   const daemonFile = path.join(os.homedir(), '.potato-cannon', 'daemon.json');
@@ -62,6 +63,7 @@ async function callTool(
         ticketId: TICKET_ID || undefined,
         brainstormId: BRAINSTORM_ID || undefined,
         workflowId: WORKFLOW_ID || undefined,
+        agentModel: AGENT_MODEL || undefined,
       },
     }),
   });
