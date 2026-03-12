@@ -16,6 +16,7 @@ import { ProjectIconPicker } from './ProjectIconPicker'
 import { ProjectColorPicker } from './ProjectColorPicker'
 import { WorkflowsSection } from './WorkflowsSection'
 import { useProjects, useUpdateProject, useDeleteProject } from '@/hooks/queries'
+import { api, type GlobalConfigResponse } from '@/api/client'
 
 function isValidBranchPrefix(prefix: string): boolean {
   if (!prefix) return true
@@ -61,6 +62,8 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
   const [agentWorkspaceRootError, setAgentWorkspaceRootError] = useState<string | null>(null)
   const [helixSwarmUrl, setHelixSwarmUrl] = useState('')
   const [helixSwarmUrlError, setHelixSwarmUrlError] = useState<string | null>(null)
+  const [providerOverride, setProviderOverride] = useState('')
+  const [globalAiConfig, setGlobalAiConfig] = useState<GlobalConfigResponse['ai'] | null>(null)
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -79,8 +82,23 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
       setAgentWorkspaceRootError(null)
       setHelixSwarmUrl(project.helixSwarmUrl || '')
       setHelixSwarmUrlError(null)
+      setProviderOverride(project.providerOverride || '__inherit__')
     }
   }, [project])
+
+  useEffect(() => {
+    let cancelled = false
+    api.getGlobalConfig()
+      .then((config) => {
+        if (!cancelled) setGlobalAiConfig(config.ai)
+      })
+      .catch(() => {
+        if (!cancelled) setGlobalAiConfig(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleNameBlur = useCallback(() => {
     if (!project) return
@@ -204,6 +222,14 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
       e.currentTarget.blur()
     }
   }, [])
+
+  const handleProviderOverrideBlur = useCallback(() => {
+    if (!project) return
+    const selected = providerOverride === '__inherit__' ? null : providerOverride
+    if ((project.providerOverride || null) !== selected) {
+      updateProject.mutate({ id: projectId, updates: { providerOverride: selected } })
+    }
+  }, [project, projectId, providerOverride, updateProject])
 
   const handleIconChange = useCallback(
     (newIcon: string) => {
@@ -366,6 +392,33 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
                   </p>
                 )}
               </div>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="AI Provider Override"
+            description="Choose a project-specific provider or inherit the global default."
+          >
+            <div className="space-y-2 max-w-md">
+              <label className="text-sm font-medium text-text-primary" htmlFor="provider-override">
+                Provider
+              </label>
+              <select
+                id="provider-override"
+                value={providerOverride}
+                onChange={(e) => setProviderOverride(e.target.value)}
+                onBlur={handleProviderOverrideBlur}
+                className="border-border/50 bg-bg-tertiary/50 h-9 w-full rounded-md border px-3 text-sm"
+              >
+                <option value="__inherit__">
+                  Inherited ({globalAiConfig?.defaultProvider || 'default'})
+                </option>
+                {(globalAiConfig?.providers || []).map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.id}
+                  </option>
+                ))}
+              </select>
             </div>
           </SettingsSection>
 

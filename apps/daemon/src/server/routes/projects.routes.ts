@@ -319,6 +319,7 @@ export function registerProjectRoutes(
         agentWorkspaceRoot: p.agentWorkspaceRoot,
         helixSwarmUrl: p.helixSwarmUrl,
         suggestedP4Stream: p.suggestedP4Stream,
+        providerOverride: p.providerOverride,
       }));
       res.json(list);
     } catch (error) {
@@ -440,6 +441,7 @@ export function registerProjectRoutes(
         agentWorkspaceRoot,
         helixSwarmUrl,
         template,
+        providerOverride,
       } = req.body as {
         displayName?: string;
         icon?: string;
@@ -450,6 +452,7 @@ export function registerProjectRoutes(
         agentWorkspaceRoot?: string;
         helixSwarmUrl?: string;
         template?: string;
+        providerOverride?: string | null;
       };
 
       const project = getProjectById(id);
@@ -470,6 +473,7 @@ export function registerProjectRoutes(
         p4Stream,
         agentWorkspaceRoot,
         helixSwarmUrl,
+        providerOverride,
       };
 
       // Apply core field updates

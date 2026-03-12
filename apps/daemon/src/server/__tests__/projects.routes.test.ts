@@ -72,6 +72,33 @@ describe("projects routes - workflow bootstrap invariants", () => {
     assert.ok(workflows[0].templateName.length > 0);
   });
 
+  it("project payload contract includes providerOverride and PATCH persistence fields", () => {
+    const projectStore = createProjectStore(db);
+    const project = projectStore.createProject({
+      displayName: "Provider Override Project",
+      path: "/tmp/provider-override-project",
+    });
+
+    const updated = projectStore.updateProject(project.id, { providerOverride: "openai" });
+    assert.strictEqual(updated?.providerOverride, "openai");
+
+    const serialized = {
+      id: updated!.id,
+      slug: updated!.slug,
+      displayName: updated!.displayName,
+      path: updated!.path,
+      providerOverride: updated!.providerOverride,
+    };
+
+    assert.deepStrictEqual(serialized, {
+      id: project.id,
+      slug: project.slug,
+      displayName: "Provider Override Project",
+      path: "/tmp/provider-override-project",
+      providerOverride: "openai",
+    });
+  });
+
   it("repairs a legacy project with zero workflows by creating a default workflow", () => {
     const now = new Date().toISOString();
     db.prepare(
