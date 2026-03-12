@@ -202,7 +202,8 @@
           "id": "pr-agent",
           "type": "agent",
           "source": "agents/pr-agent.md",
-          "description": "Creates PR with documentation and screenshots"
+          "description": "Creates PR with documentation and screenshots",
+          "modelTier": "low"
         }
       ],
       "transitions": {

@@ -143,7 +143,8 @@
             {
               "id": "sync-agent",
               "type": "agent",
-              "source": "agents/sync-agent.md"
+              "source": "agents/sync-agent.md",
+              "modelTier": "low"
             },
             {
               "id": "build-ralph-loop",
@@ -199,7 +200,8 @@
         {
           "id": "shelve-agent",
           "type": "agent",
-          "source": "agents/shelve-agent.md"
+          "source": "agents/shelve-agent.md",
+          "modelTier": "low"
         }
       ],
       "transitions": {

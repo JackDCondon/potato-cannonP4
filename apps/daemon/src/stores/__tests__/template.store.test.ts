@@ -11,6 +11,31 @@ import { createTemplateStore, TemplateStore, getWorkflow, installDefaultTemplate
 import { initDatabase, getDatabase } from "../db.js";
 import { createProjectStore } from "../project.store.js";
 
+type WorkflowWorkerNode = {
+  id?: string;
+  type?: string;
+  source?: string;
+  modelTier?: unknown;
+  workers?: WorkflowWorkerNode[];
+};
+
+function collectAgentsMissingModelTier(
+  workers: WorkflowWorkerNode[] | undefined,
+  pathParts: string[],
+  missing: string[],
+): void {
+  if (!workers) return;
+  for (const worker of workers) {
+    const workerPath = [...pathParts, worker.id || worker.type || "unknown"];
+    if (worker.type === "agent" && worker.modelTier === undefined) {
+      missing.push(workerPath.join(" > "));
+    }
+    if (worker.workers) {
+      collectAgentsMissingModelTier(worker.workers, workerPath, missing);
+    }
+  }
+}
+
 describe("TemplateStore", () => {
   let db: Database.Database;
   let templateStore: TemplateStore;
@@ -745,6 +770,28 @@ describe("getWorkflow model tier validation", () => {
       assert.ok(productDevelopment, "product-development should load");
       assert.ok(productDevelopmentP4, "product-development-p4 should load");
       assert.ok(bugFix, "bug-fix should load");
+
+      const missingModelTier: string[] = [];
+      const workflows = [
+        { name: "product-development", workflow: productDevelopment },
+        { name: "product-development-p4", workflow: productDevelopmentP4 },
+        { name: "bug-fix", workflow: bugFix },
+      ];
+      for (const item of workflows) {
+        const phases = (item.workflow.phases ?? []) as Array<{ id?: string; workers?: WorkflowWorkerNode[] }>;
+        for (const phase of phases) {
+          collectAgentsMissingModelTier(
+            phase.workers,
+            [item.name, phase.id || "phase"],
+            missingModelTier,
+          );
+        }
+      }
+      assert.deepStrictEqual(
+        missingModelTier,
+        [],
+        `All bundled agent workers must define modelTier. Missing:\n${missingModelTier.join("\n")}`,
+      );
     } finally {
       for (const templateName of bundledTemplateNames) {
         await fsPromises.rm(path.join(templatesDir, templateName), { recursive: true, force: true });

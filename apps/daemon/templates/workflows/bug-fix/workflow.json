@@ -78,7 +78,8 @@
           "id": "pr-agent",
           "type": "agent",
           "source": "agents/pr-agent.md",
-          "description": "Creates PR with fix summary and test evidence"
+          "description": "Creates PR with fix summary and test evidence",
+          "modelTier": "low"
         }
       ],
       "transitions": {
