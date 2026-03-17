@@ -34,65 +34,47 @@ Use the skill: `potato:create-task` for each ticket in the specification.
 **Task format:**
 
 - `description`: Short title (e.g., "Ticket 1: Create task types")
-- `body`: The COMPLETE ticket content from the specification
+- `body_from`: Reference to extract body from the specification artifact (preferred — avoids regenerating content)
+- `body`: Direct body content (fallback when specification.md doesn't exist)
 
-**Example:**
+### When specification.md exists (preferred path)
 
-For a specification with:
+Use `body_from` to reference the spec content directly. The daemon extracts the content — you just provide markers:
 
-```markdown
-### Ticket 1: Create Button component
+```javascript
+// For tickets that have a next ticket after them:
+create_task({
+  description: "Ticket 1: Create Button component",
+  body_from: {
+    artifact: "specification.md",
+    start_marker: "### Ticket 1: Create Button component",
+    end_marker: "### Ticket 2: Create Input component"
+  },
+  complexity: "simple"
+});
 
-**Files:**
-
-- Create: `src/components/Button.tsx`
-
-**Step 1: Write the component**
-
-\`\`\`tsx
-export function Button({ label }: { label: string }) {
-return <button className="btn">{label}</button>;
-}
-\`\`\`
-
-**Step 2: Verify**
-
-Run: `npm run typecheck`
-Expected: No errors
-
-**Commit:**
-\`\`\`bash
-git add src/components/Button.tsx
-git commit -m "feat: add Button component"
-\`\`\`
+// For the LAST ticket (no end_marker — extracts to end of file):
+create_task({
+  description: "Ticket 5: Integration tests",
+  body_from: {
+    artifact: "specification.md",
+    start_marker: "### Ticket 5: Integration tests"
+  },
+  complexity: "standard"
+});
 ```
 
-Create task:
+**Important:** Use the exact ticket header text from the specification as markers. The daemon does literal string matching.
+
+### When specification.md doesn't exist (fallback)
+
+Write the `body` field directly with full implementation details:
 
 ```javascript
 create_task({
   description: "Ticket 1: Create Button component",
-  body: `**Files:**
-- Create: \`src/components/Button.tsx\`
-
-**Step 1: Write the component**
-
-\\\`\\\`\\\`tsx
-export function Button({ label }: { label: string }) {
-  return <button className="btn">{label}</button>;
-}
-\\\`\\\`\\\`
-
-**Step 2: Verify**
-
-Run: \`npm run typecheck\`
-Expected: No errors
-
-**Commit:**
-\\\`\\\`\\\`bash
-git add src/components/Button.tsx
-git commit -m "feat: add Button component"
-\\\`\\\`\\\``,
+  body: `Full implementation details here...`,
+  complexity: "simple"
 });
 ```
 
@@ -111,7 +93,9 @@ Include a `complexity` field in every `create_task` call.
 
 ## What Goes in Body
 
-The body MUST be an exact copy of the specification ticket. It MUST include everything from the specification ticket:
+When using `body_from`, the daemon handles extraction automatically — every field below is included because it copies the full ticket section from the spec.
+
+When writing `body` directly (no spec), the body MUST include:
 
 | Include           | Why                                   |
 | ----------------- | ------------------------------------- |
