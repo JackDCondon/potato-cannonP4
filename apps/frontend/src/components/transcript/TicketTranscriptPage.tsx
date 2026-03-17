@@ -8,8 +8,8 @@ import { PhaseHeader } from './PhaseHeader'
 import { PhaseDivider } from './PhaseDivider'
 import { IdleMarker } from './IdleMarker'
 import { normalizeTranscriptEntries } from './log-normalizer'
-import { buildTranscriptRenderableItems, type TranscriptRenderableItem } from './transcript-presentation'
-import { TranscriptAttemptCard, TranscriptRawMarker, TranscriptSystemMarker } from './TranscriptAttemptCard'
+import { flattenToStreamItems, type StreamItem, type ToolResultItem } from './transcript-presentation'
+import { StreamItemRenderer } from './StreamItemRenderer'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ type TimelineEntry =
 type RenderTimelineEntry =
   | { kind: 'phase-divider'; session: SessionMeta }
   | { kind: 'idle'; phase: string; timestamp: string }
-  | { kind: 'renderable'; sessionId: string; item: TranscriptRenderableItem }
+  | { kind: 'stream-item'; sessionId: string; item: StreamItem }
 
 interface Props {
   projectId: string
@@ -30,7 +30,6 @@ interface Props {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Look up the swimlane color for a phase from the project config. */
 function phaseColor(
   swimlaneColors: Record<string, string> | undefined,
   phase: string | undefined,
@@ -50,9 +49,6 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [liveEntries, setLiveEntries] = useState<TimelineEntry[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
-  const [showSystemEvents, setShowSystemEvents] = useState(false)
-  const [showRawEvents, setShowRawEvents] = useState(false)
-  const [expandAllDetails, setExpandAllDetails] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const knownSessionIds = useRef<Set<string>>(new Set())
@@ -92,11 +88,10 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
             built.push({ kind: 'entry', sessionId: session.id, entry })
           }
         } catch {
-          // Session log may not be available yet — skip silently
+          // Session log may not be available yet
         }
       }
 
-      // Append idle marker after the last completed session
       const last = sessions[sessions.length - 1]
       if (last && last.status !== 'running') {
         built.push({
@@ -113,12 +108,10 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
     }
 
     loadAll()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [sessions])
 
-  // ── SSE: new session started → invalidate sessions query ───────────────────
+  // ── SSE handlers ───────────────────────────────────────────────────────────
 
   useSessionStarted(
     useCallback(
@@ -132,8 +125,6 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
       [queryClient, projectId, ticketId],
     ),
   )
-
-  // ── SSE: live session output → append if from a known session ──────────────
 
   useSessionOutput(
     useCallback(
@@ -155,8 +146,6 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
     ),
   )
 
-  // ── SSE: session ended → invalidate to pick up final state ─────────────────
-
   useSessionEnded(
     useCallback(
       (data: Record<string, unknown>) => {
@@ -170,7 +159,7 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
     ),
   )
 
-  // ── Auto-scroll ────────────────────────────────────────────────────────────
+  // ── Build render timeline ──────────────────────────────────────────────────
 
   const combinedTimeline = useMemo(
     () => [...timeline, ...liveEntries],
@@ -188,12 +177,9 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
         pendingEntries = []
         return
       }
-      const items = buildTranscriptRenderableItems(pendingEntries, {
-        showSystemEvents,
-        showRawEvents,
-      })
+      const items = flattenToStreamItems(pendingEntries)
       for (const item of items) {
-        rendered.push({ kind: 'renderable', sessionId: pendingSessionId, item })
+        rendered.push({ kind: 'stream-item', sessionId: pendingSessionId, item })
       }
       pendingSessionId = null
       pendingEntries = []
@@ -212,16 +198,14 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
       }
 
       flushPending()
-      if (item.kind === 'phase-divider') {
-        rendered.push(item)
-      } else if (item.kind === 'idle') {
-        rendered.push(item)
-      }
+      rendered.push(item)
     }
 
     flushPending()
     return rendered
-  }, [combinedTimeline, showSystemEvents, showRawEvents])
+  }, [combinedTimeline])
+
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!autoScroll || !scrollRef.current) return
@@ -252,81 +236,61 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto"
       >
-        <div className="sticky top-0 z-10 bg-zinc-950/90 backdrop-blur border-b border-white/10 px-3 py-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setShowSystemEvents((v) => !v)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${showSystemEvents
-                ? 'bg-accent/10 border-accent/30 text-accent'
-                : 'bg-bg-tertiary/40 border-border text-text-secondary hover:text-text-primary'}`}
-            >
-              Show system events
-            </button>
-            <button
-              onClick={() => setShowRawEvents((v) => !v)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${showRawEvents
-                ? 'bg-accent-yellow/10 border-accent-yellow/30 text-accent-yellow'
-                : 'bg-bg-tertiary/40 border-border text-text-secondary hover:text-text-primary'}`}
-            >
-              Show raw events
-            </button>
-            <button
-              onClick={() => setExpandAllDetails((v) => !v)}
-              className={`text-xs px-2 py-1 rounded border transition-colors ${expandAllDetails
-                ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
-                : 'bg-bg-tertiary/40 border-border text-text-secondary hover:text-text-primary'}`}
-            >
-              Expand all details
-            </button>
-          </div>
+        <div className="max-w-[800px] mx-auto px-4 py-4">
+          {renderTimeline.map((item, i) => {
+            switch (item.kind) {
+              case 'phase-divider':
+                return (
+                  <PhaseDivider
+                    key={`divider-${item.session.id}`}
+                    phase={item.session.phase ?? 'Unknown'}
+                    agentSource={item.session.agentSource}
+                    timestamp={item.session.startedAt}
+                    color={phaseColor(swimlaneColors, item.session.phase)}
+                  />
+                )
+              case 'idle':
+                return (
+                  <IdleMarker
+                    key={`idle-${item.phase}`}
+                    phase={item.phase}
+                    timestamp={item.timestamp}
+                  />
+                )
+              case 'stream-item': {
+                const streamItem = item.item
+                // Pair Bash/Read tool-calls with their matching result (scan forward by toolUseId)
+                let pairedResult: ToolResultItem | undefined
+                if (streamItem.kind === 'tool-call' && (streamItem.toolName === 'Bash' || streamItem.toolName === 'Read')) {
+                  for (let j = i + 1; j < renderTimeline.length && j < i + 20; j++) {
+                    const candidate = renderTimeline[j]
+                    if (candidate?.kind === 'stream-item' && candidate.item.kind === 'tool-result' && candidate.item.toolUseId === streamItem.toolUseId) {
+                      pairedResult = candidate.item
+                      break
+                    }
+                  }
+                }
+                // Skip tool-results that were already paired with a Bash/Read call above
+                if (streamItem.kind === 'tool-result' && streamItem.toolUseId) {
+                  const isPaired = renderTimeline.slice(Math.max(0, i - 20), i).some(
+                    (prev) => prev.kind === 'stream-item' && prev.item.kind === 'tool-call' &&
+                      (prev.item.toolName === 'Bash' || prev.item.toolName === 'Read') &&
+                      prev.item.toolUseId === streamItem.toolUseId
+                  )
+                  if (isPaired) return null
+                }
+                return (
+                  <StreamItemRenderer
+                    key={`${item.sessionId}-${streamItem.id}`}
+                    item={streamItem}
+                    pairedResult={pairedResult}
+                    defaultExpanded={isLive}
+                  />
+                )
+              }
+            }
+          })}
         </div>
-
-        {renderTimeline.map((item, i) => {
-          switch (item.kind) {
-            case 'phase-divider':
-              return (
-                <PhaseDivider
-                  key={`divider-${item.session.id}`}
-                  phase={item.session.phase ?? 'Unknown'}
-                  agentSource={item.session.agentSource}
-                  timestamp={item.session.startedAt}
-                  color={phaseColor(swimlaneColors, item.session.phase)}
-                />
-              )
-            case 'idle':
-              return (
-                <IdleMarker
-                  key={`idle-${item.phase}`}
-                  phase={item.phase}
-                  timestamp={item.timestamp}
-                />
-              )
-            case 'renderable':
-              if (item.item.kind === 'attempt') {
-                return (
-                  <TranscriptAttemptCard
-                    key={`attempt-${item.sessionId}-${item.item.id}-${i}`}
-                    attempt={item.item}
-                    expandAll={expandAllDetails}
-                  />
-                )
-              }
-              if (item.item.kind === 'system') {
-                return (
-                  <TranscriptSystemMarker
-                    key={`system-${item.sessionId}-${item.item.id}-${i}`}
-                    marker={item.item}
-                  />
-                )
-              }
-              return (
-                <TranscriptRawMarker
-                  key={`raw-${item.sessionId}-${item.item.id}-${i}`}
-                  marker={item.item}
-                />
-              )
-          }
-        })}
       </div>
 
       {!autoScroll && (
@@ -335,7 +299,7 @@ export function TicketTranscriptPage({ projectId, ticketId }: Props) {
             setAutoScroll(true)
             scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
           }}
-          className="fixed bottom-4 right-4 bg-zinc-700 hover:bg-zinc-600 text-white text-xs px-3 py-1.5 rounded-full"
+          className="fixed bottom-4 right-4 bg-zinc-700 hover:bg-zinc-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg"
         >
           ↓ Jump to bottom
         </button>
