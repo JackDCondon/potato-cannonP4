@@ -11,6 +11,19 @@ export interface TaskComment {
   createdAt: string
 }
 
+/**
+ * Reference to extract task body content from an artifact.
+ * Used by create_task to avoid LLM regeneration of large artifact content.
+ */
+export interface BodyFrom {
+  /** Artifact filename, e.g. "specification.md" */
+  artifact: string
+  /** Literal string to find — extraction starts from this marker (inclusive) */
+  start_marker: string
+  /** Literal string marking end of extraction (exclusive). If omitted, extracts to EOF. */
+  end_marker?: string
+}
+
 export interface Task {
   id: string
   ticketId: string
