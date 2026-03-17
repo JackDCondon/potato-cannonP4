@@ -14,6 +14,7 @@ export interface Project {
   swimlaneColors?: Record<string, string>
   branchPrefix?: string
   folderId?: string | null
+  vcsType?: 'git' | 'perforce'
   p4Stream?: string
   providerOverride?: string | null
   agentWorkspaceRoot?: string

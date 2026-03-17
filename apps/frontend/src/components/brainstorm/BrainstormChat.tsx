@@ -87,17 +87,17 @@ export function BrainstormChat({
     const conversationId = msg.conversationId
     const options = msg.options
 
+    // Clear waiting state when we receive a question (must be outside setMessages updater)
+    if (messageType === 'question') {
+      setIsWaitingForResponse(false)
+      setCurrentActivity(null)
+    }
+
     // Check if message already exists (by conversationId for questions, or text+timestamp for others)
     setMessages((prev) => {
       if (conversationId) {
         const alreadyExists = prev.some(m => m.conversationId === conversationId)
         if (alreadyExists) return prev
-      }
-
-      // Clear waiting state when we receive a question
-      if (messageType === 'question') {
-        setIsWaitingForResponse(false)
-        setCurrentActivity(null)
       }
 
       return [
@@ -115,21 +115,24 @@ export function BrainstormChat({
     })
   }, [brainstormId]))
 
-  // Subscribe to session ended events for error recovery only
+  // Subscribe to session ended events
   useSessionEnded(useCallback((data: { brainstormId?: string; exitCode?: number; status?: string }) => {
     if (data.brainstormId !== brainstormId) return
 
     // Clear activity indicator — session is no longer running
     setCurrentActivity(null)
 
-    // Only show error for actual failures, not normal exits
-    // Normal exit (code 0) happens when session asks a question and exits
     if (data.status === 'failed') {
       setIsWaitingForResponse(false)
       setMessages(prev => [...prev, {
         type: 'error',
         text: 'Session encountered an error. Please try again.'
       }])
+    } else {
+      // Session completed normally (e.g. exit-on-question, or agent finished without asking).
+      // Always clear the waiting spinner — if the agent asked a question, the brainstorm:message
+      // event already cleared it; if it didn't, we need to clear it here so the UI isn't stuck.
+      setIsWaitingForResponse(false)
     }
   }, [brainstormId]))
 
@@ -186,6 +189,30 @@ export function BrainstormChat({
       cancelled = true
     }
   }, [projectId, brainstormId, initialMessage])
+
+  // Re-fetch messages when SSE reconnects to recover any missed events during connection dropout
+  useEffect(() => {
+    const handleReconnect = async () => {
+      try {
+        const response = await api.getBrainstormMessages(projectId, brainstormId)
+        const historyMessages: BrainstormMessage[] = response.messages.map(msg => ({
+          type: msg.type,
+          text: msg.text,
+          conversationId: msg.conversationId,
+          options: msg.options || undefined,
+          askedAt: msg.type === 'question' ? msg.timestamp : undefined,
+          sentAt: msg.type === 'user' ? msg.timestamp : undefined,
+          timestamp: msg.type === 'notification' ? msg.timestamp : undefined
+        }))
+        setMessages(historyMessages)
+      } catch (error) {
+        console.error('Failed to reload messages after SSE reconnect:', error)
+      }
+    }
+
+    window.addEventListener('sse:reconnected', handleReconnect)
+    return () => window.removeEventListener('sse:reconnected', handleReconnect)
+  }, [projectId, brainstormId])
 
   // Scroll to bottom when messages change, but only if user was already at bottom
   useEffect(() => {

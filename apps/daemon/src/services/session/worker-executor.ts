@@ -120,7 +120,18 @@ async function updateTaskStatusWithNotification(
   status: "in_progress" | "failed" | "completed",
 ): Promise<void> {
   const taskName = getTask(taskId)?.description?.trim() || taskId;
-  updateTaskStatus(taskId, status);
+  const task = updateTaskStatus(taskId, status);
+
+  // Emit SSE event so the frontend updates in real-time
+  if (task) {
+    const { eventBus } = await import("../../utils/event-bus.js");
+    eventBus.emit("ticket:task-updated", {
+      projectId,
+      ticketId,
+      taskId: task.id,
+      task,
+    });
+  }
 
   if (status === "completed") {
     await chatService.notify(
@@ -418,7 +429,7 @@ async function executeNextWorker(
     if (taskState?.currentTaskId) {
       taskContext = buildTaskContext(taskState.currentTaskId);
       // Mark task as in_progress
-      updateTaskStatus(taskState.currentTaskId, "in_progress");
+      await updateTaskStatusWithNotification(projectId, ticketId, taskState.currentTaskId, "in_progress");
     }
 
     // Update state with agent
@@ -880,7 +891,7 @@ async function processNestedCompletion(
         if (nestedResult.blocked) {
           // Task failed - mark and block ticket
           if (taskState.currentTaskId) {
-            updateTaskStatus(taskState.currentTaskId, "failed");
+            await updateTaskStatusWithNotification(projectId, ticketId, taskState.currentTaskId, "failed");
           }
           return nestedResult;
         }
@@ -926,7 +937,7 @@ async function processNestedCompletion(
       // Direct agent in task loop
       if (exitCode !== 0) {
         if (taskState.currentTaskId) {
-          updateTaskStatus(taskState.currentTaskId, "failed");
+          await updateTaskStatusWithNotification(projectId, ticketId, taskState.currentTaskId, "failed");
         }
         await callbacks.onTicketBlocked(projectId, ticketId, `Task "${taskState.currentTaskId}" failed`);
         return { newState: null, loopComplete: false, blocked: true };

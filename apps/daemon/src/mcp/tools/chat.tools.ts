@@ -50,6 +50,7 @@ export function formatAgentNotificationHeader(
 export const chatTools: ToolDefinition[] = [
   {
     name: 'chat_ask',
+    scope: 'session',
     description:
       'Ask the user a question and wait for their response. Works via all connected chat providers.',
     inputSchema: {
@@ -74,6 +75,7 @@ export const chatTools: ToolDefinition[] = [
   },
   {
     name: 'chat_notify',
+    scope: 'session',
     description:
       'Send a notification to the user (does not wait for response). Works via all connected chat providers.',
     inputSchema: {
@@ -89,6 +91,7 @@ export const chatTools: ToolDefinition[] = [
   },
   {
     name: 'chat_init',
+    scope: 'session',
     description: 'Initialize chat threads for a ticket or brainstorm across all providers.',
     inputSchema: {
       type: 'object',

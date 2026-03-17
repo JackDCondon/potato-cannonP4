@@ -1,5 +1,6 @@
 import fs from "fs/promises";
-import { createWriteStream, createReadStream } from "fs";
+import { createWriteStream, createReadStream, writeFileSync, unlinkSync } from "fs";
+import os from "os";
 import path from "path";
 import crypto from "crypto";
 import readline from "readline";
@@ -637,7 +638,16 @@ export class SessionService {
 
   async getSessionLog(sessionId: string): Promise<SessionLogEntry[]> {
     const logPath = this.getSessionLogPath(sessionId);
-    const content = await fs.readFile(logPath, "utf-8");
+    let content: string;
+    try {
+      content = await fs.readFile(logPath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        console.warn(`[getSessionLog] Session log not found on disk: ${sessionId}`);
+        return [];
+      }
+      throw err;
+    }
     return content
       .split("\n")
       .filter(Boolean)
@@ -999,6 +1009,9 @@ export class SessionService {
 
     const logPath = this.getSessionLogPath(sessionId);
     const logStream = createWriteStream(logPath, { flags: "a" });
+    logStream.on("error", (err) => {
+      console.error(`[spawnClaudeSession] Log stream error for session ${sessionId}:`, err);
+    });
 
     logStream.write(
       JSON.stringify({
@@ -1043,7 +1056,10 @@ export class SessionService {
       args.push("--model", model);
     }
 
-    args.push("--mcp-config", JSON.stringify(mcpConfig));
+    // Write MCP config to temp file to reduce command line length
+    const mcpConfigFile = path.join(os.tmpdir(), `potato-mcp-${sessionId}.json`);
+    writeFileSync(mcpConfigFile, JSON.stringify(mcpConfig), "utf-8");
+    args.push("--mcp-config", mcpConfigFile);
 
     const disallowed = ["Skill(superpowers:*)"];
     if (additionalDisallowedTools && additionalDisallowedTools.length > 0) {
@@ -1057,9 +1073,6 @@ export class SessionService {
     if (claudeResumeSessionId) {
       args.push("--resume", claudeResumeSessionId);
     }
-
-    // Agent instructions are included in the prompt
-    args.push("--print", prompt);
 
     const { claudePath, claudePrependArgs } = resolveClaude(nodePath);
     console.log(`[spawnClaudeSession] Spawning ${agentType} at: ${claudePath}`);
@@ -1077,13 +1090,54 @@ export class SessionService {
       ptyEnv.HELIX_SWARM_URL = spawnProject.helixSwarmUrl;
     }
 
-    const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
-      name: "xterm-256color",
-      cols: 120,
-      rows: 40,
-      cwd: worktreePath,
-      env: ptyEnv,
-    });
+    // On Windows, CreateProcess has a 32,767 character command line limit.
+    // Large prompts (especially Build phase with continuity data) can exceed this,
+    // causing error 206 (ERROR_FILENAME_EXCED_RANGE).
+    // Fix: write prompt to temp file and pipe via stdin instead of --print arg.
+    const promptFile = path.join(os.tmpdir(), `potato-prompt-${sessionId}.txt`);
+    writeFileSync(promptFile, prompt, "utf-8");
+    const tempFiles = [mcpConfigFile, promptFile];
+
+    let proc: pty.IPty;
+    if (process.platform === "win32") {
+      // Build the Claude command with all args (without --print)
+      const fullClaudeArgs = [...claudePrependArgs, ...args]
+        .map((a) => (a.includes(" ") || a.includes('"') ? `"${a}"` : a))
+        .join(" ");
+      const claudeCmd = `"${claudePath}" ${fullClaudeArgs}`;
+
+      // Pipe prompt from file to Claude's stdin to avoid command line length limit.
+      // IMPORTANT: We write the command to a .bat file instead of passing it as a
+      // cmd.exe /c argument because node-pty escapes double quotes as \" in args,
+      // but cmd.exe doesn't understand \" escaping — it causes "is not recognized
+      // as an internal or external command" errors (exit code 255).
+      const pipeCmd = `@type "${promptFile}" | ${claudeCmd}`;
+      const batFile = path.join(os.tmpdir(), `potato-spawn-${sessionId}.bat`);
+      writeFileSync(batFile, pipeCmd + "\r\n", "utf-8");
+      tempFiles.push(batFile);
+
+      console.log(
+        `[spawnClaudeSession] Windows bat-file mode, prompt=${prompt.length} chars, cmd=${pipeCmd.length} chars`,
+      );
+
+      proc = pty.spawn("cmd.exe", ["/c", batFile], {
+        name: "xterm-256color",
+        cols: 120,
+        rows: 40,
+        cwd: worktreePath,
+        env: ptyEnv,
+      });
+    } else {
+      // On non-Windows platforms, pass prompt inline (no command line limit issue)
+      args.push("--print", prompt);
+      proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
+        name: "xterm-256color",
+        cols: 120,
+        rows: 40,
+        cwd: worktreePath,
+        env: ptyEnv,
+      });
+    }
 
     console.log(`[spawnClaudeSession] Claude PTY spawned, pid: ${proc.pid}`);
 
@@ -1203,6 +1257,11 @@ export class SessionService {
         }) + "\n",
       );
       logStream.end();
+
+      // Clean up temp files written for Windows stdin-pipe spawn
+      for (const tmpFile of tempFiles) {
+        try { unlinkSync(tmpFile); } catch { /* already removed or never created */ }
+      }
 
       const session = this.sessions.get(sessionId);
       const wasForceKilled = session?.forceKilled ?? false;
@@ -1440,6 +1499,9 @@ export class SessionService {
 
     const logPath = this.getSessionLogPath(sessionId);
     const logStream = createWriteStream(logPath, { flags: "a" });
+    logStream.on("error", (err) => {
+      console.error(`[spawnForBrainstorm] Log stream error for session ${sessionId}:`, err);
+    });
 
     logStream.write(
       JSON.stringify({
@@ -1510,6 +1572,7 @@ export class SessionService {
     args.push("--print", fullPrompt);
 
     const { claudePath, claudePrependArgs } = resolveClaude(nodePath);
+    console.log(`[spawnForBrainstorm] Calling pty.spawn, claudePath=${claudePath}, cwd=${projectPath}`);
 
     const proc = pty.spawn(claudePath, [...claudePrependArgs, ...args], {
       name: "xterm-256color",
@@ -1524,6 +1587,7 @@ export class SessionService {
         POTATO_AGENT_MODEL: "",
       },
     });
+    console.log(`[spawnForBrainstorm] pty.spawn succeeded, pid=${proc.pid}`);
 
     let exitResolver!: () => void;
     const exitPromise = new Promise<void>((resolve) => {
@@ -1580,32 +1644,37 @@ export class SessionService {
     });
 
     proc.onExit(({ exitCode }) => {
-      const endMeta: SessionMeta = {
-        ...meta,
-        status: exitCode === 0 ? "completed" : "failed",
-        exitCode,
-        endedAt: new Date().toISOString(),
-      };
+      try {
+        const endMeta: SessionMeta = {
+          ...meta,
+          status: exitCode === 0 ? "completed" : "failed",
+          exitCode,
+          endedAt: new Date().toISOString(),
+        };
 
-      logStream.write(
-        JSON.stringify({
-          type: "session_end",
-          meta: endMeta,
-          timestamp: new Date().toISOString(),
-        }) + "\n",
-      );
-      logStream.end();
+        logStream.write(
+          JSON.stringify({
+            type: "session_end",
+            meta: endMeta,
+            timestamp: new Date().toISOString(),
+          }) + "\n",
+        );
+        logStream.end();
 
-      // End session record in database
-      endStoredSession(sessionId, exitCode);
+        // End session record in database
+        endStoredSession(sessionId, exitCode);
 
-      const session = this.sessions.get(sessionId);
-      if (session?.exitResolver) {
-        session.exitResolver();
+        const session = this.sessions.get(sessionId);
+        if (session?.exitResolver) {
+          session.exitResolver();
+        }
+
+        this.sessions.delete(sessionId);
+        this.eventEmitter.emit("session:ended", { sessionId, ...endMeta });
+      } catch (err) {
+        console.error(`[spawnForBrainstorm] Error in onExit handler for session ${sessionId}:`, err);
+        this.sessions.delete(sessionId);
       }
-
-      this.sessions.delete(sessionId);
-      this.eventEmitter.emit("session:ended", { sessionId, ...endMeta });
     });
 
     return sessionId;

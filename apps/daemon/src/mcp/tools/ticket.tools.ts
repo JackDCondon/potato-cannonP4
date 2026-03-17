@@ -16,15 +16,21 @@ export const ticketTools: ToolDefinition[] = [
   {
     name: "get_ticket",
     description:
-      "Get the current ticket details including phase, title, and description",
+      "Get ticket details including phase, title, and description. Pass ticketId to query a specific ticket; omit to use session context.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        ticketId: {
+          type: "string",
+          description: "Ticket ID to query (e.g. 'POT-14'). Required in headless/external mode.",
+        },
+      },
       required: [],
     },
   },
   {
     name: "attach_artifact",
+    scope: "session",
     description:
       "Attach an artifact file to the ticket. The file path should be relative to the worktree.",
     inputSchema: {
@@ -55,6 +61,10 @@ export const ticketTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        ticketId: {
+          type: "string",
+          description: "Ticket ID to comment on. Required in headless/external mode.",
+        },
         comment: {
           type: "string",
           description: "The comment text",
@@ -108,6 +118,7 @@ export const ticketTools: ToolDefinition[] = [
   },
   {
     name: "set_ticket_complexity",
+    scope: "session",
     description:
       "Set the complexity rating of the current ticket. Call after estimating complexity using the potato:estimate-complexity skill. Valid values: simple, standard, complex.",
     inputSchema: {
@@ -123,6 +134,31 @@ export const ticketTools: ToolDefinition[] = [
       required: ["complexity"],
     },
   },
+  {
+    name: "list_tickets",
+    description:
+      "List tickets for the current project. Returns a compact array with id, title, phase, complexity, and active session status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        phase: {
+          type: "string",
+          description: "Optional phase filter (e.g., 'Build', 'Review'). Omit to return all tickets.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_project_overview",
+    description:
+      "Get a compact overview of the current project: tickets grouped by phase, active sessions, blocked tickets, and totals.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 interface CommentEntry {
@@ -135,9 +171,9 @@ interface CreateTicketDependencyInput {
   tier: DependencyTier;
 }
 
-async function getTicket(ctx: McpContext): Promise<unknown> {
+async function getTicket(ctx: McpContext, ticketId: string): Promise<unknown> {
   const response = await fetch(
-    `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${ctx.ticketId}`,
+    `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${ticketId}`,
   );
   if (!response.ok) {
     throw new Error(`Failed to get ticket: ${response.statusText}`);
@@ -163,7 +199,7 @@ async function attachArtifact(
   const artifactsDir = path.join(
     TASKS_DIR,
     safeProject,
-    ctx.ticketId,
+    ctx.ticketId!,
     "artifacts",
   );
   await fs.mkdir(artifactsDir, { recursive: true });
@@ -171,7 +207,7 @@ async function attachArtifact(
   // Fetch the current ticket phase
   let currentPhase: string | undefined;
   try {
-    const ticket = await getTicketFromStore(ctx.projectId, ctx.ticketId);
+    const ticket = await getTicketFromStore(ctx.projectId, ctx.ticketId!);
     currentPhase = ticket.phase;
   } catch {
     // Ticket may not exist, phase will be undefined
@@ -234,7 +270,7 @@ async function attachArtifact(
   await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
   // Add artifact message to conversation (if ticket has one)
-  const ticket = await getTicketFromStore(ctx.projectId, ctx.ticketId);
+  const ticket = await getTicketFromStore(ctx.projectId, ctx.ticketId!);
   if (ticket.conversationId) {
     addMessage(ticket.conversationId, {
       type: "artifact",
@@ -256,10 +292,11 @@ async function attachArtifact(
 
 async function addTicketComment(
   ctx: McpContext,
+  ticketId: string,
   comment: string,
 ): Promise<{ success: boolean }> {
   const safeProject = ctx.projectId.replace(/\//g, "__");
-  const ticketDir = path.join(TASKS_DIR, safeProject, ctx.ticketId);
+  const ticketDir = path.join(TASKS_DIR, safeProject, ticketId);
   await fs.mkdir(ticketDir, { recursive: true });
 
   const commentsFile = path.join(ticketDir, "comments.json");
@@ -332,14 +369,21 @@ export const ticketHandlers: Record<
   string,
   (ctx: McpContext, args: Record<string, unknown>) => Promise<McpToolResult>
 > = {
-  get_ticket: async (ctx) => {
-    const ticket = await getTicket(ctx);
+  get_ticket: async (ctx, args) => {
+    const ticketId = (args.ticketId as string) ?? ctx.ticketId;
+    if (!ticketId) {
+      return { content: [{ type: "text", text: "Error: ticketId is required (pass as arg or use a session context)" }] };
+    }
+    const ticket = await getTicket(ctx, ticketId);
     return {
       content: [{ type: "text", text: JSON.stringify(ticket, null, 2) }],
     };
   },
 
   attach_artifact: async (ctx, args) => {
+    if (!ctx.ticketId) {
+      return { content: [{ type: "text", text: "Error: attach_artifact requires a ticket session context" }] };
+    }
     const result = await attachArtifact(
       ctx,
       args.file_path as string,
@@ -358,7 +402,11 @@ export const ticketHandlers: Record<
   },
 
   add_ticket_comment: async (ctx, args) => {
-    await addTicketComment(ctx, args.comment as string);
+    const ticketId = (args.ticketId as string) ?? ctx.ticketId;
+    if (!ticketId) {
+      return { content: [{ type: "text", text: "Error: ticketId is required (pass as arg or use a session context)" }] };
+    }
+    await addTicketComment(ctx, ticketId, args.comment as string);
     return {
       content: [{ type: "text", text: "Comment added" }],
     };
@@ -392,6 +440,90 @@ export const ticketHandlers: Record<
           text: `Ticket created: ${ticket.id} - ${ticket.title}`,
         },
       ],
+    };
+  },
+
+  list_tickets: async (ctx, args) => {
+    const phase = args.phase as string | undefined;
+    let url = `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}`;
+    if (phase) {
+      url += `?phase=${encodeURIComponent(phase)}`;
+    }
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to list tickets: ${response.statusText}`);
+    }
+    const tickets = (await response.json()) as Array<{
+      id: string;
+      title: string;
+      phase: string;
+      complexity?: string;
+      hasActiveSession?: boolean;
+    }>;
+    const compact = tickets.map((t) => ({
+      id: t.id,
+      title: t.title,
+      phase: t.phase,
+      complexity: t.complexity ?? null,
+      hasActiveSession: t.hasActiveSession ?? false,
+    }));
+    return {
+      content: [{ type: "text", text: JSON.stringify(compact, null, 2) }],
+    };
+  },
+
+  get_project_overview: async (ctx) => {
+    // Fetch all tickets for the project
+    const response = await fetch(
+      `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}`,
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tickets: ${response.statusText}`);
+    }
+    const tickets = (await response.json()) as Array<{
+      id: string;
+      title: string;
+      phase: string;
+      complexity?: string;
+      hasActiveSession?: boolean;
+      blockedBy?: Array<{ ticketId: string; satisfied: boolean }>;
+    }>;
+
+    // Group by phase
+    const ticketsByPhase: Record<string, Array<{ id: string; title: string }>> = {};
+    let activeSessions = 0;
+    const blockedTickets: Array<{ id: string; title: string; blockedBy: string[] }> = [];
+
+    for (const t of tickets) {
+      if (!ticketsByPhase[t.phase]) {
+        ticketsByPhase[t.phase] = [];
+      }
+      ticketsByPhase[t.phase].push({ id: t.id, title: t.title });
+
+      if (t.hasActiveSession) {
+        activeSessions++;
+      }
+
+      const unsatisfied = (t.blockedBy ?? []).filter((b) => !b.satisfied);
+      if (unsatisfied.length > 0) {
+        blockedTickets.push({
+          id: t.id,
+          title: t.title,
+          blockedBy: unsatisfied.map((b) => b.ticketId),
+        });
+      }
+    }
+
+    const overview = {
+      projectId: ctx.projectId,
+      activeSessions,
+      ticketsByPhase,
+      blockedTickets,
+      totalTickets: tickets.length,
+      as_of: new Date().toISOString(),
+    };
+    return {
+      content: [{ type: "text", text: JSON.stringify(overview, null, 2) }],
     };
   },
 

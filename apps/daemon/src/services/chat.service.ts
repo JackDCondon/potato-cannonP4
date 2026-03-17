@@ -594,6 +594,10 @@ export class ChatService {
     let cancelled = 0;
     for (const item of candidates) {
       if (!item.ticketId) {
+        // Brainstorm items are not ticket-scoped; skip ticket-based prune checks.
+        // Brainstorm awaiting_reply items must NOT be cancelled here — the
+        // exit-on-question pattern means the session intentionally exits after
+        // asking, so "no active session" is normal and expected.
         continue;
       }
       checked++;

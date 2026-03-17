@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -110,13 +110,66 @@ async function main() {
   }
 
   await stopExistingDaemon();
-  console.log("Starting daemon with file watch...");
+  console.log("Starting daemon with debounced file watch...");
 
-  const daemonWatch = startProcess(process.execPath, ["--watch", "dist/index.js"], {
-    cwd: daemonDir,
-    env: { ...process.env, NODE_ENV: "development" },
+  const DEBOUNCE_MS = 2000;
+  let daemonChild = null;
+  let restartTimer = null;
+  let restarting = false;
+
+  function spawnDaemon() {
+    daemonChild = spawn(process.execPath, ["dist/index.js"], {
+      cwd: daemonDir,
+      stdio: "inherit",
+      env: { ...process.env, NODE_ENV: "development" },
+    });
+    children.add(daemonChild);
+    daemonChild.on("exit", (code, signal) => {
+      children.delete(daemonChild);
+      daemonChild = null;
+      if (shuttingDown || restarting) return;
+      const reason = code !== null
+        ? `Daemon exited with code ${code}`
+        : `Daemon exited with signal ${signal}`;
+      console.error(reason);
+      shutdown(code ?? 1);
+    });
+  }
+
+  function restartDaemon() {
+    if (shuttingDown) return;
+    restarting = true;
+    if (daemonChild) {
+      daemonChild.once("exit", () => {
+        restarting = false;
+        spawnDaemon();
+      });
+      daemonChild.kill("SIGTERM");
+    } else {
+      restarting = false;
+      spawnDaemon();
+    }
+  }
+
+  spawnDaemon();
+
+  const distDir = path.join(daemonDir, "dist");
+  let changedFiles = new Set();
+
+  watch(distDir, { recursive: true }, (_eventType, filename) => {
+    if (shuttingDown) return;
+    if (!filename?.endsWith(".js")) return;
+    changedFiles.add(filename);
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = setTimeout(() => {
+      const files = [...changedFiles];
+      changedFiles = new Set();
+      console.log(
+        `[watch] File change detected — restarting daemon... (${files.length} file${files.length === 1 ? "" : "s"}: ${files.join(", ")})`
+      );
+      restartDaemon();
+    }, DEBOUNCE_MS);
   });
-  wireProcessFailure("Daemon watch", daemonWatch);
 }
 
 process.on("SIGINT", () => shutdown(0));

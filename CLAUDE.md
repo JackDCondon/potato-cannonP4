@@ -28,6 +28,8 @@ cd apps/daemon && pnpm test    # Daemon tests (Node test runner)
 ./apps/daemon/bin/potato-cannon.js stop           # Stop daemon
 ```
 
+**Live runtime state:** `.potato-context.json` at project root — written by the daemon on every state change. Read this file for current ticket focus, session status, and blocked tickets before asking the user.
+
 ## Code Style
 
 - TypeScript strict mode, ES modules (`"type": "module"`)

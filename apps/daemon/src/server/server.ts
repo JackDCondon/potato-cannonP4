@@ -1,7 +1,7 @@
 import express, { Express } from "express";
 import path from "path";
 import fs from "fs/promises";
-import { existsSync } from "fs";
+import { existsSync, appendFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { EventEmitter } from "events";
 import { lock } from "proper-lockfile";
@@ -86,7 +86,7 @@ import {
   getPendingQuestionsByProjectFiltered,
 } from "../stores/chat.store.js";
 import { artifactChatStore } from "../stores/artifact-chat.store.js";
-import { SESSIONS_DIR, LOCK_FILE, PID_FILE, TASKS_DIR } from "../config/paths.js";
+import { SESSIONS_DIR, LOCK_FILE, PID_FILE, TASKS_DIR, LOG_FILE } from "../config/paths.js";
 import type { GlobalConfig, Project } from "../types/config.types.js";
 import {
   getWorkerState,
@@ -96,6 +96,7 @@ import {
   isSpawnPendingWorkerStateRoot,
 } from "../services/session/worker-state.js";
 import { getPhaseConfig } from "../services/session/phase-config.js";
+import { registerSentinelListeners } from "../services/sentinel.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -262,6 +263,16 @@ async function recoverOrphanedSessions(): Promise<void> {
 
   if (recovered > 0) {
     console.log(`[recovery] Recovered ${recovered} orphaned session(s)`);
+  }
+
+  // Close any DB sessions still marked as open — at daemon startup no sessions
+  // should be running, so these are ghost records (e.g. daemon crashed before
+  // the .jsonl file was written).
+  const closedGhosts = endAllOpenSessions();
+  if (closedGhosts > 0) {
+    console.log(
+      `[recovery] Closed ${closedGhosts} ghost session(s) still open in database`,
+    );
   }
 }
 
@@ -636,6 +647,23 @@ export async function main(): Promise<void> {
   const logger = new Logger();
   await logger.init();
 
+  // Capture unhandled exceptions and rejections into daemon.log before process exit.
+  // Uses appendFileSync so the write completes before process.exit() is called —
+  // console.error() is buffered and the buffer may never flush if we exit immediately.
+  const fatalLog = (label: string, err: unknown): void => {
+    const msg = err instanceof Error ? `${err.message}\n${err.stack}` : String(err);
+    const line = `[${new Date().toISOString()}] [FATAL] ${label}: ${msg}\n`;
+    try { appendFileSync(LOG_FILE, line); } catch { /* last resort */ }
+    process.stderr.write(line);
+  };
+  process.on("uncaughtException", (err) => {
+    fatalLog("Uncaught exception", err);
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    fatalLog("Unhandled rejection", reason);
+  });
+
   console.log("Potato Cannon Dashboard Starting...\n");
 
   await loadConfig();
@@ -846,6 +874,14 @@ export async function main(): Promise<void> {
       });
     }
   }, 5000);
+
+  // Register sentinel file writer — writes .potato-context.json on state changes
+  // Uses DEFAULT_PORT as a fallback; updated with actual port after listen.
+  registerSentinelListeners(
+    typeof (process.env.POTATO_DAEMON_PORT || globalConfig?.daemon?.port || DEFAULT_PORT) === 'string'
+      ? parseInt(process.env.POTATO_DAEMON_PORT || String(globalConfig?.daemon?.port || DEFAULT_PORT), 10)
+      : (globalConfig?.daemon?.port || DEFAULT_PORT),
+  );
 
   // TelegramProvider will be initialized after server starts if configured
 

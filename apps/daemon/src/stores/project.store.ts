@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import { getDatabase } from "./db.js";
 import type { Project } from "../types/config.types.js";
 import { getProjectDataDir, getProjectFilesDir } from "../config/paths.js";
+import { ensureSentinelInGitignore } from "../services/sentinel.service.js";
 
 export interface CreateProjectInput {
   displayName: string;
@@ -69,6 +70,7 @@ function rowToProject(row: Record<string, unknown>): Project {
       : undefined,
     branchPrefix: (row.branch_prefix as string) || 'potato',
     folderId: (row.folder_id as string) || null,
+    vcsType: ((row.vcs_type as string) || 'git') as 'git' | 'perforce',
     p4Stream: (row.p4_stream as string) || undefined,
     suggestedP4Stream: (row.suggested_p4_stream as string) || undefined,
     agentWorkspaceRoot: (row.agent_workspace_root as string) || undefined,
@@ -173,6 +175,11 @@ export class ProjectStore {
     });
     create();
 
+    // Ensure .potato-context.json is gitignored in the project directory
+    ensureSentinelInGitignore(input.path).catch(() => {
+      // Non-fatal — sentinel gitignore is best-effort
+    });
+
     return this.getProjectById(id)!;
   }
 
@@ -257,6 +264,10 @@ export class ProjectStore {
     if (updates.providerOverride !== undefined) {
       fields.push("provider_override = ?");
       values.push(updates.providerOverride || null);
+    }
+    if (updates.vcsType !== undefined) {
+      fields.push("vcs_type = ?");
+      values.push(updates.vcsType);
     }
 
     if (fields.length === 0) {

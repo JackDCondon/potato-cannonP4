@@ -26,7 +26,7 @@ export function BrainstormDetailPanel() {
 
   // Only show panel on board view and when viewing the same project
   const location = useLocation()
-  const isOnBoardView = !!location.pathname.match(/^\/projects\/[^/]+\/board/)
+  const isOnBoardView = !!location.pathname.match(/^\/projects\/[^/]+\/(?:board|workflows\/[^/]+\/board)/)
   const isCorrectProject = currentProjectId === brainstormSheetProjectId
 
   const isOpen = brainstormSheetOpen && isOnBoardView && isCorrectProject

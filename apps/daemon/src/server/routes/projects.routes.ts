@@ -315,6 +315,7 @@ export function registerProjectRoutes(
         disabledPhaseMigration: p.disabledPhaseMigration,
         swimlaneColors: p.swimlaneColors,
         folderId: p.folderId,
+        vcsType: p.vcsType,
         p4Stream: p.p4Stream,
         agentWorkspaceRoot: p.agentWorkspaceRoot,
         helixSwarmUrl: p.helixSwarmUrl,
@@ -442,6 +443,7 @@ export function registerProjectRoutes(
         helixSwarmUrl,
         template,
         providerOverride,
+        vcsType,
       } = req.body as {
         displayName?: string;
         icon?: string;
@@ -453,6 +455,7 @@ export function registerProjectRoutes(
         helixSwarmUrl?: string;
         template?: string;
         providerOverride?: string | null;
+        vcsType?: 'git' | 'perforce';
       };
 
       const project = getProjectById(id);
@@ -461,8 +464,11 @@ export function registerProjectRoutes(
         return;
       }
 
-      // Auto-assign template when p4Stream is set and no template explicitly supplied
-      const effectiveTemplate = template ?? (p4Stream ? "product-development-p4" : undefined);
+      // Auto-assign template when p4Stream is set OR vcsType is explicitly 'perforce',
+      // and no template was explicitly supplied by the caller
+      const effectiveTemplate = template ?? (
+        (p4Stream || vcsType === 'perforce') ? "product-development-p4" : undefined
+      );
 
       const updates: Parameters<typeof updateProject>[1] = {
         displayName,
@@ -474,6 +480,7 @@ export function registerProjectRoutes(
         agentWorkspaceRoot,
         helixSwarmUrl,
         providerOverride,
+        vcsType,
       };
 
       // Apply core field updates

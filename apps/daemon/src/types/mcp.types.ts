@@ -6,13 +6,15 @@ export interface ToolDefinition {
     properties: Record<string, unknown>;
     required: string[];
   };
+  /** Scope tag for filtering. 'session' = session-proxy only. Default (undefined) = both. */
+  scope?: 'session' | 'external' | 'both';
 }
 
 export interface McpContext {
   projectId: string;
-  ticketId: string;
-  brainstormId: string;
-  workflowId: string;
+  ticketId?: string;        // optional — absent in headless/external mode
+  brainstormId?: string;    // optional — absent in headless/external mode
+  workflowId?: string;      // optional — absent in headless/external mode
   agentModel?: string;
   daemonUrl: string;
 }

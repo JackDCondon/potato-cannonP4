@@ -7,6 +7,7 @@ import type {
 export const ralphTools: ToolDefinition[] = [
   {
     name: "ralph_loop_dock",
+    scope: "session",
     description:
       "Signal the verdict for a ralph loop iteration. Call this to approve or reject work with feedback. If not called, the system falls back to using exit code (0 = approved).",
     inputSchema: {

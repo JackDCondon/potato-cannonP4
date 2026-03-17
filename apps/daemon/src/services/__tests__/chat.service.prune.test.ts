@@ -5,10 +5,13 @@ let openQueueItems: Array<{
   id: string;
   projectId: string;
   ticketId?: string;
+  brainstormId?: string;
   kind: "question" | "notification";
+  status?: string;
 }> = [];
 let cancelledIds: string[] = [];
 let activeSessionTicketIds = new Set<string>();
+let activeSessionBrainstormIds = new Set<string>();
 let pendingQuestionByTicket = new Map<string, unknown>();
 let pendingResponseByTicket = new Map<string, unknown>();
 let ticketRows = new Map<string, { phase: string; archived_at: string | null } | null>();
@@ -58,6 +61,8 @@ mock.module("../../stores/session.store.js", {
   namedExports: {
     getActiveSessionForTicket: (ticketId: string) =>
       activeSessionTicketIds.has(ticketId) ? { id: "sess_active" } : null,
+    getActiveSessionForBrainstorm: (brainstormId: string) =>
+      activeSessionBrainstormIds.has(brainstormId) ? { id: "sess_active" } : null,
   },
 });
 
@@ -128,6 +133,7 @@ describe("ChatService queue pruning", () => {
     openQueueItems = [];
     cancelledIds = [];
     activeSessionTicketIds = new Set<string>();
+    activeSessionBrainstormIds = new Set<string>();
     pendingQuestionByTicket = new Map<string, unknown>();
     pendingResponseByTicket = new Map<string, unknown>();
     ticketRows = new Map<string, { phase: string; archived_at: string | null } | null>();
@@ -140,6 +146,26 @@ describe("ChatService queue pruning", () => {
 
     const result = await service.pruneTicketQueueAfterSessionEnd("proj-1", "T-1");
     assert.deepStrictEqual(result, { checked: 0, cancelled: 0 });
+  });
+
+  it("cancels awaiting_reply brainstorm questions from dead sessions, but keeps queued items", async () => {
+    openQueueItems = [
+      // Should be cancelled: awaiting_reply with no active session (stale from dead session)
+      { id: "q-stale", projectId: "proj-1", brainstormId: "brain-orphan", status: "awaiting_reply", kind: "question" },
+      // Should NOT be cancelled: queued (not yet delivered to UI — still valid)
+      { id: "q-queued", projectId: "proj-1", brainstormId: "brain-orphan", status: "queued", kind: "question" },
+      // Should NOT be cancelled: active session exists
+      { id: "q-active", projectId: "proj-1", brainstormId: "brain-active", status: "awaiting_reply", kind: "question" },
+      // Should NOT be cancelled: no brainstormId (skip)
+      { id: "q-no-brain", projectId: "proj-1", status: "awaiting_reply", kind: "notification" },
+    ];
+    activeSessionBrainstormIds.add("brain-active");
+
+    const result = await service.pruneIrrelevantTicketQueue({});
+
+    assert.equal(result.cancelled, 1);
+    assert.deepStrictEqual(cancelledIds, ["q-stale"]);
+    assert.equal(tickQueueCalls, 1);
   });
 
   it("cancels stale queue items for missing/terminal tickets but preserves pending interactions", async () => {

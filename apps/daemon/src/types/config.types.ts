@@ -90,6 +90,7 @@ export interface Project {
   swimlaneColors?: Record<string, string>;  // phase name -> hex color
   branchPrefix?: string;  // Custom branch prefix (default: 'potato')
   folderId?: string | null;  // FK to folders table
+  vcsType?: 'git' | 'perforce';
   p4Stream?: string;           // Perforce stream depot path (e.g. //depot/main)
   suggestedP4Stream?: string;  // AI-detected P4 stream (populated on project creation)
   agentWorkspaceRoot?: string; // Root directory for P4 agent workspaces

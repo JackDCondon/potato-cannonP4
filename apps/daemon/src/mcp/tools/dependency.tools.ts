@@ -34,6 +34,31 @@ export const dependencyTools: ToolDefinition[] = [
     },
   },
   {
+    name: "add_dependency",
+    description:
+      "Add a dependency edge between two existing tickets. Use this to set dependencies on tickets that were already created without them.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticketId: {
+          type: "string",
+          description: "The ticket that will depend on another ticket.",
+        },
+        dependsOnId: {
+          type: "string",
+          description: "The ticket that ticketId depends on.",
+        },
+        tier: {
+          type: "string",
+          enum: ["artifact-ready", "code-ready"],
+          description:
+            "artifact-ready: downstream only needs upstream specs/docs. code-ready: downstream waits for upstream implementation to be complete.",
+        },
+      },
+      required: ["ticketId", "dependsOnId", "tier"],
+    },
+  },
+  {
     name: "delete_dependency",
     description: "Delete a dependency edge between two tickets.",
     inputSchema: {
@@ -172,6 +197,27 @@ async function getDependencies(
   return results;
 }
 
+async function addDependency(
+  ctx: McpContext,
+  ticketId: string,
+  dependsOnId: string,
+  tier: string,
+): Promise<void> {
+  const url = `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ticketId)}/dependencies`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dependsOn: dependsOnId, tier }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error ||
+        `Failed to add dependency ${ticketId} -> ${dependsOnId}: ${response.statusText}`,
+    );
+  }
+}
+
 async function deleteDependency(
   ctx: McpContext,
   ticketId: string,
@@ -198,9 +244,12 @@ export const dependencyHandlers: Record<
 > = {
   get_dependencies: async (ctx, args) => {
     const requestedTicketId = (args.ticketId as string) || ctx.ticketId;
+    if (!requestedTicketId) {
+      return { content: [{ type: "text", text: "Error: ticketId is required (pass as arg or use a session context)" }] };
+    }
 
-    // If a different ticket was requested, verify reachability via dependency edges
-    if (requestedTicketId !== ctx.ticketId) {
+    // If a different ticket was requested and we have a session context, verify reachability
+    if (ctx.ticketId && requestedTicketId !== ctx.ticketId) {
       const reachable = isReachableViaDependencies(
         ctx.ticketId,
         requestedTicketId,
@@ -223,6 +272,22 @@ export const dependencyHandlers: Record<
         {
           type: "text",
           text: JSON.stringify({ dependencies }, null, 2),
+        },
+      ],
+    };
+  },
+  add_dependency: async (ctx, args) => {
+    const ticketId = args.ticketId as string;
+    const dependsOnId = args.dependsOnId as string;
+    const tier = args.tier as string;
+
+    await addDependency(ctx, ticketId, dependsOnId, tier);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Dependency added: ${ticketId} depends on ${dependsOnId} (${tier})`,
         },
       ],
     };

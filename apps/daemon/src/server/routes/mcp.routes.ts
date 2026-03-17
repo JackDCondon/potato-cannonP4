@@ -5,9 +5,15 @@ import { appendTicketLog } from "../../stores/ticket-log.store.js";
 import type { McpContext } from "../../types/mcp.types.js";
 
 export function registerMcpRoutes(app: Express): void {
-  // List available tools
-  app.get("/mcp/tools", (_req: Request, res: Response) => {
-    res.json({ tools: allTools });
+  // List available tools (optional ?scope=external to filter out session-only tools)
+  app.get("/mcp/tools", (req: Request, res: Response) => {
+    const scope = req.query.scope as string | undefined;
+    if (scope === "external") {
+      const filtered = allTools.filter((t) => t.scope !== "session");
+      res.json({ tools: filtered });
+    } else {
+      res.json({ tools: allTools });
+    }
   });
 
   // Call a tool
@@ -58,9 +64,9 @@ export function registerMcpRoutes(app: Express): void {
       const port = req.socket.localPort || DEFAULT_PORT;
       const mcpContext: McpContext = {
         projectId: context.projectId,
-        ticketId: context.ticketId || "",
-        brainstormId: context.brainstormId || "",
-        workflowId: context.workflowId || "",
+        ticketId: context.ticketId || undefined,
+        brainstormId: context.brainstormId || undefined,
+        workflowId: context.workflowId || undefined,
         agentModel: context.agentModel,
         daemonUrl: `http://localhost:${port}`,
       };

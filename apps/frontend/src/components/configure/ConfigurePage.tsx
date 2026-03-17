@@ -56,6 +56,7 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
   const [branchPrefix, setBranchPrefix] = useState('potato')
   const [branchPrefixError, setBranchPrefixError] = useState<string | null>(null)
 
+  const [vcsType, setVcsType] = useState<'git' | 'perforce'>('git')
   const [p4Stream, setP4Stream] = useState('')
   const [p4StreamError, setP4StreamError] = useState<string | null>(null)
   const [agentWorkspaceRoot, setAgentWorkspaceRoot] = useState('')
@@ -75,6 +76,7 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
       setColor(project.color)
       setBranchPrefix(project.branchPrefix || 'potato')
       setBranchPrefixError(null)
+      setVcsType(project.vcsType ?? 'git')
       const streamValue = project.p4Stream || project.suggestedP4Stream || ''
       setP4Stream(streamValue)
       setP4StreamError(null)
@@ -139,6 +141,14 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
       e.currentTarget.blur()
     }
   }, [])
+
+  const handleVcsTypeChange = useCallback(
+    (newType: 'git' | 'perforce') => {
+      setVcsType(newType)
+      updateProject.mutate({ id: projectId, updates: { vcsType: newType } })
+    },
+    [projectId, updateProject],
+  )
 
   const handleP4StreamChange = useCallback(
     (value: string) => {
@@ -284,7 +294,27 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
             />
           </SettingsSection>
 
-          {!p4Stream && (
+          <SettingsSection
+            title="Version Control"
+            description="Choose the version control system used by this project."
+          >
+            <div className="space-y-2 max-w-md">
+              <label className="text-sm font-medium text-text-primary" htmlFor="vcs-type">
+                VCS Type
+              </label>
+              <select
+                id="vcs-type"
+                value={vcsType}
+                onChange={(e) => handleVcsTypeChange(e.target.value as 'git' | 'perforce')}
+                className="border-border/50 bg-bg-tertiary/50 h-9 w-full rounded-md border px-3 text-sm"
+              >
+                <option value="git">Git</option>
+                <option value="perforce">Perforce</option>
+              </select>
+            </div>
+          </SettingsSection>
+
+          {vcsType === 'git' && (
             <SettingsSection
               title="Branch Prefix"
               description="Custom prefix for git branches created by tickets. The ticket ID will be appended after a slash."
@@ -332,68 +362,70 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
             />
           </SettingsSection>
 
-          <SettingsSection
-            title="Perforce"
-            description="Perforce (P4) VCS settings. Set the stream depot path to use Perforce-managed workspaces instead of Git branches."
-          >
-            <div className="space-y-4 max-w-md">
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text-primary">P4 Stream</label>
-                <Input
-                  value={p4Stream}
-                  onChange={(e) => handleP4StreamChange(e.target.value)}
-                  onBlur={handleP4StreamBlur}
-                  onKeyDown={handleP4StreamKeyDown}
-                  placeholder="//depot/main"
-                />
-                {p4StreamError ? (
-                  <p className="text-sm text-accent-red">{p4StreamError}</p>
-                ) : (
-                  <p className="text-sm text-text-secondary">
-                    Perforce stream depot path (must start with //)
-                  </p>
-                )}
+          {vcsType === 'perforce' && (
+            <SettingsSection
+              title="Perforce"
+              description="Perforce (P4) VCS settings. Set the stream depot path to use Perforce-managed workspaces instead of Git branches."
+            >
+              <div className="space-y-4 max-w-md">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-text-primary">P4 Stream</label>
+                  <Input
+                    value={p4Stream}
+                    onChange={(e) => handleP4StreamChange(e.target.value)}
+                    onBlur={handleP4StreamBlur}
+                    onKeyDown={handleP4StreamKeyDown}
+                    placeholder="//depot/main"
+                  />
+                  {p4StreamError ? (
+                    <p className="text-sm text-accent-red">{p4StreamError}</p>
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      Perforce stream depot path (must start with //)
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-text-primary">
+                    Agent Workspace Root
+                    {p4Stream && <span className="ml-1 text-accent-red">*</span>}
+                  </label>
+                  <Input
+                    value={agentWorkspaceRoot}
+                    onChange={(e) => handleAgentWorkspaceRootChange(e.target.value)}
+                    onBlur={handleAgentWorkspaceRootBlur}
+                    onKeyDown={handleAgentWorkspaceRootKeyDown}
+                    placeholder="/home/agent/workspaces"
+                  />
+                  {agentWorkspaceRootError ? (
+                    <p className="text-sm text-accent-red">{agentWorkspaceRootError}</p>
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      Root directory for P4 agent workspaces
+                      {p4Stream ? ' (required)' : ' (required when P4 Stream is set)'}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-text-primary">Helix Swarm URL</label>
+                  <Input
+                    value={helixSwarmUrl}
+                    onChange={(e) => handleHelixSwarmUrlChange(e.target.value)}
+                    onBlur={handleHelixSwarmUrlBlur}
+                    onKeyDown={handleHelixSwarmUrlKeyDown}
+                    placeholder="https://swarm.example.com"
+                  />
+                  {helixSwarmUrlError ? (
+                    <p className="text-sm text-accent-red">{helixSwarmUrlError}</p>
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      Optional: Helix Swarm code review server URL
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text-primary">
-                  Agent Workspace Root
-                  {p4Stream && <span className="ml-1 text-accent-red">*</span>}
-                </label>
-                <Input
-                  value={agentWorkspaceRoot}
-                  onChange={(e) => handleAgentWorkspaceRootChange(e.target.value)}
-                  onBlur={handleAgentWorkspaceRootBlur}
-                  onKeyDown={handleAgentWorkspaceRootKeyDown}
-                  placeholder="/home/agent/workspaces"
-                />
-                {agentWorkspaceRootError ? (
-                  <p className="text-sm text-accent-red">{agentWorkspaceRootError}</p>
-                ) : (
-                  <p className="text-sm text-text-secondary">
-                    Root directory for P4 agent workspaces
-                    {p4Stream ? ' (required)' : ' (required when P4 Stream is set)'}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text-primary">Helix Swarm URL</label>
-                <Input
-                  value={helixSwarmUrl}
-                  onChange={(e) => handleHelixSwarmUrlChange(e.target.value)}
-                  onBlur={handleHelixSwarmUrlBlur}
-                  onKeyDown={handleHelixSwarmUrlKeyDown}
-                  placeholder="https://swarm.example.com"
-                />
-                {helixSwarmUrlError ? (
-                  <p className="text-sm text-accent-red">{helixSwarmUrlError}</p>
-                ) : (
-                  <p className="text-sm text-text-secondary">
-                    Optional: Helix Swarm code review server URL
-                  </p>
-                )}
-              </div>
-            </div>
-          </SettingsSection>
+            </SettingsSection>
+          )}
 
           <SettingsSection
             title="AI Provider Override"

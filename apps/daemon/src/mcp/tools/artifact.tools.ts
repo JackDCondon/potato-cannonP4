@@ -65,9 +65,9 @@ interface ArtifactContent {
   content: string | null;
 }
 
-function getArtifactsDir(ctx: McpContext): string {
-  const safeProject = ctx.projectId.replace(/\//g, "__");
-  return path.join(TASKS_DIR, safeProject, ctx.ticketId, "artifacts");
+function getArtifactsDir(projectId: string, ticketId: string): string {
+  const safeProject = projectId.replace(/\//g, "__");
+  return path.join(TASKS_DIR, safeProject, ticketId, "artifacts");
 }
 
 async function resolveArtifactContext(
@@ -78,7 +78,7 @@ async function resolveArtifactContext(
     return ctx;
   }
 
-  const url = `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ctx.ticketId)}/dependencies`;
+  const url = `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ctx.ticketId!)}/dependencies`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(
@@ -98,8 +98,8 @@ async function resolveArtifactContext(
   return { ...ctx, ticketId: requestedTicketId };
 }
 
-async function listArtifacts(ctx: McpContext): Promise<ArtifactListItem[]> {
-  const artifactsDir = getArtifactsDir(ctx);
+async function listArtifacts(ctx: McpContext, ticketId: string): Promise<ArtifactListItem[]> {
+  const artifactsDir = getArtifactsDir(ctx.projectId, ticketId);
   const manifestPath = path.join(artifactsDir, "manifest.json");
 
   try {
@@ -124,9 +124,10 @@ async function listArtifacts(ctx: McpContext): Promise<ArtifactListItem[]> {
 
 async function getArtifact(
   ctx: McpContext,
+  ticketId: string,
   filename: string,
 ): Promise<ArtifactContent> {
-  const artifactsDir = getArtifactsDir(ctx);
+  const artifactsDir = getArtifactsDir(ctx.projectId, ticketId);
   const manifestPath = path.join(artifactsDir, "manifest.json");
 
   // Read manifest
@@ -136,7 +137,7 @@ async function getArtifact(
     manifest = JSON.parse(manifestContent);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`No artifacts found for ticket ${ctx.ticketId}`);
+      throw new Error(`No artifacts found for ticket ${ticketId}`);
     }
     throw error;
   }
@@ -178,11 +179,14 @@ export const artifactHandlers: Record<
 > = {
   list_artifacts: async (ctx, args) => {
     const requestedTicketId = (args.ticketId as string) || ctx.ticketId;
-    const resolvedContext = await resolveArtifactContext(
-      ctx,
-      requestedTicketId,
-    );
-    const artifacts = await listArtifacts(resolvedContext);
+    if (!requestedTicketId) {
+      return { content: [{ type: "text", text: "Error: ticketId is required (pass as arg or use a session context)" }] };
+    }
+    // If the request is for a different ticket than the session, validate it's a dependency
+    if (ctx.ticketId && requestedTicketId !== ctx.ticketId) {
+      await resolveArtifactContext(ctx, requestedTicketId);
+    }
+    const artifacts = await listArtifacts(ctx, requestedTicketId);
     return {
       content: [
         {
@@ -194,15 +198,18 @@ export const artifactHandlers: Record<
   },
   get_artifact: async (ctx, args) => {
     const requestedTicketId = (args.ticketId as string) || ctx.ticketId;
+    if (!requestedTicketId) {
+      return { content: [{ type: "text", text: "Error: ticketId is required (pass as arg or use a session context)" }] };
+    }
     const filename = args.filename as string;
     if (!filename) {
       throw new Error("filename is required");
     }
-    const resolvedContext = await resolveArtifactContext(
-      ctx,
-      requestedTicketId,
-    );
-    const artifact = await getArtifact(resolvedContext, filename);
+    // If the request is for a different ticket than the session, validate it's a dependency
+    if (ctx.ticketId && requestedTicketId !== ctx.ticketId) {
+      await resolveArtifactContext(ctx, requestedTicketId);
+    }
+    const artifact = await getArtifact(ctx, requestedTicketId, filename);
     return {
       content: [
         {
