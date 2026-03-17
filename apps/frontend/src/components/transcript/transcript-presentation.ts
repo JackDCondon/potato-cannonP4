@@ -1,33 +1,43 @@
 import stripAnsi from 'strip-ansi'
 import type { SessionLogContentBlock, SessionLogEntry } from '@potato-cannon/shared'
 
-export interface TranscriptPresentationOptions {
-  showSystemEvents: boolean
-  showRawEvents: boolean
-}
+// ─── Stream Item Types ──────────────────────────────────────────────────────
 
-export interface AttemptCard {
-  kind: 'attempt'
+export interface AssistantTextItem {
+  kind: 'assistant-text'
   id: string
-  startedAt?: string
-  assistantTextBlocks: string[]
-  toolUses: Array<{
-    id: string
-    name: string
-    input: Record<string, unknown>
-  }>
-  toolResults: Array<{
-    toolUseId?: string
-    content: string
-    isError: boolean
-  }>
-  status: 'success' | 'error' | 'in-progress'
-  hasErrors: boolean
-  summary: string
+  timestamp?: string
+  text: string
 }
 
-export interface SystemMarker {
-  kind: 'system'
+export interface ThinkingItem {
+  kind: 'thinking'
+  id: string
+  timestamp?: string
+  text: string
+}
+
+export interface ToolCallItem {
+  kind: 'tool-call'
+  id: string
+  timestamp?: string
+  toolUseId: string
+  toolName: string
+  toolInput: Record<string, unknown>
+}
+
+export interface ToolResultItem {
+  kind: 'tool-result'
+  id: string
+  timestamp?: string
+  toolUseId?: string
+  toolName?: string
+  content: string
+  isError: boolean
+}
+
+export interface SystemMarkerItem {
+  kind: 'system-marker'
   id: string
   timestamp?: string
   level: 'info' | 'warning' | 'error'
@@ -35,18 +45,22 @@ export interface SystemMarker {
   details?: string
 }
 
-export interface RawMarker {
+export interface RawItem {
   kind: 'raw'
   id: string
   timestamp?: string
   content: string
 }
 
-export type TranscriptRenderableItem = AttemptCard | SystemMarker | RawMarker
+export type StreamItem =
+  | AssistantTextItem
+  | ThinkingItem
+  | ToolCallItem
+  | ToolResultItem
+  | SystemMarkerItem
+  | RawItem
 
-function truncate(text: string, max = 120): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text
-}
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function cleanText(text: string): string {
   return stripAnsi(text).trim()
@@ -58,152 +72,111 @@ function blockContent(block: SessionLogContentBlock): string {
   return ''
 }
 
-function createAttempt(index: number, timestamp?: string): AttemptCard {
-  return {
-    kind: 'attempt',
-    id: `attempt-${index}`,
-    startedAt: timestamp,
-    assistantTextBlocks: [],
-    toolUses: [],
-    toolResults: [],
-    status: 'in-progress',
-    hasErrors: false,
-    summary: 'Assistant activity',
-  }
-}
+// ─── Mapper ─────────────────────────────────────────────────────────────────
 
-function updateAttemptDerivedState(attempt: AttemptCard): AttemptCard {
-  const hasErrors = attempt.toolResults.some((r) => r.isError)
-  const hasPendingTools = attempt.toolUses.length > attempt.toolResults.length
-  const summaryText = attempt.assistantTextBlocks.find(Boolean)
-  const summaryTool = attempt.toolUses[0]?.name
+const SKIP_TYPES = new Set(['session_start', 'session_end', 'result'])
 
-  attempt.hasErrors = hasErrors
-  attempt.status = hasErrors ? 'error' : hasPendingTools ? 'in-progress' : 'success'
-  if (summaryText) {
-    attempt.summary = truncate(summaryText, 140)
-  } else if (summaryTool) {
-    attempt.summary = `Tool activity: ${summaryTool}`
-  } else if (attempt.toolResults.length > 0) {
-    attempt.summary = 'Tool results received'
-  }
+export function flattenToStreamItems(entries: SessionLogEntry[]): StreamItem[] {
+  const items: StreamItem[] = []
+  let counter = 0
+  // Track tool_use id → tool name so we can label results
+  const toolNameMap = new Map<string, string>()
 
-  return attempt
-}
+  for (const entry of entries) {
+    if (SKIP_TYPES.has(entry.type)) continue
 
-function toSystemMarker(entry: SessionLogEntry, index: number): SystemMarker {
-  const subtype = entry.subtype ?? 'event'
-  const isWarn = subtype.includes('limit')
-  const isErr = subtype.includes('error') || subtype.includes('fail')
-  return {
-    kind: 'system',
-    id: `system-${index}`,
-    timestamp: entry.timestamp,
-    level: isErr ? 'error' : isWarn ? 'warning' : 'info',
-    label: subtype.replace(/_/g, ' '),
-    details: entry.description,
-  }
-}
+    // ── Assistant / User turns with content blocks ──
+    if ((entry.type === 'assistant' || entry.type === 'user') && entry.message) {
+      for (const block of entry.message.content) {
+        const id = `stream-${counter++}`
 
-function shouldHideSystemEntry(entry: SessionLogEntry): boolean {
-  if (entry.subtype === 'init') return true
-  return true
-}
+        if (block.type === 'text') {
+          const text = cleanText(block.text ?? '')
+          if (!text) continue
+          items.push({
+            kind: 'assistant-text',
+            id,
+            timestamp: entry.timestamp,
+            text,
+          })
+          continue
+        }
 
-export function buildTranscriptRenderableItems(
-  entries: SessionLogEntry[],
-  options: TranscriptPresentationOptions,
-): TranscriptRenderableItem[] {
-  const renderable: TranscriptRenderableItem[] = []
-  let currentAttempt: AttemptCard | null = null
-  let attemptCount = 0
+        // Handle thinking/extended_thinking blocks (cast needed — shared types
+        // don't include 'thinking' yet but Claude streams them)
+        if ((block as any).type === 'thinking' || (block as any).type === 'extended_thinking') {
+          const text = cleanText((block as any).thinking ?? (block as any).text ?? '')
+          if (!text) continue
+          items.push({
+            kind: 'thinking',
+            id,
+            timestamp: entry.timestamp,
+            text,
+          })
+          continue
+        }
 
-  const flushAttempt = () => {
-    if (!currentAttempt) return
-    renderable.push(updateAttemptDerivedState(currentAttempt))
-    currentAttempt = null
-  }
+        if (block.type === 'tool_use') {
+          const toolName = block.name ?? 'Unknown'
+          const toolUseId = block.id ?? id
+          toolNameMap.set(toolUseId, toolName)
+          items.push({
+            kind: 'tool-call',
+            id,
+            timestamp: entry.timestamp,
+            toolUseId,
+            toolName,
+            toolInput: block.input ?? {},
+          })
+          continue
+        }
 
-  for (let i = 0; i < entries.length; i += 1) {
-    const entry = entries[i]
-    if (entry.type === 'session_start' || entry.type === 'session_end' || entry.type === 'result') {
-      continue
-    }
-
-    if (entry.type === 'assistant' && entry.message) {
-      const textBlocks = entry.message.content.filter((b) => b.type === 'text')
-      const toolBlocks = entry.message.content.filter((b) => b.type === 'tool_use')
-      const startsNewNarrativeTurn = textBlocks.length > 0
-
-      if (
-        startsNewNarrativeTurn &&
-        currentAttempt &&
-        (currentAttempt.assistantTextBlocks.length > 0 || currentAttempt.toolUses.length > 0 || currentAttempt.toolResults.length > 0)
-      ) {
-        flushAttempt()
-      }
-      if (!currentAttempt) {
-        currentAttempt = createAttempt(attemptCount, entry.timestamp)
-        attemptCount += 1
-      }
-
-      for (const block of textBlocks) {
-        const text = cleanText(block.text ?? '')
-        if (text) currentAttempt.assistantTextBlocks.push(text)
-      }
-      for (const block of toolBlocks) {
-        currentAttempt.toolUses.push({
-          id: block.id ?? `${currentAttempt.id}-tool-${currentAttempt.toolUses.length}`,
-          name: block.name ?? 'Unknown',
-          input: block.input ?? {},
-        })
+        if (block.type === 'tool_result') {
+          const toolUseId = block.tool_use_id
+          items.push({
+            kind: 'tool-result',
+            id,
+            timestamp: entry.timestamp,
+            toolUseId,
+            toolName: toolUseId ? toolNameMap.get(toolUseId) : undefined,
+            content: blockContent(block),
+            isError: block.is_error === true,
+          })
+          continue
+        }
       }
       continue
     }
 
-    if (entry.type === 'user' && entry.message) {
-      const resultBlocks = entry.message.content.filter((b) => b.type === 'tool_result')
-      if (resultBlocks.length === 0) continue
-
-      if (!currentAttempt) {
-        currentAttempt = createAttempt(attemptCount, entry.timestamp)
-        attemptCount += 1
-      }
-
-      for (const block of resultBlocks) {
-        currentAttempt.toolResults.push({
-          toolUseId: block.tool_use_id,
-          content: blockContent(block),
-          isError: block.is_error === true,
-        })
-      }
-      continue
-    }
-
+    // ── System events ──
     if (entry.type === 'system' || entry.type === 'rate_limit_event') {
-      flushAttempt()
-      if (!options.showSystemEvents && shouldHideSystemEntry(entry)) {
-        continue
-      }
-      renderable.push(toSystemMarker(entry, i))
+      const subtype = entry.subtype ?? 'event'
+      const isWarn = subtype.includes('limit')
+      const isErr = subtype.includes('error') || subtype.includes('fail')
+      items.push({
+        kind: 'system-marker',
+        id: `stream-${counter++}`,
+        timestamp: entry.timestamp,
+        level: isErr ? 'error' : isWarn ? 'warning' : 'info',
+        label: subtype.replace(/_/g, ' '),
+        details: entry.description,
+      })
       continue
     }
 
+    // ── Raw entries ──
     if (entry.type === 'raw') {
-      const cleaned = cleanText(entry.content ?? '')
-      if (!cleaned) continue
-      if (!options.showRawEvents) continue
-      flushAttempt()
-      renderable.push({
+      const content = cleanText(entry.content ?? '')
+      if (!content) continue
+      items.push({
         kind: 'raw',
-        id: `raw-${i}`,
+        id: `stream-${counter++}`,
         timestamp: entry.timestamp,
-        content: cleaned,
+        content,
       })
       continue
     }
   }
 
-  flushAttempt()
-  return renderable
+  return items
 }

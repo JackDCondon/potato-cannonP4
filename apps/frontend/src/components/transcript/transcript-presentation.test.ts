@@ -1,136 +1,172 @@
 import { describe, it, expect } from 'vitest'
+import { flattenToStreamItems, type StreamItem } from './transcript-presentation'
 import type { SessionLogEntry } from '@potato-cannon/shared'
-import { buildTranscriptRenderableItems } from './transcript-presentation'
 
-describe('buildTranscriptRenderableItems', () => {
-  it('groups assistant + tool use + tool result into one attempt card', () => {
+describe('flattenToStreamItems', () => {
+  it('maps assistant text blocks to AssistantText items', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'assistant',
+      timestamp: '2026-03-10T10:00:00Z',
+      message: { content: [{ type: 'text', text: 'Hello world' }] },
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'assistant-text',
+      text: 'Hello world',
+      timestamp: '2026-03-10T10:00:00Z',
+    })
+  })
+
+  it('maps tool_use blocks to ToolCall items', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'assistant',
+      timestamp: '2026-03-10T10:00:00Z',
+      message: { content: [{
+        type: 'tool_use',
+        id: 'tool-1',
+        name: 'Read',
+        input: { file_path: '/src/foo.ts' },
+      }] },
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'tool-call',
+      toolName: 'Read',
+      toolInput: { file_path: '/src/foo.ts' },
+    })
+  })
+
+  it('maps tool_result blocks to ToolResult items', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'user',
+      timestamp: '2026-03-10T10:00:01Z',
+      message: { content: [{
+        type: 'tool_result',
+        tool_use_id: 'tool-1',
+        content: 'file contents here',
+        is_error: false,
+      }] },
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'tool-result',
+      toolUseId: 'tool-1',
+      content: 'file contents here',
+      isError: false,
+    })
+  })
+
+  it('maps Bash tool calls with special kind', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'assistant',
+      timestamp: '2026-03-10T10:00:00Z',
+      message: { content: [{
+        type: 'tool_use',
+        id: 'tool-2',
+        name: 'Bash',
+        input: { command: 'pnpm test' },
+      }] },
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items[0]).toMatchObject({ kind: 'tool-call', toolName: 'Bash' })
+  })
+
+  it('maps system events to system-marker items', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'system',
+      subtype: 'task_started',
+      description: 'Starting task 1',
+      timestamp: '2026-03-10T10:00:00Z',
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'system-marker',
+      label: 'task started',
+      details: 'Starting task 1',
+    })
+  })
+
+  it('skips session_start, session_end, and result entries', () => {
+    const entries: SessionLogEntry[] = [
+      { type: 'session_start', timestamp: '2026-03-10T10:00:00Z' },
+      { type: 'session_end', timestamp: '2026-03-10T10:00:01Z' },
+      { type: 'result', timestamp: '2026-03-10T10:00:02Z' },
+    ]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(0)
+  })
+
+  it('handles mixed content blocks in a single assistant entry', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'assistant',
+      timestamp: '2026-03-10T10:00:00Z',
+      message: { content: [
+        { type: 'text', text: 'Let me read that file.' },
+        { type: 'tool_use', id: 'tool-1', name: 'Read', input: { file_path: '/foo.ts' } },
+      ] },
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(2)
+    expect(items[0].kind).toBe('assistant-text')
+    expect(items[1].kind).toBe('tool-call')
+  })
+
+  it('maps thinking content blocks to ThinkingItem', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'assistant',
+      timestamp: '2026-03-10T10:00:00Z',
+      message: { content: [{
+        type: 'thinking' as any,
+        thinking: 'Let me reason about this...',
+      }] },
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      kind: 'thinking',
+      text: 'Let me reason about this...',
+    })
+  })
+
+  it('maps raw entries to raw items', () => {
+    const entries: SessionLogEntry[] = [{
+      type: 'raw',
+      timestamp: '2026-03-10T10:00:00Z',
+      content: 'some raw output',
+    }]
+    const items = flattenToStreamItems(entries)
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'raw', content: 'some raw output' })
+  })
+
+  it('derives tool-result toolName from preceding tool-call', () => {
     const entries: SessionLogEntry[] = [
       {
         type: 'assistant',
         timestamp: '2026-03-10T10:00:00Z',
-        message: {
-          content: [
-            { type: 'text', text: 'Reading files' },
-            { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'src/app.ts' } },
-          ],
-        },
+        message: { content: [{
+          type: 'tool_use', id: 'tool-1', name: 'Read',
+          input: { file_path: '/foo.ts' },
+        }] },
       },
       {
         type: 'user',
         timestamp: '2026-03-10T10:00:01Z',
-        message: {
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok', is_error: false }],
-        },
+        message: { content: [{
+          type: 'tool_result', tool_use_id: 'tool-1',
+          content: 'file data', is_error: false,
+        }] },
       },
     ]
-
-    const renderables = buildTranscriptRenderableItems(entries, {
-      showSystemEvents: false,
-      showRawEvents: false,
+    const items = flattenToStreamItems(entries)
+    expect(items[1]).toMatchObject({
+      kind: 'tool-result',
+      toolName: 'Read',
+      toolUseId: 'tool-1',
     })
-    expect(renderables).toHaveLength(1)
-    expect(renderables[0].kind).toBe('attempt')
-    if (renderables[0].kind === 'attempt') {
-      expect(renderables[0].assistantTextBlocks[0]).toBe('Reading files')
-      expect(renderables[0].toolUses).toHaveLength(1)
-      expect(renderables[0].toolResults).toHaveLength(1)
-      expect(renderables[0].status).toBe('success')
-    }
-  })
-
-  it('keeps multiple tool calls and results in same attempt until next assistant turn', () => {
-    const entries: SessionLogEntry[] = [
-      {
-        type: 'assistant',
-        timestamp: '2026-03-10T10:00:00Z',
-        message: {
-          content: [{ type: 'text', text: 'I will inspect files' }],
-        },
-      },
-      {
-        type: 'assistant',
-        timestamp: '2026-03-10T10:00:01Z',
-        message: {
-          content: [
-            { type: 'tool_use', id: 'a', name: 'Read', input: { file_path: 'a.ts' } },
-            { type: 'tool_use', id: 'b', name: 'Read', input: { file_path: 'b.ts' } },
-          ],
-        },
-      },
-      {
-        type: 'user',
-        timestamp: '2026-03-10T10:00:02Z',
-        message: {
-          content: [
-            { type: 'tool_result', tool_use_id: 'a', content: 'A', is_error: false },
-            { type: 'tool_result', tool_use_id: 'b', content: 'B', is_error: false },
-          ],
-        },
-      },
-      {
-        type: 'assistant',
-        timestamp: '2026-03-10T10:00:03Z',
-        message: {
-          content: [{ type: 'text', text: 'Next attempt' }],
-        },
-      },
-    ]
-
-    const renderables = buildTranscriptRenderableItems(entries, {
-      showSystemEvents: false,
-      showRawEvents: false,
-    })
-    expect(renderables).toHaveLength(2)
-    expect(renderables[0].kind).toBe('attempt')
-    expect(renderables[1].kind).toBe('attempt')
-    if (renderables[0].kind === 'attempt') {
-      expect(renderables[0].toolUses).toHaveLength(2)
-      expect(renderables[0].toolResults).toHaveLength(2)
-    }
-  })
-
-  it('handles orphan tool result safely and marks error attempts', () => {
-    const entries: SessionLogEntry[] = [
-      {
-        type: 'user',
-        timestamp: '2026-03-10T10:00:00Z',
-        message: {
-          content: [{ type: 'tool_result', tool_use_id: 'x', content: 'boom', is_error: true }],
-        },
-      },
-    ]
-
-    const renderables = buildTranscriptRenderableItems(entries, {
-      showSystemEvents: false,
-      showRawEvents: false,
-    })
-    expect(renderables).toHaveLength(1)
-    expect(renderables[0].kind).toBe('attempt')
-    if (renderables[0].kind === 'attempt') {
-      expect(renderables[0].status).toBe('error')
-      expect(renderables[0].hasErrors).toBe(true)
-    }
-  })
-
-  it('hides noisy system/raw events by default and shows them when toggled', () => {
-    const entries: SessionLogEntry[] = [
-      { type: 'system', subtype: 'init', timestamp: '2026-03-10T10:00:00Z' },
-      { type: 'system', subtype: 'task_progress', description: 'Doing work', timestamp: '2026-03-10T10:00:01Z' },
-      { type: 'raw', timestamp: '2026-03-10T10:00:02Z', content: 'raw details' },
-    ]
-
-    const hidden = buildTranscriptRenderableItems(entries, {
-      showSystemEvents: false,
-      showRawEvents: false,
-    })
-    expect(hidden).toHaveLength(0)
-
-    const visible = buildTranscriptRenderableItems(entries, {
-      showSystemEvents: true,
-      showRawEvents: true,
-    })
-    expect(visible.some((r) => r.kind === 'system')).toBe(true)
-    expect(visible.some((r) => r.kind === 'raw')).toBe(true)
   })
 })
-
