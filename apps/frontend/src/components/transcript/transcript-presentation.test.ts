@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { flattenToStreamItems, type StreamItem } from './transcript-presentation'
+import { flattenToStreamItems } from './transcript-presentation'
 import type { SessionLogEntry } from '@potato-cannon/shared'
 
 describe('flattenToStreamItems', () => {
@@ -120,9 +120,9 @@ describe('flattenToStreamItems', () => {
       type: 'assistant',
       timestamp: '2026-03-10T10:00:00Z',
       message: { content: [{
-        type: 'thinking' as any,
+        type: 'thinking',
         thinking: 'Let me reason about this...',
-      }] },
+      } as any] },
     }]
     const items = flattenToStreamItems(entries)
     expect(items).toHaveLength(1)
