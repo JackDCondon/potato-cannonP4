@@ -1,5 +1,4 @@
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { TicketTranscriptPage } from './TicketTranscriptPage'
@@ -137,13 +136,11 @@ describe('TicketTranscriptPage', () => {
     })
   })
 
-  it('renders attempt cards from session logs', async () => {
+  it('renders assistant text as stream content', async () => {
     renderPage()
     await waitFor(() => {
-      const cards = screen.getAllByTestId('attempt-card')
-      expect(cards).toHaveLength(2)
-      expect(cards[0]).toHaveTextContent('Output from session-1')
-      expect(cards[1]).toHaveTextContent('Output from session-2')
+      expect(screen.getByText('Output from session-1')).toBeInTheDocument()
+      expect(screen.getByText('Output from session-2')).toBeInTheDocument()
     })
   })
 
@@ -164,103 +161,62 @@ describe('TicketTranscriptPage', () => {
     })
   })
 
-  it('renders no attempt cards when sessions have no log entries', async () => {
+  it('renders no content when sessions have no log entries', async () => {
     const { api } = await import('@/api/client')
     vi.mocked(api.getSessionLog).mockResolvedValue([])
     renderPage()
     await waitFor(() => {
-      expect(screen.queryAllByTestId('attempt-card')).toHaveLength(0)
+      expect(screen.queryByText(/Output from/)).not.toBeInTheDocument()
     })
   })
 
-  it('does not show idle marker when last session is still running', async () => {
-    const { useTicketSessions } = await import('@/hooks/queries')
-    vi.mocked(useTicketSessions).mockReturnValueOnce({
-      data: [{ ...mockSessions[0], status: 'running', endedAt: undefined }],
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useTicketSessions>)
-    renderPage()
-    await waitFor(() => {
-      expect(screen.getByTestId('phase-divider')).toBeInTheDocument()
-    })
-  })
-
-  it('renders assistant content reconstructed from raw JSON chunks', async () => {
+  it('renders tool call badges inline', async () => {
     const { api } = await import('@/api/client')
     vi.mocked(api.getSessionLog).mockImplementation((sessionId: string) => {
       if (sessionId !== 'session-1') return Promise.resolve([])
       return Promise.resolve([
-      {
-        type: 'raw',
-        timestamp: '2026-03-10T10:01:00Z',
-        content:
-          '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello',
-      },
-      {
-        type: 'raw',
-        timestamp: '2026-03-10T10:01:01Z',
-        content: ' from raw"}]}}',
-      },
+        {
+          type: 'assistant',
+          timestamp: '2026-03-10T10:01:00Z',
+          message: {
+            content: [
+              { type: 'text', text: 'Let me check that file.' },
+              { type: 'tool_use', id: 'tool-1', name: 'Grep', input: { pattern: 'foo' } },
+            ],
+          },
+        },
       ] as SessionLogEntry[])
     })
 
     renderPage()
     await waitFor(() => {
-      expect(screen.getAllByText('Hello from raw').length).toBeGreaterThan(0)
+      expect(screen.getByText('Let me check that file.')).toBeInTheDocument()
+      expect(screen.getByText('Grep')).toBeInTheDocument()
     })
   })
 
-  it('hides system and raw markers by default, then shows them when toggled', async () => {
-    const user = userEvent.setup()
+  it('renders reconstructed content from raw JSON chunks', async () => {
     const { api } = await import('@/api/client')
-    vi.mocked(api.getSessionLog).mockResolvedValue([
-      {
-        type: 'assistant',
-        timestamp: '2026-03-10T10:00:00Z',
-        message: { content: [{ type: 'text', text: 'Start' }] },
-      },
-      {
-        type: 'system',
-        subtype: 'task_progress',
-        description: 'Working',
-        timestamp: '2026-03-10T10:00:01Z',
-      },
-      {
-        type: 'raw',
-        timestamp: '2026-03-10T10:00:02Z',
-        content: 'raw details',
-      },
-    ] as SessionLogEntry[])
+    vi.mocked(api.getSessionLog).mockImplementation((sessionId: string) => {
+      if (sessionId !== 'session-1') return Promise.resolve([])
+      return Promise.resolve([
+        {
+          type: 'raw',
+          timestamp: '2026-03-10T10:01:00Z',
+          content:
+            '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello',
+        },
+        {
+          type: 'raw',
+          timestamp: '2026-03-10T10:01:01Z',
+          content: ' from raw"}]}}',
+        },
+      ] as SessionLogEntry[])
+    })
 
     renderPage()
     await waitFor(() => {
-      expect(screen.getAllByTestId('attempt-card').length).toBeGreaterThan(0)
-    })
-    expect(screen.queryByTestId('system-marker')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('raw-marker')).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /show system events/i }))
-    await user.click(screen.getByRole('button', { name: /show raw events/i }))
-
-    await waitFor(() => {
-      expect(screen.getAllByTestId('system-marker').length).toBeGreaterThan(0)
-    })
-  })
-
-  it('expands attempt sections when expand-all toggle is enabled', async () => {
-    const user = userEvent.setup()
-    renderPage()
-
-    await waitFor(() => {
-      expect(screen.getAllByTestId('attempt-card')).toHaveLength(2)
-    })
-
-    expect(screen.queryByText(/No tool calls\./i)).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /expand all details/i }))
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/No tool calls\./i).length).toBeGreaterThan(0)
+      expect(screen.getByText('Hello from raw')).toBeInTheDocument()
     })
   })
 })
