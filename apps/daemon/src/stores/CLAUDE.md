@@ -28,7 +28,7 @@ The database uses WAL (Write-Ahead Logging) mode for better concurrency. Multipl
 
 Migrations use SQLite's `user_version` pragma. Each migration checks the version and applies changes if needed.
 
-**Current schema version:** 19
+**Current schema version:** 21
 
 **Adding a new migration:**
 
@@ -67,6 +67,7 @@ if (version < 6) {
 | V18 | Enforce strict workflow identity: delete `workflow_id IS NULL` tickets, make `tickets.workflow_id` `NOT NULL`, and change FK to `ON DELETE RESTRICT` |
 | V19 | Add `project_workflows.template_version` and backfill from workflow-local/project/catalog versions |
 | V20 | Add `projects.provider_override` for per-project AI provider routing override |
+| V21 | Add `brainstorm_id` FK on tickets and `plan_summary` on brainstorms; backfill from `created_ticket_id` |
 
 ## Tables
 
