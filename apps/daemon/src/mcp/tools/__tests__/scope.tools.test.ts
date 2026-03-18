@@ -1,12 +1,21 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert";
 
-// Mock the ticket-dependency store before importing scope.tools
-import type { BlockedByEntry } from "@potato-cannon/shared";
+// Mock the stores before importing scope.tools
+import type { BlockedByEntry, Ticket } from "@potato-cannon/shared";
 const mockGetDependents = mock.fn((): BlockedByEntry[] => []);
+const mockGetForTicket = mock.fn((): BlockedByEntry[] => []);
 mock.module("../../../stores/ticket-dependency.store.js", {
   namedExports: {
     ticketDependencyGetDependents: mockGetDependents,
+    ticketDependencyGetForTicket: mockGetForTicket,
+  },
+});
+
+const mockGetTicketsByBrainstormId = mock.fn((): Ticket[] => []);
+mock.module("../../../stores/ticket.store.js", {
+  namedExports: {
+    getTicketsByBrainstormId: mockGetTicketsByBrainstormId,
   },
 });
 
@@ -201,5 +210,351 @@ describe("get_dependents", () => {
     assert.strictEqual((result as { isError?: boolean }).isError, undefined);
     const parsed = JSON.parse(result.content[0].text);
     assert.deepStrictEqual(parsed.dependents, []);
+  });
+});
+
+// =============================================================================
+// get_scope_context
+// =============================================================================
+
+describe("get_scope_context", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    mockGetDependents.mock.resetCalls();
+    mockGetForTicket.mock.resetCalls();
+    mockGetTicketsByBrainstormId.mock.resetCalls();
+  });
+
+  function makeCtx(overrides: Record<string, unknown> = {}) {
+    return {
+      projectId: "proj-1",
+      ticketId: "POT-1",
+      daemonUrl: "http://localhost:8443",
+      ...overrides,
+    } as Parameters<typeof scopeHandlers.get_scope_context>[0];
+  }
+
+  it("should error when no ticketId available", async () => {
+    const result = await scopeHandlers.get_scope_context(
+      makeCtx({ ticketId: undefined }),
+      {},
+    );
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("no ticketId available"));
+  });
+
+  it("should error when ticket not found", async () => {
+    globalThis.fetch = async () =>
+      new Response("Not Found", { status: 404, statusText: "Not Found" });
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("not found"));
+  });
+
+  it("should return basic ticket context without brainstorm", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-1",
+          title: "Test Ticket",
+          description: "A".repeat(600),
+          phase: "Build",
+          complexity: "standard",
+        }),
+        { status: 200 },
+      );
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.ticket.id, "POT-1");
+    assert.strictEqual(parsed.ticket.title, "Test Ticket");
+    assert.ok(
+      parsed.ticket.description.length <= 503,
+      "description should be truncated to 500 chars + ellipsis",
+    );
+    assert.ok(parsed.ticket.description.endsWith("..."));
+    assert.strictEqual(parsed.ticket.phase, "Build");
+    assert.strictEqual(parsed.ticket.complexity, "standard");
+    assert.strictEqual(parsed.origin, null);
+    assert.deepStrictEqual(parsed.siblings, []);
+    assert.deepStrictEqual(parsed.dependsOn, []);
+    assert.deepStrictEqual(parsed.dependedOnBy, []);
+  });
+
+  it("should not truncate short descriptions", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-1",
+          title: "Short Desc Ticket",
+          description: "A short description",
+          phase: "Build",
+          complexity: "standard",
+        }),
+        { status: 200 },
+      );
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.ticket.description, "A short description");
+  });
+
+  it("should handle missing description gracefully", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-1",
+          title: "No Desc",
+          phase: "Ideas",
+          complexity: "standard",
+        }),
+        { status: 200 },
+      );
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.ticket.description, "");
+  });
+
+  it("should use args.ticketId when provided", async () => {
+    const capturedUrls: string[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      capturedUrls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          id: "POT-5",
+          title: "Other Ticket",
+          phase: "Build",
+          complexity: "standard",
+        }),
+        { status: 200 },
+      );
+    };
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+
+    await scopeHandlers.get_scope_context(makeCtx(), { ticketId: "POT-5" });
+
+    assert.ok(capturedUrls[0].includes("POT-5"));
+    assert.strictEqual(
+      (mockGetForTicket.mock.calls[0]?.arguments as unknown[])[0],
+      "POT-5",
+    );
+    assert.strictEqual(
+      (mockGetDependents.mock.calls[0]?.arguments as unknown[])[0],
+      "POT-5",
+    );
+  });
+
+  it("should include origin and siblings when ticket has brainstormId", async () => {
+    let callCount = 0;
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      callCount++;
+      if (url.includes("/api/tickets/")) {
+        return new Response(
+          JSON.stringify({
+            id: "POT-1",
+            title: "Ticket One",
+            phase: "Build",
+            complexity: "standard",
+            brainstormId: "brain_abc",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/brainstorms/")) {
+        return new Response(
+          JSON.stringify({
+            id: "brain_abc",
+            name: "My Brainstorm",
+            planSummary: "Build a widget with three parts.",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not Found", { status: 404 });
+    };
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+    mockGetTicketsByBrainstormId.mock.mockImplementationOnce(() => [
+      {
+        id: "POT-1",
+        title: "Ticket One",
+        phase: "Build",
+        complexity: "standard",
+      } as Ticket,
+      {
+        id: "POT-2",
+        title: "Ticket Two",
+        phase: "Ideas",
+        complexity: "complex",
+      } as Ticket,
+      {
+        id: "POT-3",
+        title: "Ticket Three",
+        phase: "Review",
+        complexity: "standard",
+      } as Ticket,
+    ]);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Origin
+    assert.strictEqual(parsed.origin.brainstormId, "brain_abc");
+    assert.strictEqual(parsed.origin.brainstormName, "My Brainstorm");
+    assert.strictEqual(
+      parsed.origin.planSummary,
+      "Build a widget with three parts.",
+    );
+
+    // Siblings (excludes self)
+    assert.strictEqual(parsed.siblings.length, 2);
+    assert.strictEqual(parsed.siblings[0].ticketId, "POT-2");
+    assert.strictEqual(parsed.siblings[1].ticketId, "POT-3");
+
+    // Verify brainstormId was passed to the store
+    assert.strictEqual(
+      (mockGetTicketsByBrainstormId.mock.calls[0]?.arguments as unknown[])[0],
+      "brain_abc",
+    );
+  });
+
+  it("should handle brainstorm fetch failure gracefully", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/tickets/")) {
+        return new Response(
+          JSON.stringify({
+            id: "POT-1",
+            title: "Ticket One",
+            phase: "Build",
+            complexity: "standard",
+            brainstormId: "brain_gone",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/brainstorms/")) {
+        return new Response("Server Error", { status: 500 });
+      }
+      return new Response("Not Found", { status: 404 });
+    };
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+    mockGetTicketsByBrainstormId.mock.mockImplementationOnce(() => []);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+    const parsed = JSON.parse(result.content[0].text);
+
+    // Origin should be null when brainstorm fetch fails
+    assert.strictEqual(parsed.origin, null);
+    // Siblings should still be fetched from the store
+    assert.deepStrictEqual(parsed.siblings, []);
+  });
+
+  it("should include upstream dependencies and downstream dependents", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-3",
+          title: "Middle Ticket",
+          phase: "Build",
+          complexity: "standard",
+        }),
+        { status: 200 },
+      );
+
+    const upstreamDep: BlockedByEntry = {
+      ticketId: "POT-1",
+      title: "Foundation",
+      currentPhase: "Done",
+      tier: "code-ready",
+      satisfied: true,
+    };
+    const downstreamDep: BlockedByEntry = {
+      ticketId: "POT-5",
+      title: "Consumer",
+      currentPhase: "Ideas",
+      tier: "artifact-ready",
+      satisfied: false,
+    };
+
+    mockGetForTicket.mock.mockImplementationOnce(() => [upstreamDep]);
+    mockGetDependents.mock.mockImplementationOnce(() => [downstreamDep]);
+
+    const result = await scopeHandlers.get_scope_context(
+      makeCtx({ ticketId: "POT-3" }),
+      {},
+    );
+    const parsed = JSON.parse(result.content[0].text);
+
+    assert.strictEqual(parsed.dependsOn.length, 1);
+    assert.strictEqual(parsed.dependsOn[0].ticketId, "POT-1");
+    assert.strictEqual(parsed.dependsOn[0].satisfied, true);
+
+    assert.strictEqual(parsed.dependedOnBy.length, 1);
+    assert.strictEqual(parsed.dependedOnBy[0].ticketId, "POT-5");
+    assert.strictEqual(parsed.dependedOnBy[0].satisfied, false);
+  });
+
+  it("should handle null planSummary on brainstorm", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/tickets/")) {
+        return new Response(
+          JSON.stringify({
+            id: "POT-1",
+            title: "Ticket",
+            phase: "Build",
+            complexity: "standard",
+            brainstormId: "brain_no_plan",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/brainstorms/")) {
+        return new Response(
+          JSON.stringify({
+            id: "brain_no_plan",
+            name: "No Plan Yet",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("Not Found", { status: 404 });
+    };
+
+    mockGetForTicket.mock.mockImplementationOnce(() => []);
+    mockGetDependents.mock.mockImplementationOnce(() => []);
+    mockGetTicketsByBrainstormId.mock.mockImplementationOnce(() => []);
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+    const parsed = JSON.parse(result.content[0].text);
+
+    assert.strictEqual(parsed.origin.planSummary, null);
   });
 });
