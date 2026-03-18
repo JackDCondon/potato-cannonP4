@@ -1,4 +1,4 @@
-import { beforeEach, describe, it, mock } from "node:test";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert";
 
 // Mock the ticket-dependency store before importing scope.tools
@@ -17,8 +17,10 @@ const { scopeHandlers } = await import("../scope.tools.js");
 // =============================================================================
 
 describe("set_plan_summary", () => {
-  beforeEach(() => {
-    mockGetDependents.mock.resetCalls();
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it("should error without brainstormId context", async () => {
