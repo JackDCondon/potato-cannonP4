@@ -254,6 +254,18 @@ describe("get_sibling_tickets", () => {
     assert.ok(result.content[0].text.includes("not found"));
   });
 
+  it("should return isError when ticket fetch throws a network error", async () => {
+    globalThis.fetch = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+
+    const result = await scopeHandlers.get_sibling_tickets(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("failed to fetch ticket"));
+    assert.ok(result.content[0].text.includes("ECONNREFUSED"));
+  });
+
   it("should return empty siblings when ticket has no brainstormId", async () => {
     globalThis.fetch = async () =>
       new Response(

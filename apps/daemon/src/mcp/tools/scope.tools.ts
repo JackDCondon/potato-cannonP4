@@ -290,9 +290,22 @@ export const scopeHandlers: Record<
     }
 
     // Fetch ticket to get brainstormId
-    const ticketResponse = await fetch(
-      `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ticketId)}`,
-    );
+    let ticketResponse: Response;
+    try {
+      ticketResponse = await fetch(
+        `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ticketId)}`,
+      );
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: failed to fetch ticket ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
     if (!ticketResponse.ok) {
       return {
         content: [
