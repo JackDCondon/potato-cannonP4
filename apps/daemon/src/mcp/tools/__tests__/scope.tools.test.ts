@@ -214,6 +214,157 @@ describe("get_dependents", () => {
 });
 
 // =============================================================================
+// get_sibling_tickets
+// =============================================================================
+
+describe("get_sibling_tickets", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    mockGetTicketsByBrainstormId.mock.resetCalls();
+  });
+
+  function makeCtx(overrides: Record<string, unknown> = {}) {
+    return {
+      projectId: "proj-1",
+      ticketId: "POT-1",
+      daemonUrl: "http://localhost:8443",
+      ...overrides,
+    } as Parameters<typeof scopeHandlers.get_sibling_tickets>[0];
+  }
+
+  it("should error when no ticketId available", async () => {
+    const result = await scopeHandlers.get_sibling_tickets(
+      makeCtx({ ticketId: undefined }),
+      {},
+    );
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("no ticketId available"));
+  });
+
+  it("should error when ticket fetch fails", async () => {
+    globalThis.fetch = async () =>
+      new Response("Not Found", { status: 404, statusText: "Not Found" });
+
+    const result = await scopeHandlers.get_sibling_tickets(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("not found"));
+  });
+
+  it("should return empty siblings when ticket has no brainstormId", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({ id: "POT-1", title: "Solo", brainstormId: null }),
+        { status: 200 },
+      );
+
+    const result = await scopeHandlers.get_sibling_tickets(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.siblings.length, 0);
+    assert.strictEqual(parsed.brainstormId, null);
+  });
+
+  it("should return siblings excluding self when ticket has brainstormId", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-1",
+          title: "Ticket One",
+          brainstormId: "brain_abc",
+        }),
+        { status: 200 },
+      );
+
+    mockGetTicketsByBrainstormId.mock.mockImplementationOnce(() => [
+      { id: "POT-1", title: "Ticket One", phase: "Build", complexity: "standard" } as Ticket,
+      { id: "POT-2", title: "Ticket Two", phase: "Ideas", complexity: "complex" } as Ticket,
+      { id: "POT-3", title: "Ticket Three", phase: "Review", complexity: "standard" } as Ticket,
+    ]);
+
+    const result = await scopeHandlers.get_sibling_tickets(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.brainstormId, "brain_abc");
+    assert.strictEqual(parsed.siblings.length, 2);
+    assert.strictEqual(parsed.siblings[0].ticketId, "POT-2");
+    assert.strictEqual(parsed.siblings[1].ticketId, "POT-3");
+  });
+
+  it("should use args.ticketId when provided", async () => {
+    const capturedUrls: string[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      capturedUrls.push(String(input));
+      return new Response(
+        JSON.stringify({ id: "POT-5", title: "Other", brainstormId: null }),
+        { status: 200 },
+      );
+    };
+
+    await scopeHandlers.get_sibling_tickets(makeCtx(), { ticketId: "POT-5" });
+
+    assert.ok(capturedUrls[0].includes("POT-5"));
+  });
+
+  it("should include descriptions when includeDescriptions is true", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-1",
+          title: "Ticket One",
+          brainstormId: "brain_abc",
+        }),
+        { status: 200 },
+      );
+
+    mockGetTicketsByBrainstormId.mock.mockImplementationOnce(() => [
+      { id: "POT-1", title: "Ticket One", phase: "Build", complexity: "standard", description: "Self desc" } as Ticket,
+      { id: "POT-2", title: "Ticket Two", phase: "Ideas", complexity: "complex", description: "Short desc" } as Ticket,
+      { id: "POT-3", title: "Long Desc Ticket", phase: "Review", complexity: "standard", description: "X".repeat(400) } as Ticket,
+    ]);
+
+    const result = await scopeHandlers.get_sibling_tickets(
+      makeCtx(),
+      { includeDescriptions: true },
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.siblings.length, 2);
+    assert.strictEqual(parsed.siblings[0].description, "Short desc");
+    assert.ok(parsed.siblings[1].description.length <= 303, "long desc should be truncated to 300 + ellipsis");
+    assert.ok(parsed.siblings[1].description.endsWith("..."));
+  });
+
+  it("should omit descriptions by default", async () => {
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          id: "POT-1",
+          title: "Ticket One",
+          brainstormId: "brain_abc",
+        }),
+        { status: 200 },
+      );
+
+    mockGetTicketsByBrainstormId.mock.mockImplementationOnce(() => [
+      { id: "POT-1", title: "Ticket One", phase: "Build", complexity: "standard", description: "Self desc" } as Ticket,
+      { id: "POT-2", title: "Ticket Two", phase: "Ideas", complexity: "complex", description: "Has a description" } as Ticket,
+    ]);
+
+    const result = await scopeHandlers.get_sibling_tickets(makeCtx(), {});
+
+    const parsed = JSON.parse(result.content[0].text);
+    assert.strictEqual(parsed.siblings.length, 1);
+    assert.strictEqual(parsed.siblings[0].description, undefined);
+  });
+});
+
+// =============================================================================
 // get_scope_context
 // =============================================================================
 

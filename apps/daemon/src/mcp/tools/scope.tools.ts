@@ -63,6 +63,27 @@ export const scopeTools: ToolDefinition[] = [
     },
     scope: "session",
   },
+  {
+    name: "get_sibling_tickets",
+    description:
+      "Get other tickets from the same brainstorm batch. Shows what's in scope alongside your work. Use includeDescriptions for more detail.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticketId: {
+          type: "string",
+          description: "Ticket ID. Defaults to current session ticket.",
+        },
+        includeDescriptions: {
+          type: "boolean",
+          description:
+            "Include ticket descriptions (truncated to 300 chars). Default false.",
+        },
+      },
+      required: [],
+    },
+    scope: "session",
+  },
 ];
 
 // =============================================================================
@@ -249,6 +270,78 @@ export const scopeHandlers: Record<
               dependedOnBy,
               siblings,
             },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+
+  get_sibling_tickets: async (ctx, args) => {
+    const ticketId = (args.ticketId as string) || ctx.ticketId;
+    const includeDescriptions = (args.includeDescriptions as boolean) ?? false;
+
+    if (!ticketId) {
+      return {
+        content: [{ type: "text", text: "Error: no ticketId available" }],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    // Fetch ticket to get brainstormId
+    const ticketResponse = await fetch(
+      `${ctx.daemonUrl}/api/tickets/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ticketId)}`,
+    );
+    if (!ticketResponse.ok) {
+      return {
+        content: [
+          { type: "text", text: `Error: ticket ${ticketId} not found` },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+    const ticket = (await ticketResponse.json()) as {
+      id: string;
+      brainstormId?: string;
+    };
+
+    if (!ticket.brainstormId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ brainstormId: null, siblings: [] }, null, 2),
+          },
+        ],
+      };
+    }
+
+    const allSiblings = getTicketsByBrainstormId(ticket.brainstormId);
+    const siblings = allSiblings
+      .filter((t) => t.id !== ticketId)
+      .map((t) => {
+        const base: Record<string, unknown> = {
+          ticketId: t.id,
+          title: t.title,
+          phase: t.phase,
+          complexity: t.complexity,
+        };
+        if (includeDescriptions && t.description) {
+          base.description =
+            t.description.length > 300
+              ? t.description.slice(0, 300) + "..."
+              : t.description;
+        }
+        return base;
+      });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            { brainstormId: ticket.brainstormId, siblings },
             null,
             2,
           ),
