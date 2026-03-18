@@ -12,6 +12,8 @@ import {
   useWorkflows,
   useTicketSessions,
 } from '@/hooks/queries'
+import { useResizable } from '@/hooks/use-resizable'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Select,
@@ -61,6 +63,16 @@ export function TicketDetailPanel() {
   const routeProjectSlugMatch = location.pathname.match(/^\/projects\/([^/]+)/)
   const routeProjectSlug = routeProjectSlugMatch ? decodeURIComponent(routeProjectSlugMatch[1]) : null
   const isOnBoardView = /^\/projects\/[^/]+(?:\/workflows\/[^/]+)?\/board$/.test(location.pathname)
+
+  // Resize hook
+  const isMobile = useIsMobile()
+  const { width, isDragging, handleProps } = useResizable({
+    minWidth: 480,
+    maxWidth: () => Math.max(window.innerWidth - 300, 480),
+    defaultWidth: 480,
+    snapWidth: () => window.innerWidth / 2,
+    disabled: isMobile,
+  })
 
   const { data: projects } = useProjects()
   const currentProject = useMemo(
@@ -223,8 +235,18 @@ export function TicketDetailPanel() {
       <div
         className="ticket-detail-panel"
         data-open={isOpen}
+        data-dragging={isDragging}
+        style={{ '--panel-width': `${width}px` } as React.CSSProperties}
       >
-        <div className="flex flex-col h-full w-[480px] max-w-full">
+        <div className="flex flex-col h-full w-full max-w-full">
+          {/* Resize handle */}
+          <div
+            className="ticket-detail-panel__resize-handle"
+            {...handleProps}
+            role="separator"
+            aria-label="Resize ticket detail panel"
+            aria-orientation="vertical"
+          />
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-text-muted" />
