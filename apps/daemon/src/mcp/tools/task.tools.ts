@@ -379,7 +379,15 @@ export const taskHandlers: Record<
       }
     }
     // Duplicate detection: check if a task with the same description prefix exists
-    const existingTasks = await listTasksForTicket(ctx, ticketId);
+    let existingTasks: Task[];
+    try {
+      existingTasks = await listTasksForTicket(ctx, ticketId);
+    } catch (err) {
+      return {
+        content: [{ type: "text", text: `Failed to fetch existing tasks for dedup check: ${err instanceof Error ? err.message : String(err)}. Aborting task creation to prevent duplicates.` }],
+        isError: true,
+      };
+    }
     const newPrefix = extractDescriptionPrefix(args.description);
     if (newPrefix) {
       const duplicate = existingTasks.find(
@@ -409,26 +417,28 @@ export const taskHandlers: Record<
     }
     const complexity = typeof args.complexity === "string" ? args.complexity : undefined;
     // Nudge: warn if using inline body when specification.md exists
+    let specExists = false;
     if (args.body && !args.body_from) {
       try {
         const safeProject = ctx.projectId.replace(/\//g, "__");
         const specPath = path.join(TASKS_DIR, safeProject, ticketId, "artifacts", "specification.md");
         await fs.access(specPath);
-        // specification.md exists but agent used inline body
-        const task = await createTask(ctx, ticketId, args.description, body, complexity);
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(task, null, 2) +
-                  "\n\n⚠️ Warning: specification.md exists for this ticket. " +
-                  "Consider using body_from with artifact markers instead of inline body to save tokens and preserve exact spec content.",
-          }],
-        };
+        specExists = true;
       } catch {
         // specification.md doesn't exist, proceed normally
       }
     }
     const task = await createTask(ctx, ticketId, args.description, body, complexity);
+    if (specExists) {
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(task, null, 2) +
+                "\n\n⚠️ Warning: specification.md exists for this ticket. " +
+                "Consider using body_from with artifact markers instead of inline body to save tokens and preserve exact spec content.",
+        }],
+      };
+    }
     return {
       content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
     };
