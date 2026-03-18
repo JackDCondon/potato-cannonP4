@@ -919,14 +919,62 @@ button, a, [role="button"] {
   flex-shrink: 0;
   overflow: hidden;
   transition: width 200ms ease-in-out;
+  position: relative;
 }
 
 .ticket-detail-panel[data-open="true"] {
-  width: 480px;
+  width: var(--panel-width, 480px);
 }
 
 .ticket-detail-panel[data-open="false"] {
   width: 0;
+}
+
+/* Resize handle - invisible hit zone on left edge */
+.ticket-detail-panel__resize-handle {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 3-dot vertical indicator on hover */
+.ticket-detail-panel__resize-handle::before {
+  content: '';
+  width: 3px;
+  height: 24px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 150ms ease;
+}
+
+.ticket-detail-panel__resize-handle:hover::before {
+  background: var(--color-text-muted);
+}
+
+/* Border brightens when cursor is over the resize handle (no JS needed) */
+.ticket-detail-panel:has(.ticket-detail-panel__resize-handle:hover) {
+  border-left-color: var(--color-text-muted);
+}
+
+/* Disable width transition during drag */
+.ticket-detail-panel[data-dragging="true"] {
+  transition: none;
+}
+
+/* Body-level drag state: lock cursor and disable selection */
+body.is-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.is-resizing * {
+  cursor: col-resize !important;
 }
 
 /* Mobile layout - media query fallback */
@@ -952,6 +1000,10 @@ button, a, [role="button"] {
     transform: translateX(calc(100% + 24px));
     visibility: hidden;
     transition: transform 300ms ease-out, visibility 0s 300ms;
+  }
+
+  .ticket-detail-panel__resize-handle {
+    display: none;
   }
 
   .ticket-detail-panel[data-open="true"] {
