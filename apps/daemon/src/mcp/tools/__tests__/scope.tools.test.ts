@@ -259,6 +259,22 @@ describe("get_scope_context", () => {
     assert.ok(result.content[0].text.includes("not found"));
   });
 
+  it("should return isError when ticket fetch throws a network error", async () => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/tickets/")) {
+        throw new Error("ECONNREFUSED");
+      }
+      return new Response("Not Found", { status: 404 });
+    };
+
+    const result = await scopeHandlers.get_scope_context(makeCtx(), {});
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("failed to fetch ticket"));
+    assert.ok(result.content[0].text.includes("ECONNREFUSED"));
+  });
+
   it("should return basic ticket context without brainstorm", async () => {
     globalThis.fetch = async () =>
       new Response(
