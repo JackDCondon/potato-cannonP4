@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "potato-cannon": {
+      "command": "node",
+      "args": ["c:/Git/potato-cannonP4/apps/daemon/dist/mcp/external-proxy.js"],
+      "env": {
+        "POTATO_PROJECT_SLUG": "gameparty"
+      }
+    }
+  }
+}
