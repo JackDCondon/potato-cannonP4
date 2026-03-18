@@ -512,14 +512,21 @@ async function executeNextWorker(
     const firstTaskId = getNextTask(taskState);
 
     if (!firstTaskId) {
-      // No tasks - skip this worker
-      const newState: OrchestrationState = {
-        ...state,
-        workerIndex: state.workerIndex + 1,
-        activeWorker: null,
-      };
-      await saveWorkerState(projectId, ticketId, newState);
-      return executeNextWorker(projectId, ticketId, phase, projectPath, phaseConfig, newState, callbacks);
+      // No pending tasks — block instead of silently skipping.
+      // This prevents scenarios where tasks were marked done outside
+      // the orchestration flow (e.g., by a resume session) from causing
+      // the entire build to be skipped.
+      await logToDaemon(projectId, ticketId, `Task loop "${worker.id}" has no pending tasks — blocking ticket`, {
+        workerId: worker.id,
+        phase,
+      });
+      await callbacks.onTicketBlocked(
+        projectId,
+        ticketId,
+        `Task loop "${worker.id}" has no pending tasks — refusing to skip. ` +
+        `If all tasks are intentionally complete, manually advance the ticket past this phase.`,
+      );
+      return null;
     }
 
     // Start first task
