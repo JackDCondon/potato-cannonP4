@@ -84,6 +84,22 @@ export const scopeTools: ToolDefinition[] = [
     },
     scope: "session",
   },
+  {
+    name: "rename_brainstorm",
+    description:
+      "Set a clear, concise name for this brainstorm/epic. Call this once the plan is clear to replace the auto-generated title with a descriptive epic name.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Short epic-style name (3-8 words, e.g. 'User Authentication System')",
+        },
+      },
+      required: ["name"],
+    },
+    scope: "session",
+  },
 ];
 
 // =============================================================================
@@ -381,6 +397,54 @@ export const scopeHandlers: Record<
           text: JSON.stringify({ dependents }, null, 2),
         },
       ],
+    };
+  },
+
+  rename_brainstorm: async (ctx, args) => {
+    const name = args.name as string;
+
+    if (!name) {
+      return {
+        content: [{ type: "text", text: "Error: name is required" }],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    if (!ctx.brainstormId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Error: rename_brainstorm can only be called in a brainstorm session context",
+          },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    const response = await fetch(
+      `${ctx.daemonUrl}/api/brainstorms/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ctx.brainstormId)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      },
+    );
+
+    if (!response.ok) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: Failed to rename brainstorm: ${response.statusText}`,
+          },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    return {
+      content: [{ type: "text", text: `Brainstorm renamed to: ${name}` }],
     };
   },
 };

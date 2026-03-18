@@ -737,3 +737,161 @@ describe("get_scope_context", () => {
     assert.strictEqual(parsed.origin.planSummary, null);
   });
 });
+
+// =============================================================================
+// rename_brainstorm
+// =============================================================================
+
+describe("rename_brainstorm", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("should error when not in brainstorm context", async () => {
+    const result = await scopeHandlers.rename_brainstorm(
+      {
+        projectId: "proj-1",
+        daemonUrl: "http://localhost:8443",
+      } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+      { name: "New Name" },
+    );
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("brainstorm session context"));
+  });
+
+  it("should error when name is missing", async () => {
+    const result = await scopeHandlers.rename_brainstorm(
+      {
+        projectId: "proj-1",
+        brainstormId: "brain_1",
+        daemonUrl: "http://localhost:8443",
+      } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+      {},
+    );
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("name is required"));
+  });
+
+  it("should call PUT /api/brainstorms/{projectId}/{brainstormId} with name on success", async () => {
+    const capturedRequests: { url: string; method: string; body: string }[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      capturedRequests.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        body: (init?.body as string) ?? "",
+      });
+      return new Response(JSON.stringify({ id: "brain_123", name: "New Name" }), {
+        status: 200,
+      });
+    };
+
+    try {
+      const result = await scopeHandlers.rename_brainstorm(
+        {
+          projectId: "proj-1",
+          brainstormId: "brain_123",
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+        { name: "User Authentication System" },
+      );
+
+      assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+      assert.ok(result.content[0].text.includes("Brainstorm renamed to"));
+      assert.ok(result.content[0].text.includes("User Authentication System"));
+      assert.strictEqual(capturedRequests.length, 1);
+      assert.strictEqual(
+        capturedRequests[0].url,
+        "http://localhost:8443/api/brainstorms/proj-1/brain_123",
+      );
+      assert.strictEqual(capturedRequests[0].method, "PUT");
+      const body = JSON.parse(capturedRequests[0].body);
+      assert.strictEqual(body.name, "User Authentication System");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should return error when fetch fails", async () => {
+    globalThis.fetch = async () =>
+      new Response("Not Found", { status: 404, statusText: "Not Found" });
+
+    try {
+      const result = await scopeHandlers.rename_brainstorm(
+        {
+          projectId: "proj-1",
+          brainstormId: "brain_123",
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+        { name: "Test Name" },
+      );
+
+      assert.strictEqual((result as { isError?: boolean }).isError, true);
+      assert.ok(result.content[0].text.includes("Failed to rename brainstorm"));
+      assert.ok(result.content[0].text.includes("Not Found"));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should URL-encode projectId in request", async () => {
+    const capturedRequests: { url: string }[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      capturedRequests.push({ url: String(input) });
+      return new Response(JSON.stringify({ id: "brain_123" }), { status: 200 });
+    };
+
+    try {
+      await scopeHandlers.rename_brainstorm(
+        {
+          projectId: "proj with spaces",
+          brainstormId: "brain_123",
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+        { name: "Test" },
+      );
+
+      assert.ok(capturedRequests[0].url.includes("proj%20with%20spaces"));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should URL-encode brainstormId in request", async () => {
+    const capturedRequests: { url: string }[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      capturedRequests.push({ url: String(input) });
+      return new Response(JSON.stringify({ id: "brain_123" }), { status: 200 });
+    };
+
+    try {
+      await scopeHandlers.rename_brainstorm(
+        {
+          projectId: "proj-1",
+          brainstormId: "brain with spaces",
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+        { name: "Test" },
+      );
+
+      assert.ok(capturedRequests[0].url.includes("brain%20with%20spaces"));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should handle empty name string gracefully", async () => {
+    const result = await scopeHandlers.rename_brainstorm(
+      {
+        projectId: "proj-1",
+        brainstormId: "brain_123",
+        daemonUrl: "http://localhost:8443",
+      } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+      { name: "" },
+    );
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("name is required"));
+  });
+});
