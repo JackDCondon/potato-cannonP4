@@ -193,9 +193,9 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
   });
 
-  it('schema version is 21', () => {
+  it('schema version is 20', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21);
+    assert.equal(version, 20);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21);
+    assert.equal(version, 20);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -665,166 +665,5 @@ describe('V13 backfill — runBackfillV13', () => {
     assert.equal(wf2.template_name, 'custom-template');
     assert.equal(wf1.is_default, 1);
     assert.equal(wf2.is_default, 1);
-  });
-});
-
-describe('V21 migration — brainstorm_id on tickets, plan_summary on brainstorms', () => {
-  it('adds brainstorm_id column to tickets', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    const cols = db.pragma('table_info(tickets)') as Array<{ name: string }>;
-    const colNames = new Set(cols.map((c) => c.name));
-    assert.ok(colNames.has('brainstorm_id'), 'tickets should have brainstorm_id column');
-  });
-
-  it('adds plan_summary column to brainstorms', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    const cols = db.pragma('table_info(brainstorms)') as Array<{ name: string }>;
-    const colNames = new Set(cols.map((c) => c.name));
-    assert.ok(colNames.has('plan_summary'), 'brainstorms should have plan_summary column');
-  });
-
-  it('creates partial index on tickets.brainstorm_id', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    const indexes = db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tickets' AND name='idx_tickets_brainstorm_id'"
-      )
-      .all() as Array<{ name: string }>;
-    assert.equal(indexes.length, 1, 'idx_tickets_brainstorm_id index should exist');
-  });
-
-  it('brainstorm_id column is nullable (no constraint violation on tickets without brainstorm)', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    db.exec(
-      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v21-nullable','pv21n','V21 Nullable','/v21n','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v21-nullable','proj-v21-nullable','Default','product-development',1,'2026-03-18','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v21-nullable', 1)"
-    );
-    // Insert ticket with no brainstorm_id — must not fail
-    db.exec(
-      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v21-no-bs','proj-v21-nullable','No Brainstorm','Ideas','2026-03-18','2026-03-18','wf-v21-nullable')"
-    );
-
-    const row = db
-      .prepare("SELECT brainstorm_id FROM tickets WHERE id = 't-v21-no-bs'")
-      .get() as { brainstorm_id: string | null };
-    assert.equal(row.brainstorm_id, null, 'brainstorm_id should default to NULL');
-  });
-
-  it('backfills brainstorm_id from existing created_ticket_id relationships', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    db.exec(
-      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v21-bf','pv21bf','V21 Backfill','/v21bf','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v21-bf','proj-v21-bf','Default','product-development',1,'2026-03-18','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v21-bf', 1)"
-    );
-    db.exec(
-      "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v21-bf','proj-v21-bf','2026-03-18','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v21-bf','proj-v21-bf','Backfill Ticket','Ideas','2026-03-18','2026-03-18','wf-v21-bf')"
-    );
-    // Brainstorm pointing at the ticket via created_ticket_id
-    db.exec(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-bf','proj-v21-bf','Epic Brainstorm','active','2026-03-18','2026-03-18','conv-v21-bf','t-v21-bf')"
-    );
-
-    // Re-run migrations (idempotent) — backfill should update brainstorm_id
-    db.pragma('user_version = 20');
-    runMigrations(db);
-
-    const row = db
-      .prepare("SELECT brainstorm_id FROM tickets WHERE id = 't-v21-bf'")
-      .get() as { brainstorm_id: string | null };
-    assert.equal(row.brainstorm_id, 'bs-v21-bf', 'brainstorm_id should be backfilled from created_ticket_id');
-  });
-
-  it('does not overwrite existing brainstorm_id during backfill', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    db.exec(
-      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v21-noof','pv21noof','V21 No Overwrite','/v21noof','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v21-noof','proj-v21-noof','Default','product-development',1,'2026-03-18','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v21-noof', 1)"
-    );
-    db.exec(
-      "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v21-noof','proj-v21-noof','2026-03-18','2026-03-18')"
-    );
-    db.exec(
-      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v21-noof','proj-v21-noof','Already Linked','Ideas','2026-03-18','2026-03-18','wf-v21-noof')"
-    );
-    db.exec(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-original','proj-v21-noof','Original','active','2026-03-18','2026-03-18','conv-v21-noof','t-v21-noof')"
-    );
-    db.exec(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id) VALUES ('bs-v21-other','proj-v21-noof','Other','active','2026-03-18','2026-03-18','conv-v21-noof')"
-    );
-    // Manually set brainstorm_id to a different brainstorm (simulating a pre-linked ticket)
-    db.exec(
-      "UPDATE tickets SET brainstorm_id = 'bs-v21-other' WHERE id = 't-v21-noof'"
-    );
-
-    // Re-run from V20 — backfill must not overwrite the existing brainstorm_id
-    db.pragma('user_version = 20');
-    runMigrations(db);
-
-    const row = db
-      .prepare("SELECT brainstorm_id FROM tickets WHERE id = 't-v21-noof'")
-      .get() as { brainstorm_id: string | null };
-    assert.equal(row.brainstorm_id, 'bs-v21-other', 'existing brainstorm_id must not be overwritten by backfill');
-  });
-
-  it('is idempotent — running migration twice leaves schema stable', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    // Reset and run again
-    db.pragma('user_version = 20');
-    runMigrations(db);
-
-    const ticketCols = db.pragma('table_info(tickets)') as Array<{ name: string }>;
-    const brainstormCols = db.pragma('table_info(brainstorms)') as Array<{ name: string }>;
-    assert.ok(
-      ticketCols.some((c) => c.name === 'brainstorm_id'),
-      'tickets.brainstorm_id must still exist after second migration run'
-    );
-    assert.ok(
-      brainstormCols.some((c) => c.name === 'plan_summary'),
-      'brainstorms.plan_summary must still exist after second migration run'
-    );
-
-    const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21, 'schema version should be 21 after idempotent run');
-  });
-
-  it('advances schema version to 21', () => {
-    const db = new Database(':memory:');
-    runMigrations(db);
-
-    const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21, 'schema version should be 21');
   });
 });
