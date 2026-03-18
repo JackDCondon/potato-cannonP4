@@ -58,13 +58,22 @@ If the skill is not available, use these heuristics directly:
 
 Call `set_ticket_complexity` with your estimate. This is an initial estimate — refinement will re-evaluate.
 
-## Plan Summary
+## After Creating Tickets
 
-After creating all tickets for a multi-ticket plan, call `set_plan_summary` with a concise summary (100-200 words). Structure it as:
-- One paragraph describing the overall goal
-- A bullet per ticket stating what it handles and how it relates to the others
+After creating all tickets for a multi-ticket plan, do these three things in order:
 
-This summary will be shown to every agent working on these tickets — write it as a briefing for someone who knows nothing about the plan.
+1. **Rename the brainstorm** — Call `rename_brainstorm` with a clear, concise epic name (e.g. "User Authentication System" not "Discussing auth options for the app"). This becomes the epic label visible to the user and other agents.
+
+2. **Save the plan artifact** — Call `save_brainstorm_artifact` with filename `plan.md` containing a structured plan document:
+   - **Goal:** One paragraph describing what we're building and why
+   - **Ticket Breakdown:** Table with ID, Title, Complexity, and what each ticket handles
+   - **Architecture Decisions:** Key technical choices made during brainstorming
+   - **Scope Boundaries:** What's explicitly NOT included and why
+
+3. **Set the plan summary** — Call `set_plan_summary` with a concise summary (100-200 words). Structure it as:
+   - One paragraph describing the overall goal
+   - A bullet per ticket stating what it handles and how it relates to the others
+   This summary is injected into agent prompts — keep it compact.
 
 ## Dependency Planning
 
