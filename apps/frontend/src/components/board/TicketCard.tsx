@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, Image, Clock, MessageCircleQuestion, Link2 } from 'lucide-react'
+import { Archive, Image, Clock, MessageCircleQuestion, Layers } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, timeAgo } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
@@ -28,6 +28,7 @@ interface TicketCardProps {
 
 export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseByTier }: TicketCardProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
+  const openBrainstormSheet = useAppStore((s) => s.openBrainstormSheet)
   const isProcessing = useAppStore((s) => s.isTicketProcessing(projectId, ticket.id))
   const activity = useAppStore((s) => s.getTicketActivity(projectId, ticket.id))
   const isPending = useAppStore((s) => s.isTicketPending(projectId, ticket.id))
@@ -166,11 +167,17 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
               {ticket.brainstormId && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="inline-flex items-center">
-                      <Link2 className="h-3 w-3" />
+                    <span
+                      className="inline-flex items-center text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openBrainstormSheet(projectId, ticket.brainstormId!, 'Epic')
+                      }}
+                    >
+                      <Layers className="h-3 w-3" />
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent side="top">Part of an epic</TooltipContent>
+                  <TooltipContent side="top">Part of an epic — click to view</TooltipContent>
                 </Tooltip>
               )}
             </>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Loader2, X, AlertCircle } from 'lucide-react'
+import { Loader2, X, AlertCircle, Layers } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import {
   useTicket,
@@ -11,6 +11,7 @@ import {
   useTemplate,
   useWorkflows,
   useTicketSessions,
+  useBrainstorms,
 } from '@/hooks/queries'
 import { useResizable } from '@/hooks/use-resizable'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -82,12 +83,19 @@ export function TicketDetailPanel() {
   const currentProjectId = currentProject?.id ?? null
   const isCorrectProject = currentProjectId === ticketSheetProjectId
   const { data: workflows } = useWorkflows(currentProjectId)
+  const openBrainstormSheet = useAppStore((s) => s.openBrainstormSheet)
 
   // Queries
   const { data: ticket, isLoading } = useTicket(currentProjectId, ticketSheetTicketId)
   const { data: ticketSessions } = useTicketSessions(currentProjectId ?? undefined, ticketSheetTicketId ?? undefined)
   const { data: projectPhases } = useProjectPhases(currentProjectId)
+  const { data: brainstorms } = useBrainstorms(currentProjectId)
   const updateTicket = useUpdateTicket()
+
+  const linkedBrainstorm = useMemo(() => {
+    if (!ticket?.brainstormId || !brainstorms) return null
+    return brainstorms.find((b) => b.id === ticket.brainstormId) ?? null
+  }, [ticket?.brainstormId, brainstorms])
 
   const currentWorkflow = useMemo(
     () => workflows?.find((workflow) => workflow.id === ticket?.workflowId),
@@ -260,6 +268,15 @@ export function TicketDetailPanel() {
                     <Badge variant="outline" className="text-text-muted font-mono text-xs">
                       {ticket.id}
                     </Badge>
+                    {linkedBrainstorm && (
+                      <button
+                        onClick={() => openBrainstormSheet(currentProjectId!, linkedBrainstorm.id, linkedBrainstorm.name)}
+                        className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                      >
+                        <Layers className="h-3 w-3" />
+                        <span className="truncate max-w-[200px]">{linkedBrainstorm.name}</span>
+                      </button>
+                    )}
                   </div>
                   <h2 className="text-text-primary text-lg font-semibold">
                     {ticket.title}

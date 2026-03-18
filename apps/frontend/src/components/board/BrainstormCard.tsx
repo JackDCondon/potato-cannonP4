@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { MessageSquare, Clock } from 'lucide-react'
+import { MessageSquare, Clock, Layers } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn, timeAgo } from '@/lib/utils'
 import { useBrainstormMessage } from '@/hooks/useSSE'
@@ -49,6 +49,7 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
   const hasUnseenQuestion = pendingConversationId !== null && pendingConversationId !== lastSeenId
   const isThinking = brainstorm.status === 'active' && brainstorm.hasActiveSession && pendingConversationId === null
   const isSelected = brainstormSheetBrainstormId === brainstorm.id
+  const isEpic = (brainstorm.ticketCount ?? 0) > 0
 
   return (
     <button
@@ -63,7 +64,11 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
       )}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <MessageSquare className="h-4 w-4 text-text-muted shrink-0" />
+        {isEpic ? (
+          <Layers className="h-4 w-4 text-indigo-500 shrink-0" />
+        ) : (
+          <MessageSquare className="h-4 w-4 text-text-muted shrink-0" />
+        )}
         <span className="text-text-primary text-sm font-medium truncate flex-1 min-w-0">
           {brainstorm.name}
         </span>
@@ -71,7 +76,7 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
           <Clock className="h-3 w-3" />
           {timeAgo(brainstorm.updatedAt)}
         </span>
-        <StatusIndicator status={brainstorm.status} hasUnseenQuestion={hasUnseenQuestion} />
+        <StatusIndicator status={brainstorm.status} hasUnseenQuestion={hasUnseenQuestion} isEpic={isEpic} />
       </div>
     </button>
   )
@@ -79,15 +84,25 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
 
 function StatusIndicator({
   status,
-  hasUnseenQuestion
+  hasUnseenQuestion,
+  isEpic
 }: {
   status: Brainstorm['status']
   hasUnseenQuestion: boolean
+  isEpic: boolean
 }) {
   if (status === 'completed') {
     return (
       <Badge variant="secondary" className="shrink-0 text-xs">
         completed
+      </Badge>
+    )
+  }
+
+  if (isEpic) {
+    return (
+      <Badge variant="default" className="shrink-0 text-xs bg-indigo-600 text-white">
+        Epic
       </Badge>
     )
   }
