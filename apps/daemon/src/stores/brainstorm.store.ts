@@ -298,6 +298,10 @@ export async function deleteBrainstorm(
   store.deleteBrainstorm(brainstormId);
 }
 
+export function brainstormGetDirect(brainstormId: string): Brainstorm | null {
+  return new BrainstormStore(getDatabase()).getBrainstorm(brainstormId);
+}
+
 export function brainstormGetTicketCounts(brainstormId: string): { ticketCount: number; activeTicketCount: number } {
   return new BrainstormStore(getDatabase()).getTicketCountsForBrainstorm(brainstormId);
 }

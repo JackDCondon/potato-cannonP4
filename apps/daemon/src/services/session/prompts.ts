@@ -9,6 +9,7 @@ import type { ContinuityDecision } from "./continuity.types.js";
 import {
   getArtifactContent,
   listArtifacts,
+  getTicketsByBrainstormId,
 } from "../../stores/ticket.store.js";
 import {
   getRalphFeedbackForLoop,
@@ -16,6 +17,7 @@ import {
   type RalphFeedback,
 } from "../../stores/ralph-feedback.store.js";
 import { ticketDependencyGetForTicket } from "../../stores/ticket-dependency.store.js";
+import { brainstormGetDirect } from "../../stores/brainstorm.store.js";
 
 /**
  * Load context artifacts based on agent's artifact configuration.
@@ -100,6 +102,33 @@ function formatDependencyHint(
     : "";
 
   return `\nThis ticket has ${deps.length} dependencies${examples}. If you encounter a gap — an interface, contract, or system design you need to understand before proceeding — use get_dependencies() to see what's available. Do not call it preemptively.\n`;
+}
+
+function formatScopeContext(ticket: { brainstormId?: string; id: string }): string {
+  if (!ticket.brainstormId) return "";
+
+  const brainstorm = brainstormGetDirect(ticket.brainstormId);
+  if (!brainstorm?.planSummary) return "";
+
+  const siblings = getTicketsByBrainstormId(ticket.brainstormId).filter(
+    (t) => t.id !== ticket.id,
+  );
+
+  if (siblings.length === 0) return "";
+
+  let section = `\n## Scope Context\n\n`;
+  section += `**Epic goal:** ${brainstorm.planSummary}\n\n`;
+
+  section += `**Sibling tickets:**\n`;
+  section += `| ID | Title | Phase | Complexity |\n`;
+  section += `|----|-------|-------|------------|\n`;
+  for (const sib of siblings) {
+    section += `| ${sib.id} | ${sib.title} | ${sib.phase} | ${sib.complexity} |\n`;
+  }
+
+  section += `\nStay in scope — other tickets handle other parts. The \`get_sibling_tickets\` and \`get_dependents\` tools are available if you encounter a specific ambiguity about whether a component falls under your ticket or a sibling's. Don't call them preemptively.\n`;
+
+  return section;
 }
 
 /**
@@ -278,7 +307,7 @@ export async function buildAgentPrompt(
 ## Ticket Description
 
 ${ticket.description || "No description provided."}
-${dependencyHint}${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}${formatPhaseEntryContext(phaseEntryContext)}Begin.`;
+${dependencyHint}${formatScopeContext(ticket)}${formatImages(images)}${formatArtifacts(artifacts)}${previousAttemptsSection}${formatPhaseEntryContext(phaseEntryContext)}Begin.`;
   const continuitySection = formatContinuityHandoff(continuityDecision);
   const promptBody = continuitySection
     ? `${continuitySection}\n\n${context}`
