@@ -34,6 +34,7 @@ export interface Ticket {
   conversationId?: string
   complexity: Complexity
   workflowId?: string
+  brainstormId?: string
   blockedBy?: BlockedByEntry[]
 }
 

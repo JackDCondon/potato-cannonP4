@@ -8,6 +8,7 @@ import Database from "better-sqlite3";
 import { runMigrations } from "../migrations.js";
 import { createProjectStore } from "../project.store.js";
 import { createTicketStore, TicketStore } from "../ticket.store.js";
+import { createBrainstormStore } from "../brainstorm.store.js";
 
 // Ticket ID regex pattern (e.g., "TES-1", "POT-42")
 const TICKET_ID_REGEX = /^[A-Z]{1,3}-\d+$/;
@@ -408,6 +409,32 @@ describe("TicketStore", () => {
       // This shouldn't happen in practice, but test the edge case
       const current = ticketStore.getCurrentHistoryEntry("NON-EXISTENT");
       assert.strictEqual(current, null);
+    });
+  });
+
+  describe("brainstormId support", () => {
+    it("should persist brainstormId when provided", () => {
+      const brainstormStore = createBrainstormStore(db);
+      const brainstorm = brainstormStore.createBrainstorm(projectId);
+
+      const ticket = ticketStore.createTicket(projectId, {
+        title: "With Brainstorm",
+        brainstormId: brainstorm.id,
+      });
+
+      assert.strictEqual(ticket.brainstormId, brainstorm.id);
+
+      // Re-fetch to verify persistence
+      const fetched = ticketStore.getTicket(projectId, ticket.id);
+      assert.strictEqual(fetched?.brainstormId, brainstorm.id);
+    });
+
+    it("should leave brainstormId undefined when not provided", () => {
+      const ticket = ticketStore.createTicket(projectId, {
+        title: "No Brainstorm",
+      });
+
+      assert.strictEqual(ticket.brainstormId, undefined);
     });
   });
 });

@@ -25,6 +25,7 @@ export interface CreateTicketInput {
   title: string;
   description?: string;
   workflowId?: string;
+  brainstormId?: string;
 }
 
 export interface UpdateTicketInput {

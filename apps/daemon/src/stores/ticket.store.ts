@@ -58,6 +58,7 @@ interface TicketRow {
   conversation_id: string | null;
   worker_state: string | null;
   workflow_id: string;
+  brainstorm_id: string | null;
 }
 
 interface HistoryRow {
@@ -235,13 +236,13 @@ export class TicketStore {
     // Create associated conversation
     const conversation = this.conversationStore.createConversation(projectId);
 
-    // Insert ticket with conversation_id, description, and workflow_id
+    // Insert ticket with conversation_id, description, workflow_id, and optional brainstorm_id
     this.db
       .prepare(
-        `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived, conversation_id, workflow_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+        `INSERT INTO tickets (id, project_id, title, description, phase, created_at, updated_at, archived, conversation_id, workflow_id, brainstorm_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`
       )
-      .run(id, projectId, input.title, description, initialPhase, now, now, conversation.id, resolvedWorkflowId);
+      .run(id, projectId, input.title, description, initialPhase, now, now, conversation.id, resolvedWorkflowId, input.brainstormId ?? null);
 
     // Insert initial history entry
     const historyId = randomUUID();
@@ -480,6 +481,7 @@ export class TicketStore {
       archivedAt: row.archived_at || undefined,
       conversationId: row.conversation_id || undefined,
       workflowId: row.workflow_id || undefined,
+      brainstormId: row.brainstorm_id || undefined,
     };
   }
 

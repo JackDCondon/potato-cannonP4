@@ -283,10 +283,11 @@ export function registerTicketRoutes(
   app.post("/api/tickets/:project", async (req: Request, res: Response) => {
     try {
       const projectId = decodeURIComponent(req.params.project);
-      const { title, description, workflowId } = req.body as {
+      const { title, description, workflowId, brainstormId } = req.body as {
         title?: string;
         description?: string;
         workflowId?: string;
+        brainstormId?: string;
       };
 
       if (!title) {
@@ -294,7 +295,7 @@ export function registerTicketRoutes(
         return;
       }
 
-      const ticket = await createTicket(projectId, { title, description, workflowId });
+      const ticket = await createTicket(projectId, { title, description, workflowId, brainstormId });
       eventBus.emit("ticket:created", { projectId, ticket });
       res.json(ticket);
     } catch (error) {
