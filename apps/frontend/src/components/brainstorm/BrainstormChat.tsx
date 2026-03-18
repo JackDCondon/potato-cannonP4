@@ -18,6 +18,7 @@ import { cn, timeAgo, formatToolActivity } from '@/lib/utils'
 import { getWaitingIndicatorLabel, isAwaitingUserInput } from '@/lib/waiting-indicator'
 import { Linkify } from '@/components/ui/linkify'
 import { useSessionOutput, useBrainstormMessage, useSessionEnded } from '@/hooks/useSSE'
+import { useBrainstorms } from '@/hooks/queries'
 import type { BrainstormMessage } from '@potato-cannon/shared'
 
 interface BrainstormChatProps {
@@ -45,6 +46,12 @@ export function BrainstormChat({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [currentActivity, setCurrentActivity] = useState<string | null>(null)
+
+  // Get brainstorm details for active ticket count (used in delete warning)
+  const brainstormsQuery = useBrainstorms(projectId)
+  const brainstorm = brainstormsQuery.data?.find((b) => b.id === brainstormId)
+  const activeTicketCount = brainstorm?.activeTicketCount ?? 0
+  const hasActiveTickets = activeTicketCount > 0
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isAtBottomRef = useRef(true)
@@ -434,7 +441,9 @@ export function BrainstormChat({
           <DialogHeader>
             <DialogTitle className="text-text-primary">Delete Brainstorm Session</DialogTitle>
             <DialogDescription className="text-text-secondary">
-              Are you sure you want to delete "{brainstormName}"? This action cannot be undone.
+              {hasActiveTickets
+                ? `This epic has ${activeTicketCount} active ticket${activeTicketCount === 1 ? '' : 's'} linked to it. Deleting it will remove the shared scope context those tickets use during refinement and execution. Continue?`
+                : `Are you sure you want to delete "${brainstormName}"? This action cannot be undone.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
