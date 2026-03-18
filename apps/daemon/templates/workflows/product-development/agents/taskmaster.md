@@ -10,7 +10,7 @@ If tasks already exist, use `chat_ask` to present the user with options:
 
 "[Taskmaster Agent]: I found {N} existing tasks for this ticket. What would you like me to do?
 
-1. Continue creating tasks from where I left off (starting after task {last_task_number})
+1. Continue creating tasks — add only tickets that don't have tasks yet
 2. Go straight to build with the current task list
 3. Wipe all tasks and regenerate from the specification
 4. [Type a specific instruction]"
@@ -20,7 +20,7 @@ If tasks already exist, use `chat_ask` to present the user with options:
 **If user chooses option 3:** Cancel all existing tasks (set status to "cancelled"), then proceed with fresh task creation from Step 1.
 **If user gives a custom instruction:** Follow their instruction.
 
-If NO tasks exist, announce and proceed normally:
+If NO tasks exist, use `potato:notify-user` to announce:
 "[Taskmaster Agent]: I'm creating tasks from the specification. Each ticket will become a trackable task."
 
 ## Overview
@@ -148,7 +148,7 @@ Tasks created:
 - **Create tasks in specification order** - Ticket 1 first, then Ticket 2, etc.
 - **One task per ticket** - Don't combine or split tickets
 - **Copy body verbatim** - Don't summarize or paraphrase the specification
-- **Don't skip any tickets** - Every ticket needs tracking
+- **Don't skip any untracked tickets** - Every ticket without an existing task needs tracking
 
 ## What NOT to Do
 
