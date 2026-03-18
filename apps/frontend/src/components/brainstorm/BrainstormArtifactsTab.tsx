@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Loader2, FileText } from 'lucide-react'
 import { useBrainstormArtifacts } from '@/hooks/queries'
 import { renderMarkdown } from '@/lib/markdown'
@@ -13,10 +13,13 @@ interface BrainstormArtifactsTabProps {
 export function BrainstormArtifactsTab({ projectId, brainstormId }: BrainstormArtifactsTabProps) {
   const { data, isLoading } = useBrainstormArtifacts(projectId, brainstormId)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  const hasInteracted = useRef(false)
   const artifacts = data?.artifacts ?? []
 
-  // Auto-expand when there's exactly one artifact
-  const effectiveExpanded = artifacts.length === 1 ? (expandedFile ?? artifacts[0].filename) : expandedFile
+  // Auto-expand single artifact only if user hasn't toggled yet
+  const effectiveExpanded = artifacts.length === 1 && !hasInteracted.current
+    ? artifacts[0].filename
+    : expandedFile
 
   if (isLoading) {
     return (
@@ -45,7 +48,10 @@ export function BrainstormArtifactsTab({ projectId, brainstormId }: BrainstormAr
           return (
             <div key={artifact.filename} className="rounded-lg border border-border bg-bg-tertiary overflow-hidden">
               <button
-                onClick={() => setExpandedFile(isExpanded ? null : artifact.filename)}
+                onClick={() => {
+                  hasInteracted.current = true
+                  setExpandedFile(isExpanded ? null : artifact.filename)
+                }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors"
               >
                 <FileText className="h-4 w-4 text-indigo-400 shrink-0" />
