@@ -94,6 +94,64 @@ describe("set_plan_summary", () => {
     }
   });
 
+  it("should auto-write plan.md artifact on success", async () => {
+    const testBrainstormId = `test_set_plan_${Date.now()}`;
+    const expectedArtifactPath = path.join(
+      os.homedir(),
+      ".potato-cannon",
+      "projects",
+      "proj-1",
+      "brainstorms",
+      testBrainstormId,
+      "artifacts",
+      "plan.md",
+    );
+
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ id: testBrainstormId }), { status: 200 });
+
+    try {
+      const result = await scopeHandlers.set_plan_summary(
+        {
+          projectId: "proj-1",
+          brainstormId: testBrainstormId,
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.set_plan_summary>[0],
+        { summary: "Build a user auth system with three components." },
+      );
+
+      assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+      assert.ok(result.content[0].text.includes("saved successfully"));
+
+      // Verify plan.md was written
+      const content = await fs.readFile(expectedArtifactPath, "utf-8");
+      assert.strictEqual(content, "# Plan Summary\n\nBuild a user auth system with three components.\n");
+    } finally {
+      // Clean up
+      await fs.rm(path.dirname(expectedArtifactPath), { recursive: true, force: true });
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("should gracefully handle plan.md write failure", async () => {
+    // Test that failure to write plan.md doesn't prevent the success response
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ id: "brain_123" }), { status: 200 });
+
+    const result = await scopeHandlers.set_plan_summary(
+      {
+        projectId: "proj-1",
+        brainstormId: "brain_123",
+        daemonUrl: "http://localhost:8443",
+      } as Parameters<typeof scopeHandlers.set_plan_summary>[0],
+      { summary: "Test plan" },
+    );
+
+    // Should still succeed even if plan.md write fails (non-fatal)
+    assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+    assert.ok(result.content[0].text.includes("saved successfully"));
+  });
+
   it("should return error when fetch fails", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () =>

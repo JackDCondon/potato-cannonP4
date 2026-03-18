@@ -175,6 +175,19 @@ export const scopeHandlers: Record<
       } as McpToolResult & { isError: true };
     }
 
+    // Auto-generate plan.md artifact as fallback
+    try {
+      const artifactsDir = path.join(
+        getBrainstormFilesDir(ctx.projectId, ctx.brainstormId),
+        "artifacts",
+      );
+      await fs.mkdir(artifactsDir, { recursive: true });
+      const planContent = `# Plan Summary\n\n${summary}\n`;
+      await fs.writeFile(path.join(artifactsDir, "plan.md"), planContent, "utf-8");
+    } catch {
+      // Non-fatal: plan.md write failure doesn't block the main operation
+    }
+
     return {
       content: [{ type: "text", text: "Plan summary saved successfully." }],
     };
