@@ -104,13 +104,26 @@ function formatDependencyHint(
   return `\nThis ticket has ${deps.length} dependencies${examples}. If you encounter a gap — an interface, contract, or system design you need to understand before proceeding — use get_dependencies() to see what's available. Do not call it preemptively.\n`;
 }
 
-function formatScopeContext(ticket: { brainstormId?: string; id: string }): string {
+export interface ScopeContextDeps {
+  getBrainstorm: (brainstormId: string) => { planSummary?: string | null } | null;
+  getSiblingTickets: (brainstormId: string) => { id: string; title: string; phase: string; complexity: string }[];
+}
+
+const defaultScopeContextDeps: ScopeContextDeps = {
+  getBrainstorm: (brainstormId) => brainstormGetDirect(brainstormId),
+  getSiblingTickets: (brainstormId) => getTicketsByBrainstormId(brainstormId),
+};
+
+export function formatScopeContext(
+  ticket: { brainstormId?: string; id: string },
+  deps: ScopeContextDeps = defaultScopeContextDeps,
+): string {
   if (!ticket.brainstormId) return "";
 
-  const brainstorm = brainstormGetDirect(ticket.brainstormId);
+  const brainstorm = deps.getBrainstorm(ticket.brainstormId);
   if (!brainstorm?.planSummary) return "";
 
-  const siblings = getTicketsByBrainstormId(ticket.brainstormId).filter(
+  const siblings = deps.getSiblingTickets(ticket.brainstormId).filter(
     (t) => t.id !== ticket.id,
   );
 
@@ -123,7 +136,9 @@ function formatScopeContext(ticket: { brainstormId?: string; id: string }): stri
   section += `| ID | Title | Phase | Complexity |\n`;
   section += `|----|-------|-------|------------|\n`;
   for (const sib of siblings) {
-    section += `| ${sib.id} | ${sib.title} | ${sib.phase} | ${sib.complexity} |\n`;
+    const safeTitle = sib.title.replace(/\|/g, "\\|");
+    const safeComplexity = sib.complexity.replace(/\|/g, "\\|");
+    section += `| ${sib.id} | ${safeTitle} | ${sib.phase} | ${safeComplexity} |\n`;
   }
 
   section += `\nStay in scope — other tickets handle other parts. The \`get_sibling_tickets\` and \`get_dependents\` tools are available if you encounter a specific ambiguity about whether a component falls under your ticket or a sibling's. Don't call them preemptively.\n`;

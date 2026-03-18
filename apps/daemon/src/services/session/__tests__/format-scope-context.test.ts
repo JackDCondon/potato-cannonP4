@@ -1,144 +1,169 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert";
-import Database from "better-sqlite3";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
-import { runMigrations } from "../../../stores/migrations.js";
-import { createTicketStore } from "../../../stores/ticket.store.js";
-import { createBrainstormStore } from "../../../stores/brainstorm.store.js";
-import { createProjectStore } from "../../../stores/project.store.js";
+import { formatScopeContext } from "../prompts.js";
+import type { ScopeContextDeps } from "../prompts.js";
 
-describe("formatScopeContext (via store integration)", () => {
-  let db: Database.Database;
-  let testDbPath: string;
-  let projectId: string;
+const PLAN_SUMMARY = "Build auth system";
 
-  before(() => {
-    testDbPath = path.join(
-      os.tmpdir(),
-      `potato-scope-test-${Date.now()}.db`,
+function makeDeps(
+  overrides: Partial<ScopeContextDeps> = {},
+): ScopeContextDeps {
+  return {
+    getBrainstorm: () => ({ planSummary: PLAN_SUMMARY }),
+    getSiblingTickets: () => [
+      { id: "AUTH-2", title: "Auth UI", phase: "Build", complexity: "standard" },
+      { id: "AUTH-3", title: "Auth Tests", phase: "Refinement", complexity: "simple" },
+    ],
+    ...overrides,
+  };
+}
+
+describe("formatScopeContext output", () => {
+  it("returns empty string when ticket has no brainstormId", () => {
+    const result = formatScopeContext(
+      { id: "AUTH-1" },
+      makeDeps(),
     );
-    db = new Database(testDbPath);
-    db.pragma("journal_mode = WAL");
-    runMigrations(db);
-
-    const projectStore = createProjectStore(db);
-    const project = projectStore.createProject({
-      displayName: "Scope Test",
-      path: "/test/scope",
-    });
-    projectId = project.id;
+    assert.strictEqual(result, "");
   });
 
-  after(() => {
-    db.close();
-    try {
-      fs.unlinkSync(testDbPath);
-    } catch {}
-    try {
-      fs.unlinkSync(testDbPath + "-wal");
-    } catch {}
-    try {
-      fs.unlinkSync(testDbPath + "-shm");
-    } catch {}
+  it("returns empty string when brainstorm has no planSummary", () => {
+    const deps = makeDeps({
+      getBrainstorm: () => ({ planSummary: null }),
+    });
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      deps,
+    );
+    assert.strictEqual(result, "");
   });
 
-  it("should return undefined brainstormId for ticket created without one", () => {
-    const ticketStore = createTicketStore(db);
-    const ticket = ticketStore.createTicket(projectId, { title: "Solo ticket" });
-    // formatScopeContext returns "" when brainstormId is absent
-    assert.strictEqual(ticket.brainstormId, undefined);
+  it("returns empty string when brainstorm is not found", () => {
+    const deps = makeDeps({
+      getBrainstorm: () => null,
+    });
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      deps,
+    );
+    assert.strictEqual(result, "");
   });
 
-  it("should persist brainstormId on ticket creation", () => {
-    const ticketStore = createTicketStore(db);
-    const brainstormStore = createBrainstormStore(db);
-    const brainstorm = brainstormStore.createBrainstorm(projectId);
-
-    const ticket = ticketStore.createTicket(projectId, {
-      title: "Linked ticket",
-      brainstormId: brainstorm.id,
+  it("returns empty string when no siblings exist after filtering self", () => {
+    const deps = makeDeps({
+      // Only returns the current ticket — after filter(t => t.id !== ticket.id) nothing remains
+      getSiblingTickets: () => [
+        { id: "AUTH-1", title: "Lonely ticket", phase: "Build", complexity: "standard" },
+      ],
     });
-
-    assert.strictEqual(ticket.brainstormId, brainstorm.id);
-
-    const fetched = ticketStore.getTicket(projectId, ticket.id);
-    assert.strictEqual(fetched?.brainstormId, brainstorm.id);
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      deps,
+    );
+    assert.strictEqual(result, "");
   });
 
-  it("should retrieve sibling tickets by brainstormId", () => {
-    const ticketStore = createTicketStore(db);
-    const brainstormStore = createBrainstormStore(db);
-    const brainstorm = brainstormStore.createBrainstorm(projectId);
-    brainstormStore.updateBrainstorm(brainstorm.id, {
-      planSummary: "Build auth system",
-    });
-
-    const t1 = ticketStore.createTicket(projectId, {
-      title: "Auth API",
-      brainstormId: brainstorm.id,
-    });
-    const t2 = ticketStore.createTicket(projectId, {
-      title: "Auth UI",
-      brainstormId: brainstorm.id,
-    });
-
-    const siblings = ticketStore.getTicketsByBrainstormId(brainstorm.id);
-    assert.strictEqual(siblings.length, 2);
-
-    const ids = siblings.map((s) => s.id);
-    assert.ok(ids.includes(t1.id), "t1 should be in siblings");
-    assert.ok(ids.includes(t2.id), "t2 should be in siblings");
+  it("contains ## Scope Context header", () => {
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      makeDeps(),
+    );
+    assert.ok(result.includes("## Scope Context"), "should contain ## Scope Context header");
   });
 
-  it("should include planSummary on updated brainstorm", () => {
-    const brainstormStore = createBrainstormStore(db);
-    const brainstorm = brainstormStore.createBrainstorm(projectId);
-
-    assert.strictEqual(brainstorm.planSummary, undefined);
-
-    const updated = brainstormStore.updateBrainstorm(brainstorm.id, {
-      planSummary: "Ship MVP by Q2",
-    });
-
-    assert.strictEqual(updated?.planSummary, "Ship MVP by Q2");
-  });
-
-  it("should return null planSummary for brainstorm without plan", () => {
-    const brainstormStore = createBrainstormStore(db);
-    const brainstorm = brainstormStore.createBrainstorm(projectId);
-    // No planSummary set — getBrainstorm should reflect that
-    const fetched = brainstormStore.getBrainstorm(brainstorm.id);
+  it("contains epic goal from planSummary", () => {
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      makeDeps(),
+    );
     assert.ok(
-      fetched?.planSummary === undefined || fetched.planSummary === null,
-      "planSummary should be absent when not set",
+      result.includes(`**Epic goal:** ${PLAN_SUMMARY}`),
+      "should include epic goal from planSummary",
     );
   });
 
-  it("should filter scope context for ticket without sibling tickets", () => {
-    // Single ticket linked to brainstorm with planSummary — getTicketsByBrainstormId
-    // returns only that ticket, so formatScopeContext would return "" after filtering self
-    const ticketStore = createTicketStore(db);
-    const brainstormStore = createBrainstormStore(db);
-    const brainstorm = brainstormStore.createBrainstorm(projectId);
-    brainstormStore.updateBrainstorm(brainstorm.id, {
-      planSummary: "Only me here",
+  it("contains sibling ticket info in markdown table rows", () => {
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      makeDeps(),
+    );
+    assert.ok(result.includes("AUTH-2"), "should include sibling ticket AUTH-2");
+    assert.ok(result.includes("Auth UI"), "should include sibling title Auth UI");
+    assert.ok(result.includes("AUTH-3"), "should include sibling ticket AUTH-3");
+    assert.ok(result.includes("Auth Tests"), "should include sibling title Auth Tests");
+  });
+
+  it("excludes the current ticket from sibling table", () => {
+    const deps = makeDeps({
+      getSiblingTickets: () => [
+        { id: "AUTH-1", title: "Current ticket", phase: "Build", complexity: "standard" },
+        { id: "AUTH-2", title: "Auth UI", phase: "Build", complexity: "standard" },
+      ],
     });
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      deps,
+    );
+    // AUTH-1 is the current ticket — it should not appear in the table
+    // AUTH-2 should appear
+    assert.ok(result.includes("AUTH-2"), "sibling AUTH-2 should be included");
+    // Current ticket row: the title "Current ticket" should not appear (it was filtered)
+    assert.ok(
+      !result.includes("Current ticket"),
+      "current ticket should be excluded from sibling table",
+    );
+  });
 
-    const ticket = ticketStore.createTicket(projectId, {
-      title: "Lonely ticket",
-      brainstormId: brainstorm.id,
+  it("escapes pipe characters in title to prevent table corruption", () => {
+    const deps = makeDeps({
+      getSiblingTickets: () => [
+        {
+          id: "AUTH-2",
+          title: "Auth | Login | Logout",
+          phase: "Build",
+          complexity: "standard",
+        },
+      ],
     });
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      deps,
+    );
+    assert.ok(
+      result.includes("Auth \\| Login \\| Logout"),
+      "pipe characters in title should be escaped as \\|",
+    );
+  });
 
-    const siblings = ticketStore
-      .getTicketsByBrainstormId(brainstorm.id)
-      .filter((t) => t.id !== ticket.id);
+  it("escapes pipe characters in complexity to prevent table corruption", () => {
+    const deps = makeDeps({
+      getSiblingTickets: () => [
+        {
+          id: "AUTH-2",
+          title: "Auth UI",
+          phase: "Build",
+          complexity: "complex|high",
+        },
+      ],
+    });
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      deps,
+    );
+    assert.ok(
+      result.includes("complex\\|high"),
+      "pipe characters in complexity should be escaped as \\|",
+    );
+  });
 
-    assert.strictEqual(
-      siblings.length,
-      0,
-      "no siblings when only one ticket is linked",
+  it("includes markdown table header row", () => {
+    const result = formatScopeContext(
+      { id: "AUTH-1", brainstormId: "bs-1" },
+      makeDeps(),
+    );
+    assert.ok(
+      result.includes("| ID | Title | Phase | Complexity |"),
+      "should contain markdown table header",
     );
   });
 });
