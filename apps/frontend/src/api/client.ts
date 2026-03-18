@@ -444,6 +444,17 @@ export const api = {
       { method: 'DELETE' }
     ),
 
+  getBrainstormArtifacts: (projectId: string, brainstormId: string) =>
+    request<{ artifacts: Array<{ filename: string; content: string; updatedAt: string }> }>(
+      `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}/artifacts`
+    ),
+
+  updateBrainstorm: (projectId: string, brainstormId: string, updates: { name?: string }) =>
+    request<Brainstorm>(
+      `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}`,
+      { method: 'PUT', body: JSON.stringify(updates) }
+    ),
+
   // ============ Templates ============
 
   getTemplates: () =>

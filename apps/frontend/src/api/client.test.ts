@@ -98,4 +98,37 @@ describe("api client workflow context", () => {
       }),
     ).toBe(true);
   });
+
+  it("fetches brainstorm artifacts with correct URL structure", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () => JSON.stringify({
+        artifacts: [
+          { filename: "plan.md", content: "# Plan", updatedAt: "2026-03-18T10:00:00Z" },
+        ],
+      }),
+    });
+
+    await api.getBrainstormArtifacts("project-1", "brain-123");
+    const [url] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/brainstorms/project-1/brain-123/artifacts");
+  });
+
+  it("updates brainstorm with PUT request", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          id: "brain-123",
+          projectId: "project-1",
+          name: "Updated Name",
+        }),
+    });
+
+    await api.updateBrainstorm("project-1", "brain-123", { name: "Updated Name" });
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/api/brainstorms/project-1/brain-123");
+    expect(options.method).toBe("PUT");
+    expect(options.body).toContain('"name":"Updated Name"');
+  });
 });
