@@ -422,14 +422,27 @@ export const scopeHandlers: Record<
       } as McpToolResult & { isError: true };
     }
 
-    const response = await fetch(
-      `${ctx.daemonUrl}/api/brainstorms/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ctx.brainstormId)}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      },
-    );
+    let response: Response;
+    try {
+      response = await fetch(
+        `${ctx.daemonUrl}/api/brainstorms/${encodeURIComponent(ctx.projectId)}/${encodeURIComponent(ctx.brainstormId)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        },
+      );
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: Failed to rename brainstorm: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
 
     if (!response.ok) {
       return {

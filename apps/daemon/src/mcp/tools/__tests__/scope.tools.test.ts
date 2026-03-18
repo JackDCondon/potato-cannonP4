@@ -894,4 +894,27 @@ describe("rename_brainstorm", () => {
     assert.strictEqual((result as { isError?: boolean }).isError, true);
     assert.ok(result.content[0].text.includes("name is required"));
   });
+
+  it("should return isError when fetch throws a network error", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        throw new Error("ECONNREFUSED");
+      };
+
+      const result = await scopeHandlers.rename_brainstorm(
+        {
+          projectId: "proj-1",
+          brainstormId: "brain_123",
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.rename_brainstorm>[0],
+        { name: "New Name" },
+      );
+
+      assert.strictEqual((result as { isError?: boolean }).isError, true);
+      assert.ok(result.content[0].text.includes("ECONNREFUSED"));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
