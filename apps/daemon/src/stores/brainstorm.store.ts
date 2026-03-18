@@ -22,6 +22,7 @@ export interface UpdateBrainstormInput {
   name?: string;
   status?: BrainstormStatus;
   createdTicketId?: string;
+  planSummary?: string;
 }
 
 // =============================================================================
@@ -38,6 +39,7 @@ interface BrainstormRow {
   conversation_id: string | null;
   created_ticket_id: string | null;
   workflow_id: string | null;
+  plan_summary: string | null;
 }
 
 // =============================================================================
@@ -55,6 +57,7 @@ function rowToBrainstorm(row: BrainstormRow): Brainstorm {
     conversationId: row.conversation_id,
     createdTicketId: row.created_ticket_id,
     workflowId: row.workflow_id,
+    planSummary: row.plan_summary || undefined,
   };
 }
 
@@ -167,6 +170,11 @@ export class BrainstormStore {
       values.push(updates.createdTicketId);
     }
 
+    if (updates.planSummary !== undefined) {
+      fields.push("plan_summary = ?");
+      values.push(updates.planSummary);
+    }
+
     values.push(brainstormId);
     this.db
       .prepare(`UPDATE brainstorms SET ${fields.join(", ")} WHERE id = ?`)
@@ -176,10 +184,50 @@ export class BrainstormStore {
   }
 
   deleteBrainstorm(brainstormId: string): boolean {
+    // Manually null out brainstorm_id on linked tickets — PRAGMA foreign_keys is OFF
+    // so ON DELETE SET NULL won't fire automatically.
+    this.db
+      .prepare("UPDATE tickets SET brainstorm_id = NULL WHERE brainstorm_id = ?")
+      .run(brainstormId);
     const result = this.db
       .prepare("DELETE FROM brainstorms WHERE id = ?")
       .run(brainstormId);
     return result.changes > 0;
+  }
+
+  getTicketCountsForBrainstorm(brainstormId: string): { ticketCount: number; activeTicketCount: number } {
+    const row = this.db
+      .prepare(
+        `SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN phase != 'Done' AND archived = 0 THEN 1 ELSE 0 END) as active
+        FROM tickets WHERE brainstorm_id = ?`
+      )
+      .get(brainstormId) as { total: number; active: number };
+    return { ticketCount: row.total, activeTicketCount: row.active ?? 0 };
+  }
+
+  getTicketCountsBatch(brainstormIds: string[]): Map<string, { ticketCount: number; activeTicketCount: number }> {
+    const result = new Map<string, { ticketCount: number; activeTicketCount: number }>();
+    if (brainstormIds.length === 0) return result;
+
+    const placeholders = brainstormIds.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(
+        `SELECT
+          brainstorm_id,
+          COUNT(*) as total,
+          SUM(CASE WHEN phase != 'Done' AND archived = 0 THEN 1 ELSE 0 END) as active
+        FROM tickets
+        WHERE brainstorm_id IN (${placeholders})
+        GROUP BY brainstorm_id`
+      )
+      .all(...brainstormIds) as { brainstorm_id: string; total: number; active: number }[];
+
+    for (const row of rows) {
+      result.set(row.brainstorm_id, { ticketCount: row.total, activeTicketCount: row.active ?? 0 });
+    }
+    return result;
   }
 }
 
@@ -248,4 +296,12 @@ export async function deleteBrainstorm(
   }
 
   store.deleteBrainstorm(brainstormId);
+}
+
+export function brainstormGetTicketCounts(brainstormId: string): { ticketCount: number; activeTicketCount: number } {
+  return new BrainstormStore(getDatabase()).getTicketCountsForBrainstorm(brainstormId);
+}
+
+export function brainstormGetTicketCountsBatch(brainstormIds: string[]): Map<string, { ticketCount: number; activeTicketCount: number }> {
+  return new BrainstormStore(getDatabase()).getTicketCountsBatch(brainstormIds);
 }

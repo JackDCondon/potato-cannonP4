@@ -8,10 +8,12 @@ import Database from "better-sqlite3";
 import { runMigrations } from "../migrations.js";
 import { createProjectStore } from "../project.store.js";
 import { createBrainstormStore, BrainstormStore } from "../brainstorm.store.js";
+import { createTicketStore, TicketStore } from "../ticket.store.js";
 
 describe("BrainstormStore", () => {
   let db: Database.Database;
   let store: BrainstormStore;
+  let ticketStore: TicketStore;
   let testDbPath: string;
   let projectId: string;
 
@@ -29,6 +31,7 @@ describe("BrainstormStore", () => {
     projectId = project.id;
 
     store = createBrainstormStore(db);
+    ticketStore = createTicketStore(db);
   });
 
   after(() => {
@@ -46,6 +49,10 @@ describe("BrainstormStore", () => {
     // Order matters due to foreign key constraints
     db.prepare("DELETE FROM sessions").run();
     db.prepare("DELETE FROM conversation_messages").run();
+    db.prepare("DELETE FROM tasks").run();
+    db.prepare("UPDATE tickets SET brainstorm_id = NULL").run();
+    db.prepare("DELETE FROM ticket_history").run();
+    db.prepare("DELETE FROM tickets").run();
     db.prepare("DELETE FROM brainstorms").run();
     db.prepare("DELETE FROM conversations").run();
   });
@@ -221,6 +228,88 @@ describe("BrainstormStore", () => {
     it("should return false for non-existent brainstorm", () => {
       const deleted = store.deleteBrainstorm("non-existent");
       assert.strictEqual(deleted, false);
+    });
+
+    it("should null brainstorm_id on linked tickets when deleted", () => {
+      const brainstorm = store.createBrainstorm(projectId);
+      const ticket = ticketStore.createTicket(projectId, { title: "Linked" });
+      // Directly set brainstorm_id since ticket store brainstormId support is in a parallel task
+      db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(brainstorm.id, ticket.id);
+
+      store.deleteBrainstorm(brainstorm.id);
+
+      const row = db.prepare("SELECT brainstorm_id FROM tickets WHERE id = ?").get(ticket.id) as { brainstorm_id: string | null };
+      assert.strictEqual(row.brainstorm_id, null, "brainstorm_id should be nulled after brainstorm deletion");
+    });
+  });
+
+  describe("planSummary", () => {
+    it("should be undefined initially", () => {
+      const brainstorm = store.createBrainstorm(projectId);
+      assert.strictEqual(brainstorm.planSummary, undefined);
+    });
+
+    it("should be settable via updateBrainstorm", () => {
+      const brainstorm = store.createBrainstorm(projectId);
+      const updated = store.updateBrainstorm(brainstorm.id, {
+        planSummary: "This epic delivers auth features",
+      });
+      assert.strictEqual(updated?.planSummary, "This epic delivers auth features");
+    });
+  });
+
+  describe("getTicketCountsForBrainstorm", () => {
+    it("should return zero counts for brainstorm with no tickets", () => {
+      const brainstorm = store.createBrainstorm(projectId);
+      const counts = store.getTicketCountsForBrainstorm(brainstorm.id);
+      assert.strictEqual(counts.ticketCount, 0);
+      assert.strictEqual(counts.activeTicketCount, 0);
+    });
+
+    it("should return correct counts with linked tickets", () => {
+      const brainstorm = store.createBrainstorm(projectId);
+
+      const t1 = ticketStore.createTicket(projectId, { title: "Active ticket" });
+      const t2 = ticketStore.createTicket(projectId, { title: "Done ticket" });
+      // Directly set brainstorm_id since ticket store brainstormId support is in a parallel task
+      db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(brainstorm.id, t1.id);
+      db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(brainstorm.id, t2.id);
+      db.prepare("UPDATE tickets SET phase = 'Done' WHERE id = ?").run(t2.id);
+
+      const counts = store.getTicketCountsForBrainstorm(brainstorm.id);
+      assert.strictEqual(counts.ticketCount, 2);
+      assert.strictEqual(counts.activeTicketCount, 1);
+    });
+  });
+
+  describe("getTicketCountsBatch", () => {
+    it("should return empty map for empty input", () => {
+      const result = store.getTicketCountsBatch([]);
+      assert.strictEqual(result.size, 0);
+    });
+
+    it("should return counts for multiple brainstorms", () => {
+      const b1 = store.createBrainstorm(projectId);
+      const b2 = store.createBrainstorm(projectId);
+
+      const t1 = ticketStore.createTicket(projectId, { title: "B1 T1" });
+      const t2 = ticketStore.createTicket(projectId, { title: "B1 T2" });
+      const t3 = ticketStore.createTicket(projectId, { title: "B2 T1" });
+      // Directly set brainstorm_id since ticket store brainstormId support is in a parallel task
+      db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(b1.id, t1.id);
+      db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(b1.id, t2.id);
+      db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(b2.id, t3.id);
+
+      const result = store.getTicketCountsBatch([b1.id, b2.id]);
+      assert.strictEqual(result.get(b1.id)?.ticketCount, 2);
+      assert.strictEqual(result.get(b2.id)?.ticketCount, 1);
+    });
+
+    it("should not include entry for brainstorm with no tickets", () => {
+      const b1 = store.createBrainstorm(projectId);
+      const result = store.getTicketCountsBatch([b1.id]);
+      // No tickets → no row in GROUP BY result → not in map
+      assert.strictEqual(result.has(b1.id), false);
     });
   });
 });
