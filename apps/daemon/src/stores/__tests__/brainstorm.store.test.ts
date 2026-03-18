@@ -302,7 +302,9 @@ describe("BrainstormStore", () => {
 
       const result = store.getTicketCountsBatch([b1.id, b2.id]);
       assert.strictEqual(result.get(b1.id)?.ticketCount, 2);
+      assert.strictEqual(result.get(b1.id)?.activeTicketCount, 2);
       assert.strictEqual(result.get(b2.id)?.ticketCount, 1);
+      assert.strictEqual(result.get(b2.id)?.activeTicketCount, 1);
     });
 
     it("should not include entry for brainstorm with no tickets", () => {

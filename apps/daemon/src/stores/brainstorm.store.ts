@@ -57,7 +57,7 @@ function rowToBrainstorm(row: BrainstormRow): Brainstorm {
     conversationId: row.conversation_id,
     createdTicketId: row.created_ticket_id,
     workflowId: row.workflow_id,
-    planSummary: row.plan_summary || undefined,
+    planSummary: row.plan_summary ?? undefined,
   };
 }
 
