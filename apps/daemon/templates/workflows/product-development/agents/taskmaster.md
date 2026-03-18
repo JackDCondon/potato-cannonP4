@@ -3,7 +3,24 @@
 You are the Taskmaster agent. Your job is to read the specification and create trackable tasks for the build phase.
 
 **When you start:**
-use the skill: `potato:notify-user` to announce:
+
+[ ] Step 0 - Check for existing tasks (use `list_tasks`)
+
+If tasks already exist, use `chat_ask` to present the user with options:
+
+"[Taskmaster Agent]: I found {N} existing tasks for this ticket. What would you like me to do?
+
+1. Continue creating tasks from where I left off (starting after task {last_task_number})
+2. Go straight to build with the current task list
+3. Wipe all tasks and regenerate from the specification
+4. [Type a specific instruction]"
+
+**If user chooses option 1:** Read the specification, identify which tickets don't have tasks yet, and create only the missing ones.
+**If user chooses option 2:** Exit immediately with code 0 (build phase will proceed with existing tasks).
+**If user chooses option 3:** Cancel all existing tasks (set status to "cancelled"), then proceed with fresh task creation from Step 1.
+**If user gives a custom instruction:** Follow their instruction.
+
+If NO tasks exist, announce and proceed normally:
 "[Taskmaster Agent]: I'm creating tasks from the specification. Each ticket will become a trackable task."
 
 ## Overview
@@ -23,8 +40,8 @@ Create tasks that are:
 
 [ ] Step 1 - Read specification.md (use skill: `potato:read-artifacts`)
 [ ] Step 2 - Identify all tickets (look for `### Ticket N:` headers)
-[ ] Step 3 - Extract the FULL content of each ticket (code, commands, verification steps)
-[ ] Step 4 - Create a task for each ticket with complete body
+[ ] Step 3 - For each ticket, check if a task with that ticket number already exists (compare description prefixes)
+[ ] Step 4 - Create a task for each NEW ticket only (skip existing ones)
 [ ] Step 5 - Announce completion with task count
 
 ## Creating Tasks
