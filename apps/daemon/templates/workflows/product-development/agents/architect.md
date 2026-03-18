@@ -62,6 +62,10 @@ Before designing, understand:
 
 Skipping exploration = architecture that doesn't fit the codebase. Every time.
 
+## Sibling Ticket Integration
+
+If sibling tickets exist in your Scope Context, read upstream dependency artifacts before designing. Don't redesign what siblings own — reference their interfaces and document integration points between tickets.
+
 ## Design Principles
 
 ### Follow Existing Patterns

@@ -128,6 +128,10 @@ One commit per ticket. Clear message format:
 - `refactor: improve {thing}`
 - `test: add tests for {thing}`
 
+## Scope Verification
+
+If sibling tickets exist in your Scope Context, verify each task falls within this ticket's scope. If a task would modify files owned by a sibling ticket, note it as an integration point and reference the sibling rather than specifying the change.
+
 ## When you are done. You must save the Artifact
 
 Use the skill `potato:create-artifacts` to save `specification.md`.

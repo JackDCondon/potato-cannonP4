@@ -63,6 +63,10 @@ When done, summarize the following:
 Before your final report, send:
 "[Builder Agent]: Finished coding {Task Name}"
 
+## Sibling Ticket File Scope
+
+If sibling tickets exist in your Scope Context and you need to modify files that might belong to another ticket, call `get_sibling_tickets` to check before proceeding.
+
 ## Report your work
 
 To report your work use the skill: `add-comment-to-task`

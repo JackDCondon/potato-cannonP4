@@ -58,6 +58,14 @@ If the skill is not available, use these heuristics directly:
 
 Call `set_ticket_complexity` with your estimate. This is an initial estimate — refinement will re-evaluate.
 
+## Plan Summary
+
+After creating all tickets for a multi-ticket plan, call `set_plan_summary` with a concise summary (100-200 words). Structure it as:
+- One paragraph describing the overall goal
+- A bullet per ticket stating what it handles and how it relates to the others
+
+This summary will be shown to every agent working on these tickets — write it as a briefing for someone who knows nothing about the plan.
+
 ## Dependency Planning
 
 When the brainstorm leads to multiple tickets with ordering needs, model dependencies explicitly.

@@ -1,5 +1,13 @@
 # Shared Context
 
+## Scope Context
+
+When your ticket is part of a larger plan (created together with sibling tickets from a brainstorm), a **Scope Context** section appears in your prompt showing:
+- The overall epic goal
+- A table of sibling tickets with their phases
+
+This is usually sufficient to understand your boundaries. The `get_sibling_tickets` and `get_dependents` tools are available if you encounter a specific ambiguity — for example, you're unsure whether a particular component falls under your ticket or a sibling's. Don't call them preemptively.
+
 ## Ticket Dependencies
 
 Tickets in this workflow can depend on other tickets. A dependency means one ticket's output (artifacts, decisions, designs) is needed by another ticket before it can proceed effectively.
