@@ -13,6 +13,10 @@ interface BrainstormArtifactsTabProps {
 export function BrainstormArtifactsTab({ projectId, brainstormId }: BrainstormArtifactsTabProps) {
   const { data, isLoading } = useBrainstormArtifacts(projectId, brainstormId)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  const artifacts = data?.artifacts ?? []
+
+  // Auto-expand when there's exactly one artifact
+  const effectiveExpanded = artifacts.length === 1 ? (expandedFile ?? artifacts[0].filename) : expandedFile
 
   if (isLoading) {
     return (
@@ -21,8 +25,6 @@ export function BrainstormArtifactsTab({ projectId, brainstormId }: BrainstormAr
       </div>
     )
   }
-
-  const artifacts = data?.artifacts ?? []
 
   if (artifacts.length === 0) {
     return (
@@ -39,7 +41,7 @@ export function BrainstormArtifactsTab({ projectId, brainstormId }: BrainstormAr
     <ScrollArea className="h-full">
       <div className="p-4 space-y-3">
         {artifacts.map((artifact) => {
-          const isExpanded = expandedFile === artifact.filename || artifacts.length === 1
+          const isExpanded = effectiveExpanded === artifact.filename
           return (
             <div key={artifact.filename} className="rounded-lg border border-border bg-bg-tertiary overflow-hidden">
               <button

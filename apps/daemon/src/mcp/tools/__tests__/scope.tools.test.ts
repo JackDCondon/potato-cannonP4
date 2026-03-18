@@ -135,21 +135,42 @@ describe("set_plan_summary", () => {
 
   it("should gracefully handle plan.md write failure", async () => {
     // Test that failure to write plan.md doesn't prevent the success response
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ id: "brain_123" }), { status: 200 });
-
-    const result = await scopeHandlers.set_plan_summary(
-      {
-        projectId: "proj-1",
-        brainstormId: "brain_123",
-        daemonUrl: "http://localhost:8443",
-      } as Parameters<typeof scopeHandlers.set_plan_summary>[0],
-      { summary: "Test plan" },
+    // Force a write failure by making the artifacts path a file instead of a directory
+    const brainstormDir = path.join(
+      os.homedir(),
+      ".potato-cannon",
+      "projects",
+      "proj-1",
+      "brainstorms",
+      "brain_write_fail_test",
     );
+    const artifactsPath = path.join(brainstormDir, "artifacts");
 
-    // Should still succeed even if plan.md write fails (non-fatal)
-    assert.strictEqual((result as { isError?: boolean }).isError, undefined);
-    assert.ok(result.content[0].text.includes("saved successfully"));
+    const originalFetch = globalThis.fetch;
+    try {
+      // Create a file where the artifacts directory should be, causing mkdir to fail
+      await fs.mkdir(brainstormDir, { recursive: true });
+      await fs.writeFile(artifactsPath, "block", "utf-8");
+
+      globalThis.fetch = async () =>
+        new Response(JSON.stringify({ id: "brain_write_fail_test" }), { status: 200 });
+
+      const result = await scopeHandlers.set_plan_summary(
+        {
+          projectId: "proj-1",
+          brainstormId: "brain_write_fail_test",
+          daemonUrl: "http://localhost:8443",
+        } as Parameters<typeof scopeHandlers.set_plan_summary>[0],
+        { summary: "Test plan" },
+      );
+
+      // Should still succeed even though plan.md write fails (non-fatal)
+      assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+      assert.ok(result.content[0].text.includes("saved successfully"));
+    } finally {
+      globalThis.fetch = originalFetch;
+      await fs.rm(brainstormDir, { recursive: true, force: true });
+    }
   });
 
   it("should return error when fetch fails", async () => {
