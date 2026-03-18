@@ -1,3 +1,4 @@
+export { BrainstormArtifactsTab } from './BrainstormArtifactsTab'
 export { BrainstormChat } from './BrainstormChat'
 export { BrainstormDetailPanel } from './BrainstormDetailPanel'
 export { BrainstormListItem } from './BrainstormListItem'
