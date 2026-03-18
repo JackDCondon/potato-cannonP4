@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, Image, Clock, MessageCircleQuestion } from 'lucide-react'
+import { Archive, Image, Clock, MessageCircleQuestion, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, timeAgo } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
@@ -10,6 +10,7 @@ import { ListItemCard } from '@/components/ui/list-item-card'
 import { IconButton } from '@/components/ui/icon-button'
 import { ArchiveConfirmDialog, shouldShowArchiveWarning } from '@/components/ticket-detail/ArchiveConfirmDialog'
 import { DependencyBadge } from '@/components/board/DependencyBadge'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { DependencyTier, Ticket } from '@potato-cannon/shared'
 
 const COMPLEXITY_BORDER_COLORS: Record<Ticket['complexity'], string> = {
@@ -162,6 +163,14 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
                 blockedBy={ticket.blockedBy ?? []}
                 blockedFromPhaseByTier={blockedFromPhaseByTier}
               />
+              {(ticket as any).brainstormId && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link2 className="h-3 w-3" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Part of an epic</TooltipContent>
+                </Tooltip>
+              )}
             </>
           )}
         </div>
