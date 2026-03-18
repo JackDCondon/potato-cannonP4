@@ -51,10 +51,10 @@ Use the skill: `potato:create-task` for each ticket in the specification.
 **Task format:**
 
 - `description`: Short title (e.g., "Ticket 1: Create task types")
-- `body_from`: Reference to extract body from the specification artifact (preferred — avoids regenerating content)
-- `body`: Direct body content (fallback when specification.md doesn't exist)
+- `body_from`: **REQUIRED** when specification.md exists. References the spec content directly — the daemon extracts it. You only provide markers.
+- `body`: **ONLY** when specification.md does NOT exist. Direct body content as fallback.
 
-### When specification.md exists (preferred path)
+### When specification.md exists (REQUIRED path)
 
 Use `body_from` to reference the spec content directly. The daemon extracts the content — you just provide markers:
 
@@ -168,8 +168,13 @@ These thoughts mean you're going off track:
 - "This code is too long for the body"
 - "I'll summarize the key points"
 - "This is ambiguous. I should fix it"
+- "I'll just paste the content into the body field"
+- "body_from is too complicated, I'll use body instead"
+- "The markers might not match, I'll inline it"
 
 **When you notice these thoughts:** STOP. Copy the full ticket content. The builder only sees the task.
+
+**For body_from specifically:** If specification.md exists, you MUST use `body_from`. The daemon handles extraction. You only provide the marker strings. Using inline `body` when the spec exists wastes tokens and risks paraphrasing errors.
 
 ## Important
 
