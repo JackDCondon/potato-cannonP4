@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, Layers } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ListItemCard } from '@/components/ui/list-item-card'
 import { cn, timeAgo } from '@/lib/utils'
@@ -59,12 +59,19 @@ export function BrainstormListItem({
 
   const isThinking = brainstorm.status === 'active' && brainstorm.hasActiveSession && pendingConversationId === null
 
+  // Determine if brainstorm is an epic (has linked tickets)
+  const isEpic = (brainstorm.ticketCount ?? 0) > 0
+
   return (
     <ListItemCard asChild isSelected={isSelected} className={cn(isThinking && 'thinking-shimmer')}>
       <button onClick={handleSelect} className="w-full text-left overflow-hidden">
       <div className="flex items-start gap-3">
         <div className="shrink-0 mt-0.5">
-          <MessageSquare className="h-4 w-4 text-text-muted" />
+          {isEpic ? (
+            <Layers className="h-4 w-4 text-indigo-500" />
+          ) : (
+            <MessageSquare className="h-4 w-4 text-text-muted" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 min-w-0">
@@ -74,6 +81,7 @@ export function BrainstormListItem({
             <StatusIndicator
               status={brainstorm.status}
               hasUnseenQuestion={hasUnseenQuestion}
+              isEpic={isEpic}
             />
           </div>
           <p className="text-xs text-text-muted">
@@ -88,16 +96,27 @@ export function BrainstormListItem({
 
 function StatusIndicator({
   status,
-  hasUnseenQuestion
+  hasUnseenQuestion,
+  isEpic
 }: {
   status: Brainstorm['status']
   hasUnseenQuestion: boolean
+  isEpic: boolean
 }) {
   // Completed brainstorms show completed badge
   if (status === 'completed') {
     return (
       <Badge variant="secondary" className="shrink-0 text-xs">
         completed
+      </Badge>
+    )
+  }
+
+  // Epic brainstorms show Epic badge
+  if (isEpic) {
+    return (
+      <Badge variant="default" className="shrink-0 text-xs bg-indigo-600 text-white">
+        Epic
       </Badge>
     )
   }
