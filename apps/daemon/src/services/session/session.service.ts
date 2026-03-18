@@ -1100,13 +1100,19 @@ export class SessionService {
 
     let proc: pty.IPty;
     if (process.platform === "win32") {
-      // Build the Claude command with all args (without --print)
+      // Add --print flag (no message value) so Claude runs in non-interactive mode.
+      // The prompt is piped via stdin from the bat file below — Claude reads it when
+      // --print is present without an explicit message argument.
+      args.push("--print");
+
+      // Build the Claude command with all args (without inline prompt)
       const fullClaudeArgs = [...claudePrependArgs, ...args]
         .map((a) => (a.includes(" ") || a.includes('"') ? `"${a}"` : a))
         .join(" ");
       const claudeCmd = `"${claudePath}" ${fullClaudeArgs}`;
 
-      // Pipe prompt from file to Claude's stdin to avoid command line length limit.
+      // Pipe prompt from file to Claude's stdin. Claude reads it because --print
+      // without an explicit message argument falls back to stdin.
       // IMPORTANT: We write the command to a .bat file instead of passing it as a
       // cmd.exe /c argument because node-pty escapes double quotes as \" in args,
       // but cmd.exe doesn't understand \" escaping — it causes "is not recognized

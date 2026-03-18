@@ -131,8 +131,12 @@ async function main() {
       const reason = code !== null
         ? `Daemon exited with code ${code}`
         : `Daemon exited with signal ${signal}`;
-      console.error(reason);
-      shutdown(code ?? 1);
+      console.error(`${reason} — restarting in 2s...`);
+      restarting = true;
+      setTimeout(() => {
+        restarting = false;
+        if (!shuttingDown) spawnDaemon();
+      }, 2000);
     });
   }
 

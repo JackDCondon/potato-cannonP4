@@ -131,7 +131,7 @@
           "source": "agents/taskmaster.md",
           "description": "Creates build tickets from specification",
           "disallowTools": ["Skill(superpowers:*)"],
-          "modelTier": "mid"
+          "modelTier": "low"
         },
         {
           "id": "task-review-agent",
