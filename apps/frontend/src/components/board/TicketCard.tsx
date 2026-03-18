@@ -163,10 +163,12 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
                 blockedBy={ticket.blockedBy ?? []}
                 blockedFromPhaseByTier={blockedFromPhaseByTier}
               />
-              {(ticket as any).brainstormId && (
+              {ticket.brainstormId && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Link2 className="h-3 w-3" />
+                    <span className="inline-flex items-center">
+                      <Link2 className="h-3 w-3" />
+                    </span>
                   </TooltipTrigger>
                   <TooltipContent side="top">Part of an epic</TooltipContent>
                 </Tooltip>
