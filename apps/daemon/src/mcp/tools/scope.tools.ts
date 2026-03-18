@@ -1,8 +1,11 @@
+import fs from "fs/promises";
+import path from "path";
 import {
   ticketDependencyGetDependents,
   ticketDependencyGetForTicket,
 } from "../../stores/ticket-dependency.store.js";
 import { getTicketsByBrainstormId } from "../../stores/ticket.store.js";
+import { getBrainstormFilesDir } from "../../config/paths.js";
 import type {
   ToolDefinition,
   McpContext,
@@ -97,6 +100,26 @@ export const scopeTools: ToolDefinition[] = [
         },
       },
       required: ["name"],
+    },
+    scope: "session",
+  },
+  {
+    name: "save_brainstorm_artifact",
+    description:
+      "Write a markdown artifact file to the brainstorm's artifacts directory. Use this to persist plan documents, specs, or notes produced during the brainstorm session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filename: {
+          type: "string",
+          description: "Filename for the artifact (e.g. 'plan.md'). Must end with .md.",
+        },
+        content: {
+          type: "string",
+          description: "Markdown content to write to the file.",
+        },
+      },
+      required: ["filename", "content"],
     },
     scope: "session",
   },
@@ -395,6 +418,83 @@ export const scopeHandlers: Record<
         {
           type: "text",
           text: JSON.stringify({ dependents }, null, 2),
+        },
+      ],
+    };
+  },
+
+  save_brainstorm_artifact: async (ctx, args) => {
+    if (!ctx.brainstormId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Error: save_brainstorm_artifact can only be called in a brainstorm session context",
+          },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    const rawFilename = args.filename as string;
+    const content = args.content as string;
+
+    if (!rawFilename) {
+      return {
+        content: [{ type: "text", text: "Error: filename is required" }],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    if (content === undefined || content === null) {
+      return {
+        content: [{ type: "text", text: "Error: content is required" }],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    // Sanitize: strip any path components, keep only the basename
+    const safeFilename = path.basename(rawFilename);
+
+    if (!safeFilename || safeFilename === "." || safeFilename === "..") {
+      return {
+        content: [{ type: "text", text: "Error: invalid filename" }],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    if (!safeFilename.endsWith(".md")) {
+      return {
+        content: [{ type: "text", text: "Error: filename must end with .md" }],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    const artifactsDir = path.join(
+      getBrainstormFilesDir(ctx.projectId, ctx.brainstormId),
+      "artifacts",
+    );
+
+    try {
+      await fs.mkdir(artifactsDir, { recursive: true });
+      await fs.writeFile(path.join(artifactsDir, safeFilename), content, "utf-8");
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: Failed to write artifact: ${err instanceof Error ? err.message : String(err)}`,
+          },
+        ],
+        isError: true,
+      } as McpToolResult & { isError: true };
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Artifact '${safeFilename}' saved successfully.`,
         },
       ],
     };

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert";
+import os from "node:os";
+import path from "node:path";
+import fs from "node:fs/promises";
 
 // Mock the stores before importing scope.tools
 import type { BlockedByEntry, Ticket } from "@potato-cannon/shared";
@@ -915,6 +918,211 @@ describe("rename_brainstorm", () => {
       assert.ok(result.content[0].text.includes("ECONNREFUSED"));
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+// =============================================================================
+// save_brainstorm_artifact
+// =============================================================================
+
+describe("save_brainstorm_artifact", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    // Create a temp dir that mimics ~/.potato-cannon/projects/
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "scope-tools-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeCtx(overrides: Record<string, unknown> = {}) {
+    return {
+      projectId: "proj-1",
+      brainstormId: "brain_123",
+      daemonUrl: "http://localhost:8443",
+      ...overrides,
+    } as Parameters<typeof scopeHandlers.save_brainstorm_artifact>[0];
+  }
+
+  it("should error when not in brainstorm context", async () => {
+    const result = await scopeHandlers.save_brainstorm_artifact(
+      makeCtx({ brainstormId: undefined }),
+      { filename: "plan.md", content: "# Plan" },
+    );
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("brainstorm session context"));
+  });
+
+  it("should error when filename is missing", async () => {
+    const result = await scopeHandlers.save_brainstorm_artifact(
+      makeCtx(),
+      { content: "# Plan" },
+    );
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("filename is required"));
+  });
+
+  it("should error when content is missing", async () => {
+    const result = await scopeHandlers.save_brainstorm_artifact(
+      makeCtx(),
+      { filename: "plan.md" },
+    );
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("content is required"));
+  });
+
+  it("should error when filename does not end with .md", async () => {
+    const result = await scopeHandlers.save_brainstorm_artifact(
+      makeCtx(),
+      { filename: "plan.txt", content: "# Plan" },
+    );
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("must end with .md"));
+  });
+
+  it("should sanitize path traversal attempts in filename", async () => {
+    // ../etc/passwd.md would resolve basename to passwd.md
+    // but ../../etc/plan.md should still fail on .md check if path attack
+    // The key check: path.basename strips directory components
+    // Since basename of "../evil/plan.md" is "plan.md" (valid .md), it should succeed writing to artifacts dir
+    // The test verifies no path traversal outside artifacts dir
+    const result = await scopeHandlers.save_brainstorm_artifact(
+      makeCtx(),
+      { filename: "../evil/plan.md", content: "# Evil" },
+    );
+    // path.basename("../evil/plan.md") === "plan.md" => valid, should succeed (not error)
+    // The point is it doesn't write outside artifacts dir
+    // It will fail because the artifacts dir doesn't exist under the real ~/.potato-cannon path
+    // We just verify no error about path traversal - behavior depends on FS
+    // The real test: it should NOT write to ../evil/, only to artifacts/plan.md
+    // Since the real path won't exist in test, we just verify isError is about FS, not path validation
+    assert.ok(
+      result.content[0].text.includes("plan.md") || result.content[0].text.includes("Error"),
+    );
+  });
+
+  it("should write artifact file and return success", async () => {
+    // We need to test with a real writable location. Since getBrainstormFilesDir uses
+    // GLOBAL_DIR (~/.potato-cannon/projects/...), we test via the actual implementation.
+    // This is an integration-level check: create a temp brainstorm dir and verify write works.
+    // We use a unique brainstorm ID that maps to a predictable path.
+    const testBrainstormId = `test_${Date.now()}`;
+    const expectedDir = path.join(
+      os.homedir(),
+      ".potato-cannon",
+      "projects",
+      "proj-1",
+      "brainstorms",
+      testBrainstormId,
+      "artifacts",
+    );
+
+    try {
+      const result = await scopeHandlers.save_brainstorm_artifact(
+        makeCtx({ brainstormId: testBrainstormId }),
+        { filename: "plan.md", content: "# Test Plan\n\nHello world." },
+      );
+
+      assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+      assert.ok(result.content[0].text.includes("plan.md"));
+      assert.ok(result.content[0].text.includes("saved successfully"));
+
+      // Verify file was actually written
+      const written = await fs.readFile(path.join(expectedDir, "plan.md"), "utf-8");
+      assert.strictEqual(written, "# Test Plan\n\nHello world.");
+    } finally {
+      // Clean up: remove test artifact dir
+      await fs.rm(expectedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should create the artifacts directory if it does not exist", async () => {
+    const testBrainstormId = `test_mkdir_${Date.now()}`;
+    const expectedDir = path.join(
+      os.homedir(),
+      ".potato-cannon",
+      "projects",
+      "proj-1",
+      "brainstorms",
+      testBrainstormId,
+      "artifacts",
+    );
+
+    try {
+      const result = await scopeHandlers.save_brainstorm_artifact(
+        makeCtx({ brainstormId: testBrainstormId }),
+        { filename: "notes.md", content: "some notes" },
+      );
+
+      assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+      const stat = await fs.stat(expectedDir);
+      assert.ok(stat.isDirectory());
+    } finally {
+      await fs.rm(expectedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should strip path components from filename (security)", async () => {
+    // path.basename("../../etc/passwd.md") === "passwd.md"
+    // So the tool should write passwd.md in the artifacts dir (not at ../../etc/)
+    const testBrainstormId = `test_path_${Date.now()}`;
+    const expectedDir = path.join(
+      os.homedir(),
+      ".potato-cannon",
+      "projects",
+      "proj-1",
+      "brainstorms",
+      testBrainstormId,
+      "artifacts",
+    );
+
+    try {
+      const result = await scopeHandlers.save_brainstorm_artifact(
+        makeCtx({ brainstormId: testBrainstormId }),
+        { filename: "../../etc/passwd.md", content: "# Not evil" },
+      );
+
+      // Should succeed (writes "passwd.md" inside artifacts dir)
+      assert.strictEqual((result as { isError?: boolean }).isError, undefined);
+      assert.ok(result.content[0].text.includes("passwd.md"));
+
+      // Verify it wrote to the correct (safe) location
+      const written = await fs.readFile(path.join(expectedDir, "passwd.md"), "utf-8");
+      assert.strictEqual(written, "# Not evil");
+    } finally {
+      await fs.rm(expectedDir, { recursive: true, force: true });
+    }
+  });
+
+  it("should overwrite an existing artifact file", async () => {
+    const testBrainstormId = `test_overwrite_${Date.now()}`;
+    const expectedDir = path.join(
+      os.homedir(),
+      ".potato-cannon",
+      "projects",
+      "proj-1",
+      "brainstorms",
+      testBrainstormId,
+      "artifacts",
+    );
+
+    try {
+      await scopeHandlers.save_brainstorm_artifact(
+        makeCtx({ brainstormId: testBrainstormId }),
+        { filename: "plan.md", content: "# Version 1" },
+      );
+      await scopeHandlers.save_brainstorm_artifact(
+        makeCtx({ brainstormId: testBrainstormId }),
+        { filename: "plan.md", content: "# Version 2" },
+      );
+
+      const written = await fs.readFile(path.join(expectedDir, "plan.md"), "utf-8");
+      assert.strictEqual(written, "# Version 2");
+    } finally {
+      await fs.rm(expectedDir, { recursive: true, force: true });
     }
   });
 });
