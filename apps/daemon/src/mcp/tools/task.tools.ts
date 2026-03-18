@@ -37,6 +37,19 @@ export function extractSection(
 }
 
 /**
+ * Extract and normalize the description prefix for duplicate detection.
+ * Compares the portion before the first colon, lowercased and trimmed.
+ * If no colon, uses the full description.
+ */
+export function extractDescriptionPrefix(description: string): string {
+  const colonIdx = description.indexOf(":");
+  const prefix = colonIdx !== -1
+    ? description.slice(0, colonIdx)
+    : description;
+  return prefix.trim().toLowerCase();
+}
+
+/**
  * Resolve body_from reference by reading artifact content from disk
  * and extracting the section between markers.
  */
@@ -365,6 +378,24 @@ export const taskHandlers: Record<
         };
       }
     }
+    // Duplicate detection: check if a task with the same description prefix exists
+    const existingTasks = await listTasksForTicket(ctx, ticketId);
+    const newPrefix = extractDescriptionPrefix(args.description);
+    if (newPrefix) {
+      const duplicate = existingTasks.find(
+        (t) => t.status !== "cancelled" && extractDescriptionPrefix(t.description) === newPrefix
+      );
+      if (duplicate) {
+        return {
+          content: [{
+            type: "text",
+            text: `Duplicate detected: task "${duplicate.id}" already has description prefix "${newPrefix}". ` +
+                  `Skipping creation. Existing task: ${JSON.stringify({ id: duplicate.id, description: duplicate.description, status: duplicate.status })}`,
+          }],
+          isError: false,
+        };
+      }
+    }
     // Resolve body: body_from takes precedence over body
     let body: string | undefined;
     if (args.body_from && typeof args.body_from === "object") {
@@ -377,6 +408,26 @@ export const taskHandlers: Record<
       body = typeof args.body === "string" ? args.body : undefined;
     }
     const complexity = typeof args.complexity === "string" ? args.complexity : undefined;
+    // Nudge: warn if using inline body when specification.md exists
+    if (args.body && !args.body_from) {
+      try {
+        const safeProject = ctx.projectId.replace(/\//g, "__");
+        const specPath = path.join(TASKS_DIR, safeProject, ticketId, "artifacts", "specification.md");
+        await fs.access(specPath);
+        // specification.md exists but agent used inline body
+        const task = await createTask(ctx, ticketId, args.description, body, complexity);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(task, null, 2) +
+                  "\n\n⚠️ Warning: specification.md exists for this ticket. " +
+                  "Consider using body_from with artifact markers instead of inline body to save tokens and preserve exact spec content.",
+          }],
+        };
+      } catch {
+        // specification.md doesn't exist, proceed normally
+      }
+    }
     const task = await createTask(ctx, ticketId, args.description, body, complexity);
     return {
       content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
