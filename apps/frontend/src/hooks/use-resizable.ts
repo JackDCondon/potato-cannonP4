@@ -29,9 +29,13 @@ export function useResizable({
   const [isDragging, setIsDragging] = useState(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
+  const widthRef = useRef(width)
+  widthRef.current = width
 
-  // Store listeners in refs so cleanup always removes the correct identity,
-  // regardless of how often maxWidth/minWidth callbacks change between renders.
+  // Store refs for callback options so handlers stay stable across renders.
+  const optsRef = useRef({ minWidth, maxWidth, snapWidth, defaultWidth })
+  optsRef.current = { minWidth, maxWidth, snapWidth, defaultWidth }
+
   const handlersRef = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null)
 
   const onMouseDown = useCallback(
@@ -40,11 +44,12 @@ export function useResizable({
       if (handlersRef.current) return
       e.preventDefault()
       startXRef.current = e.clientX
-      startWidthRef.current = width
+      startWidthRef.current = widthRef.current
       setIsDragging(true)
       document.body.classList.add('is-resizing')
 
-      const clamp = (value: number) => Math.min(Math.max(value, minWidth), maxWidth())
+      const clamp = (value: number) =>
+        Math.min(Math.max(value, optsRef.current.minWidth), optsRef.current.maxWidth())
 
       const move = (ev: MouseEvent) => {
         const delta = startXRef.current - ev.clientX
@@ -63,18 +68,18 @@ export function useResizable({
       window.addEventListener('mousemove', move)
       window.addEventListener('mouseup', up)
     },
-    [disabled, width, minWidth, maxWidth]
+    [disabled]
   )
 
   const onDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (disabled) return
       e.preventDefault()
-      const snap = snapWidth()
-      const isNearSnap = Math.abs(width - snap) < 20
-      setWidth(isNearSnap ? defaultWidth : snap)
+      const snap = optsRef.current.snapWidth()
+      const isNearSnap = Math.abs(widthRef.current - snap) < 20
+      setWidth(isNearSnap ? optsRef.current.defaultWidth : snap)
     },
-    [disabled, width, snapWidth, defaultWidth]
+    [disabled]
   )
 
   // Cleanup on unmount (in case component unmounts mid-drag)
