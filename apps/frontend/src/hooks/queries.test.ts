@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useBrainstormArtifacts, useUpdateBrainstorm } from "./queries";
+import { useBrainstormArtifacts } from "./queries";
 
 describe("Brainstorm query hooks", () => {
   let queryClient: QueryClient;
@@ -75,45 +75,4 @@ describe("Brainstorm query hooks", () => {
     });
   });
 
-  describe("useUpdateBrainstorm", () => {
-    it("should create a mutation function that accepts projectId, brainstormId, and updates", () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        text: async () => JSON.stringify({ id: "brain-123" }),
-      });
-
-      vi.stubGlobal("fetch", fetchMock);
-
-      const { result } = renderHook(() => useUpdateBrainstorm(), { wrapper });
-
-      expect(typeof result.current.mutate).toBe("function");
-      expect(typeof result.current.mutateAsync).toBe("function");
-    });
-
-    it("should send PUT request with correct body when updating brainstorm", async () => {
-      const fetchMock = vi.fn().mockResolvedValue({
-        ok: true,
-        text: async () => JSON.stringify({ id: "brain-123", name: "New Name" }),
-      });
-
-      vi.stubGlobal("fetch", fetchMock);
-
-      const { result } = renderHook(() => useUpdateBrainstorm(), { wrapper });
-
-      result.current.mutate({
-        projectId: "proj-1",
-        brainstormId: "brain-123",
-        updates: { name: "New Name" },
-      });
-
-      await waitFor(() => {
-        expect(fetchMock).toHaveBeenCalled();
-      });
-
-      const [url, options] = fetchMock.mock.calls[0];
-      expect(String(url)).toContain("/api/brainstorms/proj-1/brain-123");
-      expect((options as RequestInit).method).toBe("PUT");
-      expect((options as RequestInit).body).toContain('"name":"New Name"');
-    });
-  });
 });

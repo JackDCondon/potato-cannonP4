@@ -414,18 +414,6 @@ export function useBrainstormArtifacts(projectId: string | null, brainstormId: s
   })
 }
 
-export function useUpdateBrainstorm() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ projectId, brainstormId, updates }: { projectId: string; brainstormId: string; updates: { name?: string } }) =>
-      api.updateBrainstorm(projectId, brainstormId, updates),
-    onSuccess: (_, { projectId, brainstormId }) => {
-      queryClient.invalidateQueries({ queryKey: ['brainstorms', projectId] })
-      queryClient.invalidateQueries({ queryKey: ['brainstorm', projectId, brainstormId] })
-    }
-  })
-}
-
 // ============ Templates ============
 
 export function useTemplates() {
