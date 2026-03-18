@@ -6,6 +6,8 @@ import {
   createBrainstorm,
   updateBrainstorm,
   deleteBrainstorm,
+  brainstormGetTicketCounts,
+  brainstormGetTicketCountsBatch,
 } from '../../stores/brainstorm.store.js';
 import { writeResponse, readQuestion } from '../../stores/chat.store.js';
 import { getMessages, addMessage, answerQuestion, getPendingQuestion } from '../../stores/conversation.store.js';
@@ -24,12 +26,19 @@ export function registerBrainstormRoutes(
     try {
       const projectId = decodeURIComponent(req.params.project);
       const brainstorms = await listBrainstorms(projectId);
+      const brainstormIds = brainstorms.map((b) => b.id);
+      const ticketCountsMap = brainstormGetTicketCountsBatch(brainstormIds);
 
-      // Enrich with session status for UI spinner logic
-      const enriched = brainstorms.map((b) => ({
-        ...b,
-        hasActiveSession: getActiveSessionForBrainstorm(b.id) !== null,
-      }));
+      // Enrich with session status for UI spinner logic and ticket counts
+      const enriched = brainstorms.map((b) => {
+        const counts = ticketCountsMap.get(b.id) || { ticketCount: 0, activeTicketCount: 0 };
+        return {
+          ...b,
+          hasActiveSession: getActiveSessionForBrainstorm(b.id) !== null,
+          ticketCount: counts.ticketCount,
+          activeTicketCount: counts.activeTicketCount,
+        };
+      });
 
       res.json(enriched);
     } catch (error) {
@@ -43,7 +52,13 @@ export function registerBrainstormRoutes(
       const projectId = decodeURIComponent(req.params.project);
       const brainstormId = req.params.id;
       const brainstorm = await getBrainstorm(projectId, brainstormId);
-      res.json(brainstorm);
+      const counts = brainstormGetTicketCounts(brainstorm.id);
+      res.json({
+        ...brainstorm,
+        hasActiveSession: getActiveSessionForBrainstorm(brainstorm.id) !== null,
+        ticketCount: counts.ticketCount,
+        activeTicketCount: counts.activeTicketCount,
+      });
     } catch (error) {
       res.status(404).json({ error: 'Brainstorm not found' });
     }
