@@ -3,7 +3,6 @@ import assert from "node:assert";
 
 // Track callback invocations
 const blockedCalls: Array<{ projectId: string; ticketId: string; reason: string }> = [];
-const spawnCalls: Array<unknown[]> = [];
 
 // Mock all required modules before importing SUT
 // (Follow the pattern from worker-executor-p4.test.ts)
@@ -153,8 +152,7 @@ describe("task-loop empty guard", () => {
     blockedCalls.length = 0;
 
     const callbacks = {
-      spawnAgent: async (...args: unknown[]) => {
-        spawnCalls.push(args);
+      spawnAgent: async () => {
         return "session-id";
       },
       onPhaseComplete: async () => {},
