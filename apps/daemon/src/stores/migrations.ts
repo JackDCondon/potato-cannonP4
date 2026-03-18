@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 20;
+const CURRENT_SCHEMA_VERSION = 21;
 
 /**
  * Run database migrations.
@@ -90,6 +90,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 20) {
     migrateV20(db);
+  }
+
+  if (version < 21) {
+    migrateV21(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -952,6 +956,48 @@ function migrateV20(db: Database.Database): void {
   if (!hasProviderOverride) {
     db.exec("ALTER TABLE projects ADD COLUMN provider_override TEXT");
   }
+}
+
+/**
+ * V21: Brainstorm-to-ticket linkage for scope context
+ * - Add brainstorm_id FK on tickets (enables sibling discovery)
+ * - Add plan_summary on brainstorms (stores the epic plan)
+ * - Backfill brainstorm_id from existing created_ticket_id relationships
+ */
+function migrateV21(db: Database.Database): void {
+  const ticketCols = new Set(
+    (db.prepare("PRAGMA table_info(tickets)").all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
+  );
+  if (!ticketCols.has("brainstorm_id")) {
+    db.exec(
+      `ALTER TABLE tickets ADD COLUMN brainstorm_id TEXT REFERENCES brainstorms(id) ON DELETE SET NULL`,
+    );
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_tickets_brainstorm_id ON tickets(brainstorm_id) WHERE brainstorm_id IS NOT NULL`,
+    );
+  }
+
+  const brainstormCols = new Set(
+    (
+      db.prepare("PRAGMA table_info(brainstorms)").all() as { name: string }[]
+    ).map((r) => r.name),
+  );
+  if (!brainstormCols.has("plan_summary")) {
+    db.exec(`ALTER TABLE brainstorms ADD COLUMN plan_summary TEXT`);
+  }
+
+  // Backfill: for brainstorms with created_ticket_id, set the ticket's brainstorm_id.
+  // LIMIT 1 makes the subquery deterministic when multiple brainstorms share the same
+  // created_ticket_id (no UNIQUE constraint prevents this).
+  db.exec(`
+    UPDATE tickets SET brainstorm_id = (
+      SELECT id FROM brainstorms WHERE created_ticket_id = tickets.id LIMIT 1
+    )
+    WHERE brainstorm_id IS NULL
+      AND id IN (SELECT created_ticket_id FROM brainstorms WHERE created_ticket_id IS NOT NULL)
+  `);
 }
 
 function normalizeTemplateVersion(version: string | null | undefined): string | null {

@@ -193,9 +193,9 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
   });
 
-  it('schema version is 20', () => {
+  it('schema version is 21', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 20);
+    assert.equal(version, 21);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 20);
+    assert.equal(version, 21);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -665,5 +665,115 @@ describe('V13 backfill — runBackfillV13', () => {
     assert.equal(wf2.template_name, 'custom-template');
     assert.equal(wf1.is_default, 1);
     assert.equal(wf2.is_default, 1);
+  });
+});
+
+describe('V21 migration - brainstorm-ticket linkage', () => {
+  it('adds brainstorm_id column to tickets', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const cols = db.pragma('table_info(tickets)') as { name: string }[];
+    const colNames = new Set(cols.map((c) => c.name));
+    assert.ok(colNames.has('brainstorm_id'), 'tickets table should have brainstorm_id column');
+  });
+
+  it('adds plan_summary column to brainstorms', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const cols = db.pragma('table_info(brainstorms)') as { name: string }[];
+    const colNames = new Set(cols.map((c) => c.name));
+    assert.ok(colNames.has('plan_summary'), 'brainstorms table should have plan_summary column');
+  });
+
+  it('backfills brainstorm_id from brainstorm.created_ticket_id', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v21','pv21','V21 Project','/v21','2026-03-18')"
+    );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v21','proj-v21','Default','product-development',1,'2026-03-18','2026-03-18')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v21', 1)"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v21','proj-v21','Ticket V21','Ideas','2026-03-18','2026-03-18','wf-v21')"
+    );
+    db.exec(
+      "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v21','proj-v21','2026-03-18','2026-03-18')"
+    );
+    db.exec(
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21','proj-v21','Brainstorm V21','active','2026-03-18','2026-03-18','conv-v21','t-v21')"
+    );
+
+    // Simulate running migration from v20 to pick up V21 backfill
+    db.pragma('user_version = 20');
+    runMigrations(db);
+
+    const ticket = db
+      .prepare("SELECT brainstorm_id FROM tickets WHERE id = 't-v21'")
+      .get() as { brainstorm_id: string | null };
+    assert.equal(ticket.brainstorm_id, 'bs-v21', 'ticket should have brainstorm_id backfilled from created_ticket_id');
+  });
+
+  it('handles multiple brainstorms pointing to the same ticket without error (LIMIT 1 safety)', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v21-multi','pv21m','V21 Multi','/v21m','2026-03-18')"
+    );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v21-multi','proj-v21-multi','Default','product-development',1,'2026-03-18','2026-03-18')"
+    );
+    db.exec(
+      "INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v21-multi', 1)"
+    );
+    db.exec(
+      "INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id) VALUES ('t-v21-multi','proj-v21-multi','Multi Ticket','Ideas','2026-03-18','2026-03-18','wf-v21-multi')"
+    );
+    db.exec(
+      "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v21-ma','proj-v21-multi','2026-03-18','2026-03-18'), ('conv-v21-mb','proj-v21-multi','2026-03-18','2026-03-18')"
+    );
+    // Two brainstorms both pointing to the same ticket — the unsafe case LIMIT 1 guards against
+    db.exec(
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-a','proj-v21-multi','Brainstorm A','active','2026-03-18','2026-03-18','conv-v21-ma','t-v21-multi')"
+    );
+    db.exec(
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-b','proj-v21-multi','Brainstorm B','active','2026-03-18','2026-03-18','conv-v21-mb','t-v21-multi')"
+    );
+
+    db.pragma('user_version = 20');
+    // Must not throw "sub-select returns more than 1 row"
+    assert.doesNotThrow(() => runMigrations(db), 'V21 backfill should not throw when multiple brainstorms share the same created_ticket_id');
+
+    const ticket = db
+      .prepare("SELECT brainstorm_id FROM tickets WHERE id = 't-v21-multi'")
+      .get() as { brainstorm_id: string | null };
+    assert.ok(
+      ticket.brainstorm_id === 'bs-v21-a' || ticket.brainstorm_id === 'bs-v21-b',
+      'ticket should have a brainstorm_id set to one of the two brainstorms'
+    );
+  });
+
+  it('is idempotent — running V21 migration twice does not error', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V21 database should be safe');
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 21);
+  });
+
+  it('schema version is 21', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 21);
   });
 });
