@@ -1,4 +1,6 @@
 import type { Express, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import { eventBus } from '../../utils/event-bus.js';
 import {
   listBrainstorms,
@@ -13,6 +15,7 @@ import { writeResponse, readQuestion } from '../../stores/chat.store.js';
 import { getMessages, addMessage, answerQuestion, getPendingQuestion } from '../../stores/conversation.store.js';
 import { getActiveSessionForBrainstorm } from '../../stores/session.store.js';
 import { summarizeToTitle } from '../../services/summarize.js';
+import { getBrainstormFilesDir } from '../../config/paths.js';
 import type { SessionService } from '../../services/session/index.js';
 import type { Project } from '../../types/config.types.js';
 
@@ -61,6 +64,36 @@ export function registerBrainstormRoutes(
       });
     } catch (error) {
       res.status(404).json({ error: 'Brainstorm not found' });
+    }
+  });
+
+  // List brainstorm artifacts
+  app.get('/api/brainstorms/:project/:id/artifacts', async (req: Request, res: Response) => {
+    try {
+      const projectId = decodeURIComponent(req.params.project);
+      const brainstormId = req.params.id;
+      const artifactsDir = path.join(getBrainstormFilesDir(projectId, brainstormId), 'artifacts');
+
+      if (!fs.existsSync(artifactsDir)) {
+        res.json({ artifacts: [] });
+        return;
+      }
+
+      const files = fs.readdirSync(artifactsDir).filter((f) => f.endsWith('.md'));
+      const artifacts = files.map((filename) => {
+        const filePath = path.join(artifactsDir, filename);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const stat = fs.statSync(filePath);
+        return {
+          filename,
+          content,
+          updatedAt: stat.mtime.toISOString(),
+        };
+      });
+
+      res.json({ artifacts });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 
