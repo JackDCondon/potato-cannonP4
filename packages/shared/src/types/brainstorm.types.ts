@@ -11,9 +11,6 @@ export interface Brainstorm {
   createdTicketId?: string | null
   workflowId?: string | null
   hasActiveSession?: boolean
-  planSummary?: string | null
-  ticketCount?: number
-  activeTicketCount?: number
 }
 
 export interface BrainstormQuestion {
