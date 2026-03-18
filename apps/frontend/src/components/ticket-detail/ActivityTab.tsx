@@ -349,7 +349,6 @@ export function ActivityTab({
         <ViewSessionButton
           projectId={projectId}
           ticketId={ticketId}
-          hasActiveSession={hasActiveSession}
         />
       </div>
  

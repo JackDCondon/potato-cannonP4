@@ -37,6 +37,7 @@ export function useResizable({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (disabled) return
+      if (handlersRef.current) return
       e.preventDefault()
       startXRef.current = e.clientX
       startWidthRef.current = width
