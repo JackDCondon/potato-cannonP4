@@ -437,4 +437,34 @@ describe("TicketStore", () => {
       assert.strictEqual(ticket.brainstormId, undefined);
     });
   });
+
+  describe("getTicketsByBrainstormId", () => {
+    it("should return tickets sharing the same brainstormId", () => {
+      const brainstormStore = createBrainstormStore(db);
+      const brainstorm = brainstormStore.createBrainstorm(projectId);
+
+      ticketStore.createTicket(projectId, { title: "A", brainstormId: brainstorm.id });
+      ticketStore.createTicket(projectId, { title: "B", brainstormId: brainstorm.id });
+      ticketStore.createTicket(projectId, { title: "C" }); // no brainstorm
+
+      const siblings = ticketStore.getTicketsByBrainstormId(brainstorm.id);
+      assert.strictEqual(siblings.length, 2);
+      assert.ok(siblings.some((t) => t.title === "A"));
+      assert.ok(siblings.some((t) => t.title === "B"));
+    });
+
+    it("should exclude archived tickets", () => {
+      const brainstormStore = createBrainstormStore(db);
+      const brainstorm = brainstormStore.createBrainstorm(projectId);
+
+      const ticket = ticketStore.createTicket(projectId, { title: "Archived", brainstormId: brainstorm.id });
+      ticketStore.createTicket(projectId, { title: "Active", brainstormId: brainstorm.id });
+      ticketStore.updateTicket(projectId, ticket.id, { phase: "Done" });
+      ticketStore.archiveTicket(projectId, ticket.id);
+
+      const siblings = ticketStore.getTicketsByBrainstormId(brainstorm.id);
+      assert.strictEqual(siblings.length, 1);
+      assert.strictEqual(siblings[0].title, "Active");
+    });
+  });
 });

@@ -178,6 +178,15 @@ export class TicketStore {
     return rows.map((row) => this.rowToTicket(row));
   }
 
+  getTicketsByBrainstormId(brainstormId: string): Ticket[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tickets WHERE brainstorm_id = ? AND archived = 0 ORDER BY created_at ASC`
+      )
+      .all(brainstormId) as TicketRow[];
+    return rows.map((row) => this.rowToTicket(row));
+  }
+
   getTicket(projectId: string, ticketId: string): Ticket | null {
     const row = this.db
       .prepare("SELECT * FROM tickets WHERE id = ? AND project_id = ?")
@@ -543,6 +552,11 @@ export function listTicketsForWorkflow(
 ): Ticket[] {
   const store = new TicketStore(getDatabase());
   return store.listTicketsForWorkflow(projectId, workflowId);
+}
+
+export function getTicketsByBrainstormId(brainstormId: string): Ticket[] {
+  const store = new TicketStore(getDatabase());
+  return store.getTicketsByBrainstormId(brainstormId);
 }
 
 export function getTicket(
