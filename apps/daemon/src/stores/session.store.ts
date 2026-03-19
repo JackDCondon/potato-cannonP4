@@ -24,6 +24,8 @@ interface SessionRow {
   exit_code: number | null;
   phase: string | null;
   metadata: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
 }
 
 function parseSessionMetadata(
@@ -64,6 +66,8 @@ function rowToSession(row: SessionRow): StoredSession {
     exitCode: row.exit_code ?? undefined,
     phase: row.phase || undefined,
     metadata: parseSessionMetadata(row.metadata),
+    inputTokens: row.input_tokens || undefined,
+    outputTokens: row.output_tokens || undefined,
   };
 }
 
@@ -141,6 +145,13 @@ export class SessionStore {
     const result = this.db
       .prepare("UPDATE sessions SET claude_session_id = ? WHERE id = ?")
       .run(claudeSessionId, sessionId);
+    return result.changes > 0;
+  }
+
+  updateSessionTokens(sessionId: string, inputTokens: number, outputTokens: number): boolean {
+    const result = this.db
+      .prepare("UPDATE sessions SET input_tokens = ?, output_tokens = ? WHERE id = ?")
+      .run(inputTokens, outputTokens, sessionId);
     return result.changes > 0;
   }
 
@@ -379,4 +390,8 @@ export function deleteSessionsForPhases(
 
 export function endAllOpenSessions(): number {
   return new SessionStore(getDatabase()).endAllOpenSessions();
+}
+
+export function updateSessionTokens(sessionId: string, inputTokens: number, outputTokens: number): boolean {
+  return new SessionStore(getDatabase()).updateSessionTokens(sessionId, inputTokens, outputTokens);
 }

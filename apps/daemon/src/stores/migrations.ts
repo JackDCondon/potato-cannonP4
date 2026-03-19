@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 23;
+const CURRENT_SCHEMA_VERSION = 24;
 
 /**
  * Run database migrations.
@@ -102,6 +102,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 23) {
     migrateV23(db);
+  }
+
+  if (version < 24) {
+    migrateV24(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1054,6 +1058,24 @@ function migrateV23(db: Database.Database): void {
   }
   if (!brainstormCols.has("icon")) {
     db.exec(`ALTER TABLE brainstorms ADD COLUMN icon TEXT`);
+  }
+}
+
+/**
+ * V24: Add input_tokens and output_tokens columns to sessions table
+ * for persisting token counts from Claude stream events.
+ */
+function migrateV24(db: Database.Database): void {
+  const sessionsCols = new Set(
+    (db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
+  );
+  if (!sessionsCols.has("input_tokens")) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN input_tokens INTEGER`);
+  }
+  if (!sessionsCols.has("output_tokens")) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN output_tokens INTEGER`);
   }
 }
 

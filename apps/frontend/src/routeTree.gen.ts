@@ -18,8 +18,8 @@ import { Route as TemplatesNameRouteImport } from './routes/templates/$name'
 import { Route as TranscriptTicketTicketIdRouteImport } from './routes/transcript/ticket.$ticketId'
 import { Route as ProjectsProjectIdConfigureRouteImport } from './routes/projects/$projectId/configure'
 import { Route as ProjectsProjectIdBoardRouteImport } from './routes/projects/$projectId/board'
-import { Route as ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport } from './routes/projects/$projectId/workflows/$workflowId/board'
 import { Route as ProjectsProjectIdWorkflowsWorkflowIdSettingsRouteImport } from './routes/projects/$projectId/workflows/$workflowId/settings'
+import { Route as ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport } from './routes/projects/$projectId/workflows/$workflowId/board'
 
 const SessionsRoute = SessionsRouteImport.update({
   id: '/sessions',
@@ -68,16 +68,16 @@ const ProjectsProjectIdBoardRoute = ProjectsProjectIdBoardRouteImport.update({
   path: '/projects/$projectId/board',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsProjectIdWorkflowsWorkflowIdBoardRoute =
-  ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport.update({
-    id: '/projects/$projectId/workflows/$workflowId/board',
-    path: '/projects/$projectId/workflows/$workflowId/board',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 const ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute =
   ProjectsProjectIdWorkflowsWorkflowIdSettingsRouteImport.update({
     id: '/projects/$projectId/workflows/$workflowId/settings',
     path: '/projects/$projectId/workflows/$workflowId/settings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ProjectsProjectIdWorkflowsWorkflowIdBoardRoute =
+  ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport.update({
+    id: '/projects/$projectId/workflows/$workflowId/board',
+    path: '/projects/$projectId/workflows/$workflowId/board',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -242,18 +242,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdBoardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$projectId/workflows/$workflowId/board': {
-      id: '/projects/$projectId/workflows/$workflowId/board'
-      path: '/projects/$projectId/workflows/$workflowId/board'
-      fullPath: '/projects/$projectId/workflows/$workflowId/board'
-      preLoaderRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/projects/$projectId/workflows/$workflowId/settings': {
       id: '/projects/$projectId/workflows/$workflowId/settings'
       path: '/projects/$projectId/workflows/$workflowId/settings'
       fullPath: '/projects/$projectId/workflows/$workflowId/settings'
       preLoaderRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$projectId/workflows/$workflowId/board': {
+      id: '/projects/$projectId/workflows/$workflowId/board'
+      path: '/projects/$projectId/workflows/$workflowId/board'
+      fullPath: '/projects/$projectId/workflows/$workflowId/board'
+      preLoaderRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

@@ -550,4 +550,37 @@ describe("SessionStore", () => {
       assert.strictEqual(sessions[0].id, second.id);
     });
   });
+
+  describe("updateSessionTokens", () => {
+    it("should update input and output tokens", () => {
+      const created = sessionStore.createSession({ projectId });
+
+      const result = sessionStore.updateSessionTokens(created.id, 1000, 500);
+
+      assert.strictEqual(result, true);
+
+      const session = sessionStore.getSession(created.id)!;
+      assert.strictEqual(session.inputTokens, 1000);
+      assert.strictEqual(session.outputTokens, 500);
+    });
+
+    it("should return false for non-existent session", () => {
+      const result = sessionStore.updateSessionTokens("non-existent", 1000, 500);
+      assert.strictEqual(result, false);
+    });
+  });
+
+  describe("sessions table has input_tokens and output_tokens columns", () => {
+    it("should have input_tokens column", () => {
+      const info = db.prepare("PRAGMA table_info(sessions)").all() as Array<{name: string}>;
+      const columns = info.map(r => r.name);
+      assert.ok(columns.includes("input_tokens"), "missing input_tokens");
+    });
+
+    it("should have output_tokens column", () => {
+      const info = db.prepare("PRAGMA table_info(sessions)").all() as Array<{name: string}>;
+      const columns = info.map(r => r.name);
+      assert.ok(columns.includes("output_tokens"), "missing output_tokens");
+    });
+  });
 });

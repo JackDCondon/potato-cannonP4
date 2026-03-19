@@ -95,4 +95,6 @@ export interface StoredSession {
   exitCode?: number;
   phase?: string;
   metadata?: Record<string, unknown>;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
 }
