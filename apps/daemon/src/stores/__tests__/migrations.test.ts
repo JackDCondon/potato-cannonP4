@@ -193,9 +193,9 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
   });
 
-  it('schema version is 22', () => {
+  it('schema version is 23', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 22);
+    assert.equal(version, 23);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 22);
+    assert.equal(version, 23);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -767,14 +767,106 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 22);
+    assert.equal(version, 23);
   });
 
-  it('schema version is 22', () => {
+  it('schema version is 23', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 22);
+    assert.equal(version, 23);
+  });
+});
+
+describe('V23 migration - epic color and icon customization', () => {
+  it('adds color and icon columns to brainstorms', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(brainstorms)') as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    assert.ok(names.has('color'), 'brainstorms table should have color column');
+    assert.ok(names.has('icon'), 'brainstorms table should have icon column');
+  });
+
+  it('color and icon columns are TEXT and nullable', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(brainstorms)') as Array<{ name: string; type: string; notnull: number }>;
+    const colorCol = columns.find((c) => c.name === 'color');
+    const iconCol = columns.find((c) => c.name === 'icon');
+
+    assert.ok(colorCol, 'color column should exist');
+    assert.equal(colorCol.type, 'TEXT', 'color column should be TEXT type');
+    assert.equal(colorCol.notnull, 0, 'color column should be nullable');
+
+    assert.ok(iconCol, 'icon column should exist');
+    assert.equal(iconCol.type, 'TEXT', 'icon column should be TEXT type');
+    assert.equal(iconCol.notnull, 0, 'icon column should be nullable');
+  });
+
+  it('can insert and retrieve brainstorm with color and icon', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v23','pv23','V23 Project','/v23','2026-03-19')"
+    );
+
+    db.exec(
+      "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v23','proj-v23','2026-03-19','2026-03-19')"
+    );
+
+    const brainstormId = 'brain-v23-color-icon';
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, color, icon) VALUES (?, ?, ?, 'epic', ?, ?, ?, ?, ?)"
+    ).run(brainstormId, 'proj-v23', 'Epic with Color & Icon', now, now, 'conv-v23', '#818cf8', 'star');
+
+    const row = db
+      .prepare('SELECT id, color, icon FROM brainstorms WHERE id = ?')
+      .get(brainstormId) as { id: string; color: string; icon: string };
+
+    assert.equal(row.id, brainstormId);
+    assert.equal(row.color, '#818cf8', 'color should be stored');
+    assert.equal(row.icon, 'star', 'icon should be stored');
+  });
+
+  it('color and icon default to NULL for existing brainstorms', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v23-null','pv23n','V23 Null Project','/v23n','2026-03-19')"
+    );
+
+    db.exec(
+      "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v23-null','proj-v23-null','2026-03-19','2026-03-19')"
+    );
+
+    const brainstormId = 'brain-v23-null';
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id) VALUES (?, ?, ?, 'active', ?, ?, ?)"
+    ).run(brainstormId, 'proj-v23-null', 'Brainstorm Without Colors', now, now, 'conv-v23-null');
+
+    const row = db
+      .prepare('SELECT color, icon FROM brainstorms WHERE id = ?')
+      .get(brainstormId) as { color: string | null; icon: string | null };
+
+    assert.equal(row.color, null, 'color should default to NULL');
+    assert.equal(row.icon, null, 'icon should default to NULL');
+  });
+
+  it('is idempotent — running V23 migration twice does not error', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V23 database should be safe');
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 23);
   });
 });
 
@@ -839,6 +931,6 @@ describe('V22 migration - PM fields and board settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 22);
+    assert.equal(version, 23);
   });
 });
