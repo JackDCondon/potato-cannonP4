@@ -193,9 +193,9 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
   });
 
-  it('schema version is 21', () => {
+  it('schema version is 22', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21);
+    assert.equal(version, 22);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21);
+    assert.equal(version, 22);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -764,16 +764,81 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
-    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V21 database should be safe');
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21);
+    assert.equal(version, 22);
   });
 
-  it('schema version is 21', () => {
+  it('schema version is 22', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 21);
+    assert.equal(version, 22);
+  });
+});
+
+describe('V22 migration - PM fields and board settings', () => {
+  it('adds pm_enabled column to brainstorms', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(brainstorms)') as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    assert.ok(names.has('pm_enabled'), 'brainstorms table should have pm_enabled column');
+  });
+
+  it('creates board_settings table with workflow_id FK and pm_config column', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(board_settings)') as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    assert.ok(names.has('id'), 'board_settings should have id column');
+    assert.ok(names.has('workflow_id'), 'board_settings should have workflow_id column');
+    assert.ok(names.has('pm_config'), 'board_settings should have pm_config column');
+    assert.ok(names.has('created_at'), 'board_settings should have created_at column');
+    assert.ok(names.has('updated_at'), 'board_settings should have updated_at column');
+  });
+
+  it('creates index on board_settings.workflow_id', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const indexes = db.pragma('index_list(board_settings)') as Array<{ name: string }>;
+    const indexNames = new Set(indexes.map((idx) => idx.name));
+    assert.ok(indexNames.has('idx_board_settings_workflow'), 'should have idx_board_settings_workflow index');
+  });
+
+  it('pm_enabled defaults to 0 for brainstorms', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    // Insert a project
+    db.exec(
+      "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-pm','pm-test','PM Test','/pm-test','2026-03-19')"
+    );
+
+    // Insert a brainstorm without pm_enabled
+    const brainstormId = 'brain_pm_test';
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)"
+    ).run(brainstormId, 'proj-pm', 'Test Brainstorm', now, now);
+
+    const row = db
+      .prepare('SELECT pm_enabled FROM brainstorms WHERE id = ?')
+      .get(brainstormId) as { pm_enabled: number };
+    assert.equal(row.pm_enabled, 0);
+  });
+
+  it('is idempotent — running V22 migration twice does not error', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 22);
   });
 });
