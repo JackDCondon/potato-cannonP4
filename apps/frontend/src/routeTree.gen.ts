@@ -19,6 +19,7 @@ import { Route as TranscriptTicketTicketIdRouteImport } from './routes/transcrip
 import { Route as ProjectsProjectIdConfigureRouteImport } from './routes/projects/$projectId/configure'
 import { Route as ProjectsProjectIdBoardRouteImport } from './routes/projects/$projectId/board'
 import { Route as ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport } from './routes/projects/$projectId/workflows/$workflowId/board'
+import { Route as ProjectsProjectIdWorkflowsWorkflowIdSettingsRouteImport } from './routes/projects/$projectId/workflows/$workflowId/settings'
 
 const SessionsRoute = SessionsRouteImport.update({
   id: '/sessions',
@@ -73,6 +74,12 @@ const ProjectsProjectIdWorkflowsWorkflowIdBoardRoute =
     path: '/projects/$projectId/workflows/$workflowId/board',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute =
+  ProjectsProjectIdWorkflowsWorkflowIdSettingsRouteImport.update({
+    id: '/projects/$projectId/workflows/$workflowId/settings',
+    path: '/projects/$projectId/workflows/$workflowId/settings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/configure': typeof ProjectsProjectIdConfigureRoute
   '/transcript/ticket/$ticketId': typeof TranscriptTicketTicketIdRoute
   '/projects/$projectId/workflows/$workflowId/board': typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRoute
+  '/projects/$projectId/workflows/$workflowId/settings': typeof ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -97,6 +105,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/configure': typeof ProjectsProjectIdConfigureRoute
   '/transcript/ticket/$ticketId': typeof TranscriptTicketTicketIdRoute
   '/projects/$projectId/workflows/$workflowId/board': typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRoute
+  '/projects/$projectId/workflows/$workflowId/settings': typeof ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -110,6 +119,7 @@ export interface FileRoutesById {
   '/projects/$projectId/configure': typeof ProjectsProjectIdConfigureRoute
   '/transcript/ticket/$ticketId': typeof TranscriptTicketTicketIdRoute
   '/projects/$projectId/workflows/$workflowId/board': typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRoute
+  '/projects/$projectId/workflows/$workflowId/settings': typeof ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/configure'
     | '/transcript/ticket/$ticketId'
     | '/projects/$projectId/workflows/$workflowId/board'
+    | '/projects/$projectId/workflows/$workflowId/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/configure'
     | '/transcript/ticket/$ticketId'
     | '/projects/$projectId/workflows/$workflowId/board'
+    | '/projects/$projectId/workflows/$workflowId/settings'
   id:
     | '__root__'
     | '/'
@@ -148,6 +160,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/configure'
     | '/transcript/ticket/$ticketId'
     | '/projects/$projectId/workflows/$workflowId/board'
+    | '/projects/$projectId/workflows/$workflowId/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -161,6 +174,7 @@ export interface RootRouteChildren {
   ProjectsProjectIdConfigureRoute: typeof ProjectsProjectIdConfigureRoute
   TranscriptTicketTicketIdRoute: typeof TranscriptTicketTicketIdRoute
   ProjectsProjectIdWorkflowsWorkflowIdBoardRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRoute
+  ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -235,6 +249,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdBoardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/$projectId/workflows/$workflowId/settings': {
+      id: '/projects/$projectId/workflows/$workflowId/settings'
+      path: '/projects/$projectId/workflows/$workflowId/settings'
+      fullPath: '/projects/$projectId/workflows/$workflowId/settings'
+      preLoaderRoute: typeof ProjectsProjectIdWorkflowsWorkflowIdSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -250,6 +271,8 @@ const rootRouteChildren: RootRouteChildren = {
   TranscriptTicketTicketIdRoute: TranscriptTicketTicketIdRoute,
   ProjectsProjectIdWorkflowsWorkflowIdBoardRoute:
     ProjectsProjectIdWorkflowsWorkflowIdBoardRoute,
+  ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute:
+    ProjectsProjectIdWorkflowsWorkflowIdSettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

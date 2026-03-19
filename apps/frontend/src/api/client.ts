@@ -34,6 +34,8 @@ import type {
   TicketLifecycleConflictPayload,
   StaleTicketInputPayload,
   TicketLifecycleErrorPayload,
+  PmConfig,
+  BoardSettings,
 } from '@potato-cannon/shared'
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
@@ -728,6 +730,28 @@ export const api = {
   removeTicketDependency: (projectId: string, ticketId: string, dependsOn: string) =>
     request<void>(
       `/api/tickets/${encodeURIComponent(projectId)}/${encodeURIComponent(ticketId)}/dependencies?dependsOn=${encodeURIComponent(dependsOn)}`,
+      { method: 'DELETE' }
+    ),
+
+  // ============ Board Settings ============
+
+  getBoardSettings: (projectId: string, workflowId: string) =>
+    request<{ pmConfig: PmConfig }>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/settings`
+    ),
+
+  updateBoardPmSettings: (projectId: string, workflowId: string, config: Partial<PmConfig>) =>
+    request<{ pmConfig: PmConfig; settings: BoardSettings }>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/settings/pm`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(config),
+      }
+    ),
+
+  resetBoardPmSettings: (projectId: string, workflowId: string) =>
+    request<{ ok: boolean; deleted: boolean; pmConfig: PmConfig }>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/settings/pm`,
       { method: 'DELETE' }
     ),
 }
