@@ -76,7 +76,8 @@ import type {
 import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./phase-config.js";
 import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
-import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
+import { buildBrainstormPrompt, buildAgentPrompt, buildPmPrompt } from "./prompts.js";
+import { shouldUsePmSkill } from "../pm/pm-transition.js";
 import { PtyTextExtractor } from "./pty-text-extractor.js";
 import { getPtyCaptureDedup, clearPtyCaptureDedup } from "./pty-capture-dedup.js";
 import { buildResumePrompt } from "./resume-prompt.js";
@@ -1473,11 +1474,11 @@ export class SessionService {
   ): Promise<string> {
     console.log(`[spawnForBrainstorm] Starting for brainstorm ${brainstormId}`);
 
-    // Safety check - with exit-on-question, there shouldn't be an active session
-    // Log a warning if one exists (indicates unexpected state)
+    // Concurrency guard — prevent duplicate spawns from poller + user messages
     const existingActive = getActiveSessionForBrainstorm(brainstormId);
     if (existingActive && this.sessions.has(existingActive.id)) {
-      console.warn(`[spawnForBrainstorm] Unexpected: active session ${existingActive.id} exists for ${brainstormId}`);
+      console.log(`[spawnForBrainstorm] Session ${existingActive.id} already active for ${brainstormId} — returning existing`);
+      return existingActive.id;
     }
 
     const brainstorm = await getBrainstorm(projectId, brainstormId);
@@ -1511,15 +1512,15 @@ export class SessionService {
       await clearQuestion(projectId, brainstormId);
     }
 
+    // Determine whether this brainstorm should use the PM skill
+    const usePm = shouldUsePmSkill(brainstorm);
+
     // Only build full prompt for first session; resumed sessions use --resume
     const prompt = existingClaudeSessionId
-      ? pendingContext?.response || "Continue the brainstorm."
-      : buildBrainstormPrompt(
-          projectId,
-          brainstormId,
-          brainstorm,
-          { pendingContext, initialMessage },
-        );
+      ? pendingContext?.response || (usePm ? "Continue as Project Manager." : "Continue the brainstorm.")
+      : usePm
+        ? await buildPmPrompt(projectId, brainstormId, brainstorm, { pendingContext })
+        : buildBrainstormPrompt(projectId, brainstormId, brainstorm, { pendingContext, initialMessage });
 
     const meta: SessionMeta = {
       projectId,
@@ -1565,13 +1566,13 @@ export class SessionService {
       },
     };
 
-    // Load brainstorm agent from template
-    const agentType = "agents/brainstorm.md";
+    // Load agent from template — PM skill takes priority when transition has occurred
+    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
     const agentDefinition = await tryLoadAgentDefinition(projectId, agentType);
 
     if (!agentDefinition) {
       throw new Error(
-        `Brainstorm agent not found in template for project ${projectId}`,
+        `Agent '${agentType}' not found in template for project ${projectId}`,
       );
     }
 
