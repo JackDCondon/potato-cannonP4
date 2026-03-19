@@ -18,6 +18,7 @@ import {
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { pathToFileURL } from 'node:url';
 
 // Context from environment (set by session spawner)
 const PROJECT_ID = process.env.POTATO_PROJECT_ID || '';
@@ -143,7 +144,8 @@ async function main() {
 }
 
 // Only run main if this module is being executed directly (not imported for testing)
-if (import.meta.url === `file://${process.argv[1]}`) {
+const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (entryUrl && import.meta.url === entryUrl) {
   main().catch((error) => {
     console.error('MCP proxy error:', error);
     process.exit(1);
