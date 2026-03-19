@@ -29,6 +29,7 @@ import {
   getLatestClaudeSessionIdForTicket,
   getRecentSessionsForContinuity,
   updateClaudeSessionId,
+  updateSessionTokens,
   getActiveSessionForBrainstorm,
   getActiveSessionForTicket,
   getSessionsByTicket,
@@ -229,6 +230,20 @@ export function extractRateLimitNotice(event: unknown): string | null {
   }
 
   return `Claude rate limit reached (${limitType}).`;
+}
+
+/**
+ * Extract token usage from a Claude stream `result` event.
+ * Returns { inputTokens, outputTokens } if present, null otherwise.
+ */
+export function extractTokensFromResultEvent(
+  event: Record<string, unknown>,
+): { inputTokens: number; outputTokens: number } | null {
+  const usage = event.usage as
+    | { input_tokens?: number; output_tokens?: number }
+    | undefined;
+  if (!usage?.input_tokens || !usage?.output_tokens) return null;
+  return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
 }
 
 interface ResolveWorkerModelInput {
@@ -1230,6 +1245,14 @@ export class SessionService {
           ) {
             claudeSessionIdCaptured = true;
             updateClaudeSessionId(sessionId, event.session_id);
+          }
+
+          // Capture token usage from the final result event
+          if (event.type === "result") {
+            const tokens = extractTokensFromResultEvent(event);
+            if (tokens) {
+              updateSessionTokens(sessionId, tokens.inputTokens, tokens.outputTokens);
+            }
           }
         } catch {
           const logEntry = {
