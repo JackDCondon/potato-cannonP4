@@ -191,4 +191,19 @@ describe("findAgentWorkerInWorkflow", () => {
     const result = await findAgentWorkerInWorkflow(MOCK_PROJECT_ID, MOCK_AGENT_SOURCE);
     assert.equal(result, null);
   });
+
+  test("continues to tier 3 when tier 2 template exists but does not contain the agent", async () => {
+    // Tier 2 (project-local) returns a non-null template that was created before
+    // the agent was added — it only contains a different agent.
+    // Tier 3 (global catalog) has the up-to-date template with the target agent.
+    mockState.defaultWorkflow = { id: "wf_1", templateName: "product-development" };
+    mockState.workflowTemplate = null; // tier 1 absent
+    mockState.projectTemplate = makeTemplate("agents/other.md"); // tier 2: non-null but wrong agent
+    mockState.globalTemplate = makeTemplate(MOCK_AGENT_SOURCE, ["attach_artifact"]); // tier 3: has it
+
+    const result = await findAgentWorkerInWorkflow(MOCK_PROJECT_ID, MOCK_AGENT_SOURCE);
+    assert.ok(result !== null, "expected agent to be found in tier 3");
+    assert.equal(result.source, MOCK_AGENT_SOURCE);
+    assert.deepEqual(result.disallowTools, ["attach_artifact"]);
+  });
 });
