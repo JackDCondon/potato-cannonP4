@@ -123,7 +123,7 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
     } finally {
       setSavingAppearance(false)
     }
-  }, [projectId, brainstorm.id, effectiveColor, onBrainstormUpdated])
+  }, [projectId, brainstorm.id, brainstorm.color, onBrainstormUpdated])
 
   const handleIconSelect = useCallback(async (icon: string) => {
     if (icon === brainstorm.icon) return

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, fireEvent } from '@testing-library/react'
 import { EpicBadge } from './EpicBadge'
 import type { Brainstorm } from '@potato-cannon/shared'
 

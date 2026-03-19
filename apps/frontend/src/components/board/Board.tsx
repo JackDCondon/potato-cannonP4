@@ -394,7 +394,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* Board Header */}
       <div className="flex items-center justify-end px-4 py-3">
-        <ViewToggle projectSlug={currentProject?.slug} workflowId={activeWorkflow?.id} />
+        <ViewToggle />
       </div>
 
       {/* Template Upgrade Banner */}
