@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 22;
+const CURRENT_SCHEMA_VERSION = 23;
 
 /**
  * Run database migrations.
@@ -98,6 +98,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 22) {
     migrateV22(db);
+  }
+
+  if (version < 23) {
+    migrateV23(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1032,6 +1036,25 @@ function migrateV22(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_board_settings_workflow ON board_settings(workflow_id);
   `);
+}
+
+/**
+ * V23: Add color and icon columns to brainstorms table for epic customization.
+ * - color: TEXT nullable, stores the epic's primary color
+ * - icon: TEXT nullable, stores the epic's icon choice
+ */
+function migrateV23(db: Database.Database): void {
+  const brainstormCols = new Set(
+    (db.prepare("PRAGMA table_info(brainstorms)").all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
+  );
+  if (!brainstormCols.has("color")) {
+    db.exec(`ALTER TABLE brainstorms ADD COLUMN color TEXT`);
+  }
+  if (!brainstormCols.has("icon")) {
+    db.exec(`ALTER TABLE brainstorms ADD COLUMN icon TEXT`);
+  }
 }
 
 function normalizeTemplateVersion(version: string | null | undefined): string | null {
