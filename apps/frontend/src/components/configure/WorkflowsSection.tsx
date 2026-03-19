@@ -10,9 +10,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SettingsSection } from './SettingsSection'
-import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useTemplates } from '@/hooks/queries'
+import { useWorkflows, useCreateWorkflow, useDeleteWorkflow, useTemplates, useUpdateWorkflow } from '@/hooks/queries'
 import { api, type WorkflowDeletePreviewResponse } from '@/api/client'
 import { DeleteWorkflowDialog } from './DeleteWorkflowDialog'
+import { ChangeDefaultWorkflowDialog } from './ChangeDefaultWorkflowDialog'
 import { WorkflowTemplateUpgradePanel } from './WorkflowTemplateUpgradePanel'
 import type { Project, ProjectWorkflow } from '@potato-cannon/shared'
 
@@ -136,9 +137,24 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
   const { data: templates } = useTemplates()
   const createWorkflow = useCreateWorkflow()
   const deleteWorkflow = useDeleteWorkflow()
+  const updateWorkflow = useUpdateWorkflow()
   const [pendingDelete, setPendingDelete] = useState<ProjectWorkflow | null>(null)
   const [deletePreview, setDeletePreview] = useState<WorkflowDeletePreviewResponse | null>(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+  const [showChangeDefault, setShowChangeDefault] = useState(false)
+
+  const currentDefault = workflows?.find(wf => wf.isDefault)
+  const canChangeDefault = (workflows?.length ?? 0) >= 2
+
+  function handleChangeDefault(workflowId: string) {
+    updateWorkflow.mutate(
+      { projectId: project.id, workflowId, updates: { isDefault: true } },
+      {
+        onSuccess: () => setShowChangeDefault(false),
+        onError: (err) => console.error('change default workflow failed', err),
+      },
+    )
+  }
 
   function handleAdd(name: string, templateName: string, onSuccess: () => void) {
     createWorkflow.mutate({ projectId: project.id, name, templateName }, { onSuccess })
@@ -192,6 +208,17 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
     <SettingsSection
       title="Workflows"
       description="Manage independent workflow boards for this project. Each workflow has its own ticket queue and kanban board."
+      action={
+        canChangeDefault ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowChangeDefault(true)}
+          >
+            Change Default
+          </Button>
+        ) : undefined
+      }
     >
       <div className="space-y-1">
         {workflows && workflows.length > 0 ? (
@@ -231,6 +258,16 @@ export function WorkflowsSection({ project }: WorkflowsSectionProps) {
         onCancel={handleCancelDeleteDialog}
         onConfirm={handleConfirmDelete}
       />
+      {workflows && currentDefault && (
+        <ChangeDefaultWorkflowDialog
+          open={showChangeDefault}
+          workflows={workflows}
+          currentDefaultId={currentDefault.id}
+          isUpdating={updateWorkflow.isPending}
+          onCancel={() => setShowChangeDefault(false)}
+          onConfirm={handleChangeDefault}
+        />
+      )}
     </SettingsSection>
   )
 }

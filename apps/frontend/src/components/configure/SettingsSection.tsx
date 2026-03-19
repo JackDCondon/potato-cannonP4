@@ -5,13 +5,15 @@ interface SettingsSectionProps {
   description: string
   children: React.ReactNode
   danger?: boolean
+  action?: React.ReactNode
 }
 
 export function SettingsSection({
   title,
   description,
   children,
-  danger = false
+  danger = false,
+  action,
 }: SettingsSectionProps) {
   return (
     <div
@@ -21,12 +23,15 @@ export function SettingsSection({
       )}
     >
       <div className="space-y-1">
-        <h3 className={cn(
-          'font-medium',
-          danger ? 'text-accent-red' : 'text-text-primary'
-        )}>
-          {title}
-        </h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className={cn(
+            'font-medium',
+            danger ? 'text-accent-red' : 'text-text-primary'
+          )}>
+            {title}
+          </h3>
+          {action}
+        </div>
         <p className="text-sm text-text-secondary">{description}</p>
       </div>
       <div
