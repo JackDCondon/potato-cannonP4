@@ -35,21 +35,22 @@ export class PtyTextExtractor {
 
       if (!candidate) continue;
 
-      // If the candidate doesn't start with '{', it's a continuation fragment.
-      // Prepend it to... actually, with ANSI stripped, fragments are concatenated
-      // in the buffer, so we need a different approach.
-      // Try to parse; if it fails, the JSON may be incomplete (split across lines).
+      // Non-JSON lines (e.g. Claude Code startup banners, status lines) never
+      // start with '{'. Discard them immediately so they cannot poison the buffer.
+      if (!candidate.startsWith("{")) continue;
+
+      // Try to parse the candidate as a stream-json event.
+      // If parsing fails the candidate is an incomplete JSON fragment split
+      // across PTY wrap boundaries — prepend it back and wait for more data.
       try {
         const event = JSON.parse(candidate);
         const extracted = this.extractAssistantText(event);
         texts.push(...extracted);
       } catch {
-        // Incomplete JSON — could be a fragment. Try accumulating with next line.
-        // Put it back with the rest of the buffer for reassembly.
+        // Incomplete JSON fragment — put it back and keep looping only if
+        // there is another newline already in the buffer; otherwise wait.
         this.buffer = candidate + this.buffer;
-        // But we need to avoid infinite loops. If buffer has no more newlines,
-        // break and wait for more data.
-        break;
+        if (this.buffer.indexOf("\n") === -1) break;
       }
     }
 

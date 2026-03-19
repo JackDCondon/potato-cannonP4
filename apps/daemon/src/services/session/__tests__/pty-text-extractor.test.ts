@@ -64,6 +64,23 @@ describe("PtyTextExtractor", () => {
     assert.deepEqual(texts, []);
   });
 
+  it("discards non-JSON startup banner lines without poisoning subsequent parsing", () => {
+    // Claude Code emits startup banners before stream-json output.
+    // A previous bug prepended failed-parse lines back to the buffer,
+    // causing all subsequent JSON parsing to fail permanently.
+    const banner = "Claude Code v2.1.79\n";
+    const event = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: "Hello after banner" }] },
+    });
+
+    const texts1 = extractor.feed(banner);
+    assert.deepEqual(texts1, [], "banner should yield nothing");
+
+    const texts2 = extractor.feed(event + "\n");
+    assert.deepEqual(texts2, ["Hello after banner"], "valid event after banner must still parse");
+  });
+
   it("skips empty or whitespace-only text blocks", () => {
     const event = JSON.stringify({
       type: "assistant",
