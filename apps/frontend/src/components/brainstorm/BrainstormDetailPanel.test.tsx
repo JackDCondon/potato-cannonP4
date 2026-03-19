@@ -23,7 +23,16 @@ vi.mock('@tanstack/react-query', () => ({
 }))
 
 // Mock appStore
-const createMockAppState = () => ({
+const createMockAppState = (): {
+  brainstormSheetOpen: boolean
+  brainstormSheetBrainstormId: string | null
+  brainstormSheetProjectId: string | null
+  brainstormSheetBrainstormName: string | null
+  brainstormSheetIsCreating: boolean
+  currentProjectId: string | null
+  closeBrainstormSheet: ReturnType<typeof vi.fn>
+  openBrainstormSheet: ReturnType<typeof vi.fn>
+} => ({
   brainstormSheetOpen: false,
   brainstormSheetBrainstormId: null,
   brainstormSheetProjectId: null,
