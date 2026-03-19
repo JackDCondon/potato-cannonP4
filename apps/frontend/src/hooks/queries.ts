@@ -9,6 +9,7 @@ import type {
   CreateWorkflowInput,
   DependencyTier,
   SessionMeta,
+  UpdateWorkflowInput,
 } from '@potato-cannon/shared'
 
 export type UpdateTicketRequest = Partial<Ticket> & {
@@ -571,6 +572,24 @@ export function useCreateWorkflow() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateWorkflowInput) => api.createWorkflow(input),
+    onSuccess: (_, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: ['workflows', projectId] })
+    }
+  })
+}
+
+export function useUpdateWorkflow() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      workflowId,
+      updates,
+    }: {
+      projectId: string
+      workflowId: string
+      updates: UpdateWorkflowInput
+    }) => api.updateWorkflow(projectId, workflowId, updates),
     onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: ['workflows', projectId] })
     }
