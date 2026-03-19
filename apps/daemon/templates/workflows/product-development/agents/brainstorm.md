@@ -58,6 +58,18 @@ If the skill is not available, use these heuristics directly:
 
 Call `set_ticket_complexity` with your estimate. This is an initial estimate — refinement will re-evaluate.
 
+## Before Creating Tickets
+
+When the brainstorm is ready to transition to epic (the plan is validated by human and you're about to create tickets):
+
+1. **Save decisions artifact** — Call `save_brainstorm_artifact` with filename `decisions.md` containing:
+   - **Requirements Summary:** High-level overview of what needs to be built
+   - **Key Trade-offs:** Design decisions made and alternatives rejected
+   - **Design Rationale:** Why specific choices were made and how they serve the requirements
+   - **Constraints:** Limitations, dependencies, and scope boundaries discussed
+
+This artifact captures the thinking that won't fit in individual tickets and provides context for all downstream work.
+
 ## After Creating Tickets
 
 After creating all tickets for a multi-ticket plan, do these three things in order:
