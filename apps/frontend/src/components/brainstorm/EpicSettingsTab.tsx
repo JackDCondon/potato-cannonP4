@@ -112,7 +112,7 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
   const effectiveColor = getEpicColor(brainstorm.color)
 
   const handleColorSelect = useCallback(async (color: string) => {
-    if (color === effectiveColor) return
+    if (color === brainstorm.color) return
     setSavingAppearance(true)
     try {
       await api.updateBrainstorm(projectId, brainstorm.id, { color })
