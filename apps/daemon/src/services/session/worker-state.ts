@@ -286,15 +286,24 @@ function needsRecovery(worker: WorkerState | null): boolean {
   // Check for running agent (existing logic)
   if (hasRunningAgentInState(worker)) return true;
 
-  // Check for ralph loop at max attempts
+  // Check for ralph loop at max attempts or between spawns
   if (worker.type === "ralphLoop") {
     const loop = worker as RalphLoopState;
     if (loop.maxAttempts && loop.iteration >= loop.maxAttempts) return true;
+    // If the loop advanced past the first worker but hasn't spawned the next
+    // agent yet (activeWorker is null, workerIndex > 0), this means the daemon
+    // crashed between agent completion and next agent spawn. Reset to restart
+    // the current iteration from the beginning.
+    if (!loop.activeWorker && loop.workerIndex > 0) return true;
     return needsRecovery(loop.activeWorker);
   }
 
   if (worker.type === "taskLoop") {
-    return needsRecovery((worker as TaskLoopState).activeWorker);
+    const loop = worker as TaskLoopState;
+    // If the loop advanced past the first worker for the current task but
+    // hasn't spawned the next agent yet, recovery is needed.
+    if (!loop.activeWorker && loop.workerIndex > 0 && loop.currentTaskId) return true;
+    return needsRecovery(loop.activeWorker);
   }
 
   return false;
