@@ -33,7 +33,7 @@ import {
   prepareForRecovery,
   hasMatchingExecutionGeneration,
 } from "./worker-state.js";
-import { initRalphLoop, handleAgentCompletion as handleRalphLoopAgentCompletion, captureDoerSessionIdIfNeeded } from "./loops/ralph-loop.js";
+import { initRalphLoop, handleAgentCompletion as handleRalphLoopAgentCompletion, captureDoerSessionIdIfNeeded, getCurrentWorker as getRalphCurrentWorker } from "./loops/ralph-loop.js";
 import {
   initTaskLoop,
   getNextTask,
@@ -44,7 +44,7 @@ import {
 } from "./loops/task-loop.js";
 import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./phase-config.js";
 import { getTicket } from "../../stores/ticket.store.js";
-import { getActiveSessionForTicket } from "../../stores/session.store.js";
+import { getLatestClaudeSessionIdForTicket } from "../../stores/session.store.js";
 import { getProjectById } from "../../stores/project.store.js";
 import { readQuestion, clearQuestion } from "../../stores/chat.store.js";
 import { getTask, listTasks, updateTaskStatus } from "../../stores/task.store.js";
@@ -835,11 +835,11 @@ async function processNestedCompletion(
     }
 
     // Capture doer session ID before state resets (for --resume on next iteration)
-    const currentWorker = worker.workers[ralphState.workerIndex];
+    const currentWorker = getRalphCurrentWorker(worker, ralphState);
     if (currentWorker && isAgentWorker(currentWorker)) {
-      const activeSession = getActiveSessionForTicket(ticketId);
-      if (activeSession?.claudeSessionId) {
-        captureDoerSessionIdIfNeeded(ralphState, currentWorker, activeSession.claudeSessionId);
+      const latestClaudeSessionId = getLatestClaudeSessionIdForTicket(ticketId);
+      if (latestClaudeSessionId) {
+        captureDoerSessionIdIfNeeded(ralphState, currentWorker, latestClaudeSessionId);
       }
     }
 
