@@ -76,6 +76,7 @@ import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./p
 import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
+import { buildResumePrompt } from "./resume-prompt.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
 import { logToDaemon, savePrompt } from "./ticket-logger.js";
@@ -2070,7 +2071,8 @@ export class SessionService {
 
     // With --resume, Claude already has the full conversation context.
     // The user's response is the new prompt input.
-    const prompt = userResponse;
+    // Prepend a reminder to use MCP tools for all user-visible output.
+    const prompt = buildResumePrompt(userResponse);
 
     return this.spawnClaudeSession(
       storedSession.id,
