@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, Image, Clock, MessageCircleQuestion, Layers } from 'lucide-react'
+import { Archive, Image, Clock, MessageCircleQuestion } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, timeAgo } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
@@ -10,8 +10,8 @@ import { ListItemCard } from '@/components/ui/list-item-card'
 import { IconButton } from '@/components/ui/icon-button'
 import { ArchiveConfirmDialog, shouldShowArchiveWarning } from '@/components/ticket-detail/ArchiveConfirmDialog'
 import { DependencyBadge } from '@/components/board/DependencyBadge'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { DependencyTier, Ticket } from '@potato-cannon/shared'
+import { EpicBadge } from '@/components/board/EpicBadge'
+import type { Brainstorm, DependencyTier, Ticket } from '@potato-cannon/shared'
 
 const COMPLEXITY_BORDER_COLORS: Record<Ticket['complexity'], string> = {
   simple: 'var(--color-text-muted)',
@@ -24,9 +24,10 @@ interface TicketCardProps {
   projectId: string
   swimlaneColor?: string
   blockedFromPhaseByTier?: Record<DependencyTier, string>
+  brainstorm?: Brainstorm
 }
 
-export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseByTier }: TicketCardProps) {
+export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseByTier, brainstorm }: TicketCardProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
   const openBrainstormSheet = useAppStore((s) => s.openBrainstormSheet)
   const isProcessing = useAppStore((s) => s.isTicketProcessing(projectId, ticket.id))
@@ -139,9 +140,26 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
       {/* Ticket ID */}
       <div className="text-xs text-text-muted font-mono mb-1">{ticket.id}</div>
 
-      {/* Ticket Title */}
-      <div className="text-text-primary text-sm font-medium line-clamp-2 mb-2">
-        {ticket.title}
+      {/* Title + badges row */}
+      <div className="flex items-start gap-1.5 mb-2">
+        <div className="text-text-primary text-sm font-medium line-clamp-2 min-w-0">
+          {ticket.title}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+          <DependencyBadge
+            blockedBy={ticket.blockedBy ?? []}
+            blockedFromPhaseByTier={blockedFromPhaseByTier}
+          />
+          {ticket.brainstormId && (
+            <EpicBadge
+              brainstorm={brainstorm}
+              onClick={(e) => {
+                e.stopPropagation()
+                openBrainstormSheet(projectId, ticket.brainstormId!, 'Epic')
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Meta row */}
@@ -153,34 +171,12 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
               <span className="truncate">{activity || 'Processing...'}</span>
             </span>
           ) : (
-            <>
-              {imageCount > 0 && (
-                <span className="flex items-center gap-1">
-                  <Image className="h-3 w-3" />
-                  {imageCount}
-                </span>
-              )}
-              <DependencyBadge
-                blockedBy={ticket.blockedBy ?? []}
-                blockedFromPhaseByTier={blockedFromPhaseByTier}
-              />
-              {ticket.brainstormId && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="inline-flex items-center text-indigo-400 hover:text-indigo-300 cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        openBrainstormSheet(projectId, ticket.brainstormId!, 'Epic')
-                      }}
-                    >
-                      <Layers className="h-3 w-3" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Part of an epic — click to view</TooltipContent>
-                </Tooltip>
-              )}
-            </>
+            imageCount > 0 && (
+              <span className="flex items-center gap-1">
+                <Image className="h-3 w-3" />
+                {imageCount}
+              </span>
+            )
           )}
         </div>
         <span className="flex items-center gap-1 shrink-0">
