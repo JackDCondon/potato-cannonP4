@@ -2,7 +2,7 @@
   "$schema": "./workflow.schema.json",
   "name": "product-development",
   "description": "Standard product development workflow with refinement, architecture, and build phases",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "phases": [
     {
       "id": "Refinement",
@@ -174,7 +174,7 @@
                   "source": "agents/verify-quality.md",
                   "description": "Verifies the quality of the individual build task code",
                   "disallowTools": ["TodoWrite"],
-                  "modelTier": "low"
+                  "modelTier": "high"
                 }
               ]
             }
@@ -185,7 +185,7 @@
           "type": "agent",
           "source": "agents/qa.md",
           "description": "Creates build tickets from specification",
-          "modelTier": "low"
+          "modelTier": "high"
         }
       ],
       "transitions": {
