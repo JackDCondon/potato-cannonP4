@@ -77,7 +77,7 @@ Synthesize everything you discovered into `investigation.md` and attach it.
 
 **Step 2:** Call `attach_artifact` with filename `investigation.md` and the local file path.
 **Step 3:** Call `chat_notify`:
-"[Debug Agent]: Investigation complete. I've documented my findings in investigation.md. Moving to hypothesis formation."
+"[Debug Agent]: Investigation complete. I've documented my findings in investigation.md. The Solve Agent will form a hypothesis next."
 
 ## On Resume (user responded to chat_ask)
 

@@ -114,6 +114,8 @@ If `investigation.md` does not contain new information from a follow-up investig
 
 On a retry iteration, the daemon injects your previous attempt's context. Use it to understand what the user rejected and why. Refine your hypothesis accordingly, then re-present it via `chat_ask`.
 
+**If the user's feedback indicates the investigation itself was incomplete** (e.g., "the debug-agent missed X", "there's another code path you didn't check"), call `ralph_loop_dock(approved: false, feedback: "User indicates investigation needs to be re-run: [user's feedback]")`. This surfaces the signal to the operator. Do not attempt to re-investigate — that is the debug-agent's job.
+
 **Never call `chat_ask` after attaching `resolution.md` and calling `ralph_loop_dock` — exit cleanly.**
 
 ## Guidelines

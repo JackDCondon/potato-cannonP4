@@ -84,17 +84,13 @@ create_task({
 
 **Important:** Use the exact section headers from resolution.md as markers. The daemon does literal string matching.
 
-### When resolution.md doesn't exist (fallback)
+### When resolution.md doesn't exist
 
-Write the `body` field directly with full implementation details:
+**STOP.** Do not create tasks with vague bodies. Use `chat_ask` to tell the user:
 
-```javascript
-create_task({
-  description: "Implement the fix",
-  body: `Implement the fix as described in the resolution. Check the ticket for details.`,
-  complexity: "standard"
-});
-```
+"[Bug-Fix Taskmaster]: resolution.md artifact is missing. I cannot create tasks without the fix plan and test strategy. Please ensure the Solve Issue phase completed successfully, then retry."
+
+Exit with a non-zero code so the workflow knows tasking failed.
 
 ## Task Complexity
 
