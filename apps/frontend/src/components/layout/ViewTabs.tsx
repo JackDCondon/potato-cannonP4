@@ -10,9 +10,11 @@ import {
 export function ViewTabs() {
   const location = useLocation()
 
-  // Extract projectId from URL
+  // Extract projectId and optional workflowId from URL
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/)
   const projectId = projectMatch ? decodeURIComponent(projectMatch[1]) : null
+  const workflowMatch = location.pathname.match(/\/workflows\/([^/]+)/)
+  const workflowId = workflowMatch ? decodeURIComponent(workflowMatch[1]) : null
 
   if (!projectId) return null // Don't show tabs if not on a project route
 
@@ -23,19 +25,35 @@ export function ViewTabs() {
     <nav className="hidden sm:flex flex-1 items-center gap-1">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Link
-            to="/projects/$projectId/board"
-            params={{ projectId }}
-            className={cn(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
-              isBoardActive
-                ? 'bg-bg-tertiary text-text-primary'
-                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
-            )}
-          >
-            <LayoutDashboard className="h-4 w-4" />
-            <span>Board</span>
-          </Link>
+          {workflowId ? (
+            <Link
+              to="/projects/$projectId/workflows/$workflowId/board"
+              params={{ projectId, workflowId }}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+                isBoardActive
+                  ? 'bg-bg-tertiary text-text-primary'
+                  : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+              )}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              <span>Board</span>
+            </Link>
+          ) : (
+            <Link
+              to="/projects/$projectId/board"
+              params={{ projectId }}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors',
+                isBoardActive
+                  ? 'bg-bg-tertiary text-text-primary'
+                  : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+              )}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              <span>Board</span>
+            </Link>
+          )}
         </TooltipTrigger>
         <TooltipContent>An AI Assisted Kanban board</TooltipContent>
       </Tooltip>
