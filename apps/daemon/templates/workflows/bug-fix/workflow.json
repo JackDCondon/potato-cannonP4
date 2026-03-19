@@ -1,21 +1,46 @@
 {
   "$schema": "../workflow.schema.json",
   "name": "bug-fix",
-  "description": "Fast-path workflow for diagnosing and fixing bugs: interactive diagnosis, targeted build, PR.",
-  "version": "1.0.1",
+  "description": "Structured bug-fix workflow: investigate, confirm hypothesis with user, build fix, create PR.",
+  "version": "2.0.0",
   "parentTemplate": "product-development",
   "phases": [
     {
-      "id": "Solve Issue",
-      "name": "Solve Issue",
-      "description": "Interactive diagnostic session to identify root cause and produce a fix plan",
+      "id": "Identify Issue",
+      "name": "Identify Issue",
+      "description": "Investigate the bug: explore code, ask questions, document findings in investigation.md",
       "workers": [
         {
           "id": "debug-agent",
           "type": "agent",
           "source": "agents/debug-agent.md",
-          "description": "Interactively diagnoses the bug and produces resolution.md",
+          "description": "Investigates the bug and produces investigation.md",
           "modelTier": "high"
+        }
+      ],
+      "transitions": {
+        "next": "Solve Issue"
+      }
+    },
+    {
+      "id": "Solve Issue",
+      "name": "Solve Issue",
+      "description": "Present root cause hypothesis to user, iterate until confirmed, produce resolution.md",
+      "workers": [
+        {
+          "id": "solve-ralph-loop",
+          "type": "ralphLoop",
+          "description": "Iterates hypothesis with user until confirmed",
+          "maxAttempts": 5,
+          "workers": [
+            {
+              "id": "solve-agent",
+              "type": "agent",
+              "source": "agents/solve-agent.md",
+              "description": "Presents hypothesis and iterates with user feedback",
+              "modelTier": "high"
+            }
+          ]
         }
       ],
       "transitions": {
@@ -37,31 +62,39 @@
     {
       "id": "Build",
       "name": "Build",
-      "description": "Implement the fix from resolution.md with adversarial review",
+      "description": "Create tasks from resolution.md and implement the fix",
       "blocksOnUnsatisfiedTiers": ["code-ready"],
       "workers": [
         {
-          "id": "build-ralph-loop",
-          "type": "ralphLoop",
-          "description": "Implements and reviews the fix against resolution.md",
-          "maxAttempts": 2,
+          "id": "bug-fix-taskmaster",
+          "type": "agent",
+          "source": "agents/bug-fix-taskmaster.md",
+          "description": "Creates tasks from resolution.md",
+          "disallowTools": ["Skill(superpowers:*)"],
+          "modelTier": "mid"
+        },
+        {
+          "id": "build-task-loop",
+          "type": "taskLoop",
+          "description": "Executes each fix task",
+          "maxAttempts": 10,
           "workers": [
             {
               "id": "builder-agent",
               "type": "agent",
               "source": "agents/builder.md",
-              "description": "Implements the fix from resolution.md",
+              "description": "Implements individual fix tasks",
               "disallowTools": ["Skill(superpowers:*)"],
               "modelTier": "mid"
-            },
-            {
-              "id": "bug-fix-reviewer-agent",
-              "type": "agent",
-              "source": "agents/bug-fix-reviewer.md",
-              "description": "Verifies fix addresses root cause from resolution.md",
-              "modelTier": "low"
             }
           ]
+        },
+        {
+          "id": "bug-fix-qa-agent",
+          "type": "agent",
+          "source": "agents/bug-fix-qa.md",
+          "description": "Holistic QA review of entire fix against resolution.md",
+          "modelTier": "low"
         }
       ],
       "transitions": {
@@ -88,4 +121,3 @@
     }
   ]
 }
-
