@@ -4,8 +4,6 @@ import { RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SettingsSection } from './SettingsSection'
-import { PmModeSelector } from './PmModeSelector'
-import { PmAlertToggles } from './PmAlertToggles'
 import { api } from '@/api/client'
 import type { PmConfig, PmMode, PmAlertConfig, PmPollingConfig } from '@potato-cannon/shared'
 import { DEFAULT_PM_CONFIG } from '@potato-cannon/shared'
@@ -130,33 +128,6 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
     <div className="@container h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto p-6 pb-12">
         <div className="space-y-2">
-          <SettingsSection
-            title="PM Mode"
-            description="Choose how the Project Manager operates on this board."
-          >
-            <PmModeSelector
-              value={mode}
-              onChange={setMode}
-              disabled={loading || saving}
-            />
-          </SettingsSection>
-
-          <SettingsSection
-            title="Alert Categories"
-            description="Enable or disable specific alert types. Greyed out in passive mode."
-          >
-            <PmAlertToggles
-              value={alerts}
-              onChange={setAlerts}
-              disabled={loading || saving || isPassive}
-            />
-            {isPassive && (
-              <p className="mt-3 text-xs text-text-secondary">
-                Alerts are inactive in passive mode. Switch to watching or executing to configure.
-              </p>
-            )}
-          </SettingsSection>
-
           <SettingsSection
             title="Polling Configuration"
             description="Timing parameters for the daemon-side polling loop. Only active in watching or executing mode."
