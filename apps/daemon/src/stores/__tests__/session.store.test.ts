@@ -568,6 +568,14 @@ describe("SessionStore", () => {
       const result = sessionStore.updateSessionTokens("non-existent", 1000, 500);
       assert.strictEqual(result, false);
     });
+
+    it("should preserve zero token counts", () => {
+      const created = sessionStore.createSession({ projectId });
+      sessionStore.updateSessionTokens(created.id, 0, 0);
+      const session = sessionStore.getSession(created.id)!;
+      assert.strictEqual(session.inputTokens, 0);
+      assert.strictEqual(session.outputTokens, 0);
+    });
   });
 
   describe("sessions table has input_tokens and output_tokens columns", () => {
