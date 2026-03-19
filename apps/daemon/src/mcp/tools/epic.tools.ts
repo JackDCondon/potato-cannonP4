@@ -30,6 +30,7 @@ export const epicTools: ToolDefinition[] = [
       },
       required: [],
     },
+    scope: "session",
   },
 ];
 
@@ -126,9 +127,8 @@ export const epicHandlers: Record<
 
     // Load brainstorm metadata
     let brainstorm;
-    try {
-      brainstorm = await getBrainstorm(ctx.projectId, brainstormId);
-    } catch {
+    brainstorm = await getBrainstorm(ctx.projectId, brainstormId);
+    if (!brainstorm) {
       return {
         content: [
           {
