@@ -26,6 +26,7 @@ vi.mock('@/hooks/queries', () => ({
   useProjects: () => ({ data: [{ id: 'proj-1', template: { name: 'product-development' } }] }),
   useTemplate: () => ({ data: { phases: [{ name: 'Build' }] } }),
   useUpdateTicket: () => ({ mutate: vi.fn() }),
+  useBrainstorms: () => ({ data: [] }),
 }))
 
 // Mock appStore
@@ -39,6 +40,7 @@ vi.mock('@/stores/appStore', () => ({
   useAppStore: (selector: (s: Record<string, unknown>) => unknown) => {
     const state = {
       openTicketSheet: mockOpenTicketSheet,
+      openBrainstormSheet: vi.fn(),
       isTicketProcessing: mockIsTicketProcessing,
       isTicketPending: mockIsTicketPending,
     }
