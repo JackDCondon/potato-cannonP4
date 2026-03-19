@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, redirect, isRedirect } from '@tanstack/react-router'
 import { api } from '@/api/client'
 
 export const Route = createFileRoute('/projects/$projectId/board')({
@@ -29,7 +29,7 @@ export const Route = createFileRoute('/projects/$projectId/board')({
       throw redirect({ to: '/projects/$projectId/configure', params: { projectId: projectSlug } })
     } catch (e) {
       // Re-throw TanStack Router redirects as-is
-      if (e && typeof e === 'object' && '__isRedirect' in e) {
+      if (isRedirect(e)) {
         throw e
       }
       // On unexpected API failure, redirect to configure
