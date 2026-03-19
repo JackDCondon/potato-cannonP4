@@ -204,7 +204,7 @@ export function BrainstormDetailPanel() {
                   <h2 className="text-text-primary text-lg font-semibold truncate">
                     {isEpicPm ? 'Epic \u2014 managed by PM' : (brainstormSheetBrainstormName || 'Brainstorm')}
                   </h2>
-                  {isEpic && epicColor && (
+                  {isEpic && (
                     <Badge
                       variant="secondary"
                       className="shrink-0"
