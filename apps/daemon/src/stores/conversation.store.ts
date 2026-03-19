@@ -208,6 +208,21 @@ export class ConversationStore {
       .run(now, messageId);
     return result.changes > 0;
   }
+
+  updateMessageMetadata(
+    messageId: string,
+    metadata: Record<string, unknown>
+  ): boolean {
+    // Merge with existing metadata (if any)
+    const existing = this.getMessage(messageId);
+    if (!existing) return false;
+
+    const merged = { ...(existing.metadata ?? {}), ...metadata };
+    const result = this.db
+      .prepare("UPDATE conversation_messages SET metadata = ? WHERE id = ?")
+      .run(JSON.stringify(merged), messageId);
+    return result.changes > 0;
+  }
 }
 
 // =============================================================================
@@ -262,4 +277,11 @@ export function getPendingQuestion(
 
 export function answerQuestion(messageId: string): boolean {
   return new ConversationStore(getDatabase()).answerQuestion(messageId);
+}
+
+export function updateMessageMetadata(
+  messageId: string,
+  metadata: Record<string, unknown>
+): boolean {
+  return new ConversationStore(getDatabase()).updateMessageMetadata(messageId, metadata);
 }

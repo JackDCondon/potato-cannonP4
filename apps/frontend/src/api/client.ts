@@ -6,6 +6,7 @@ import type {
   Session,
   SessionMeta,
   Brainstorm,
+  BrainstormMessage,
   Template,
   Artifact,
   CreateBrainstormResponse,
@@ -16,6 +17,7 @@ import type {
   ConversationEntry,
   TicketPendingResponse,
   TicketMessagesResponse,
+  TicketMessage,
   Task,
   ArtifactChatStartResponse,
   ArtifactChatPendingResponse,
@@ -117,6 +119,17 @@ export function isTicketLifecycleErrorPayload(
     isTicketLifecycleConflictPayload(payload) ||
     isStaleTicketInputPayload(payload)
   )
+}
+
+/**
+ * Filter out messages that have been soft-deleted via metadata.superseded.
+ * PTY-captured messages that were later confirmed by an explicit chat_notify
+ * call are marked superseded to avoid duplicates in the UI.
+ */
+function filterSupersededMessages<T extends { metadata?: Record<string, unknown> | null }>(
+  messages: T[]
+): T[] {
+  return messages.filter((msg) => !msg.metadata?.superseded)
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -333,8 +346,13 @@ export const api = {
   getTicketConversations: (projectId: string, ticketId: string) =>
     request<ConversationEntry[]>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/conversations`),
 
-  getTicketMessages: (projectId: string, ticketId: string) =>
-    request<TicketMessagesResponse>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/messages`),
+  getTicketMessages: async (projectId: string, ticketId: string) => {
+    const result = await request<TicketMessagesResponse>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/messages`)
+    return {
+      ...result,
+      messages: filterSupersededMessages(result.messages as Array<TicketMessage & { metadata?: Record<string, unknown> | null }>)
+    } as TicketMessagesResponse
+  },
 
   getTicketPending: (projectId: string, ticketId: string) =>
     request<TicketPendingResponse>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/pending`),
@@ -433,10 +451,15 @@ export const api = {
       `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}/pending`
     ),
 
-  getBrainstormMessages: (projectId: string, brainstormId: string) =>
-    request<BrainstormMessagesResponse>(
+  getBrainstormMessages: async (projectId: string, brainstormId: string) => {
+    const result = await request<BrainstormMessagesResponse>(
       `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}/messages`
-    ),
+    )
+    return {
+      ...result,
+      messages: filterSupersededMessages(result.messages as Array<BrainstormMessage & { metadata?: Record<string, unknown> | null }>)
+    } as BrainstormMessagesResponse
+  },
 
   deleteBrainstorm: (projectId: string, brainstormId: string) =>
     request<void>(

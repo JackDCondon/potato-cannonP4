@@ -3,6 +3,8 @@
 import type { ToolDefinition, McpContext, McpToolResult } from '../../types/mcp.types.js';
 import { chatService } from '../../services/chat.service.js';
 import type { ChatContext } from '../../providers/chat-provider.types.js';
+import { getPtyCaptureDedup } from '../../services/session/pty-capture-dedup.js';
+import { updateMessageMetadata } from '../../stores/conversation.store.js';
 
 const AGENT_HEADER_REGEX = /^(\s*)\[([^\]\n]*\bAgent\b[^\]\n]*)\]:(\s*)/;
 
@@ -148,6 +150,29 @@ export const chatHandlers: Record<
       args.message as string,
       ctx.agentModel,
     );
+
+    // Check if the same content was already stored as a PTY capture.
+    // If so, mark the PTY-captured message as superseded (soft-delete) so it
+    // won't be displayed in the UI alongside the authoritative chat_notify message.
+    const contextKey = ctx.ticketId || ctx.brainstormId;
+    if (contextKey) {
+      try {
+        const dedup = getPtyCaptureDedup(contextKey);
+        // Match against the raw message (before header formatting) since PTY
+        // captures the raw text block, not the formatted version.
+        const rawMessage = args.message as string;
+        const captureMessageId = dedup.findMatchingCapture(rawMessage)
+          ?? dedup.findMatchingCapture(message);
+        if (captureMessageId) {
+          updateMessageMetadata(captureMessageId, { superseded: true });
+          dedup.removeCaptureByMessageId(captureMessageId);
+        }
+      } catch (err) {
+        // Non-fatal: dedup failure should not block the notification
+        console.warn('[chat_notify] PTY capture dedup check failed:', err);
+      }
+    }
+
     await chatService.notify(toContext(ctx), message);
     return {
       content: [{ type: 'text', text: 'Notification sent' }],

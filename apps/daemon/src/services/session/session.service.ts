@@ -37,6 +37,7 @@ import {
   addMessage,
   getMessages,
   getMessagesForContinuity,
+  updateMessageMetadata,
 } from "../../stores/conversation.store.js";
 import {
   DEFAULT_LIFECYCLE_CONTINUITY_CONFIG,
@@ -77,6 +78,7 @@ import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
 import { PtyTextExtractor } from "./pty-text-extractor.js";
+import { getPtyCaptureDedup } from "./pty-capture-dedup.js";
 import { buildResumePrompt } from "./resume-prompt.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
@@ -2214,6 +2216,10 @@ export class SessionService {
    * Store captured PTY assistant text as a conversation notification.
    * This catches reasoning text that the agent outputs directly instead
    * of sending via chat_notify.
+   *
+   * Records each stored message in the per-context PtyCaptureDedup so that
+   * when chat_notify fires with the same content, the PTY-captured message
+   * can be marked as superseded (soft-deleted from display).
    */
   private handleCapturedPtyText(
     text: string,
@@ -2236,7 +2242,7 @@ export class SessionService {
 
       if (!conversationId) return;
 
-      addMessage(conversationId, {
+      const stored = addMessage(conversationId, {
         type: "notification",
         text,
         metadata: {
@@ -2245,6 +2251,12 @@ export class SessionService {
           agentSource: agentType,
         },
       });
+
+      // Register in dedup so chat_notify can supersede this message
+      const contextKey = ticketId ?? brainstormId;
+      if (contextKey) {
+        getPtyCaptureDedup(contextKey).recordCapture(text, stored.id);
+      }
 
       // Emit SSE event so the frontend updates in real time
       const now = new Date().toISOString();
