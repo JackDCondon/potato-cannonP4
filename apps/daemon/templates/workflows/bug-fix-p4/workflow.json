@@ -1,0 +1,131 @@
+{
+  "$schema": "../workflow.schema.json",
+  "name": "bug-fix-p4",
+  "description": "Structured bug-fix workflow for Perforce: investigate, confirm hypothesis, build fix, shelve for review.",
+  "version": "2.0.0",
+  "parentTemplate": "product-development",
+  "phases": [
+    {
+      "id": "Identify Issue",
+      "name": "Identify Issue",
+      "description": "Investigate the bug: explore code, ask questions, document findings in investigation.md",
+      "workers": [
+        {
+          "id": "debug-agent",
+          "type": "agent",
+          "source": "agents/debug-agent.md",
+          "description": "Investigates the bug and produces investigation.md",
+          "modelTier": "high"
+        }
+      ],
+      "transitions": {
+        "next": "Solve Issue"
+      }
+    },
+    {
+      "id": "Solve Issue",
+      "name": "Solve Issue",
+      "description": "Present root cause hypothesis to user, iterate until confirmed, produce resolution.md",
+      "workers": [
+        {
+          "id": "solve-ralph-loop",
+          "type": "ralphLoop",
+          "description": "Iterates hypothesis with user until confirmed",
+          "maxAttempts": 5,
+          "workers": [
+            {
+              "id": "solve-agent",
+              "type": "agent",
+              "source": "agents/solve-agent.md",
+              "description": "Presents hypothesis and iterates with user feedback",
+              "modelTier": "high"
+            }
+          ]
+        }
+      ],
+      "transitions": {
+        "next": "Backlog"
+      }
+    },
+    {
+      "id": "Backlog",
+      "name": "Backlog",
+      "description": "Resolution confirmed, awaiting implementation",
+      "unblocksTier": "artifact-ready",
+      "blocksOnUnsatisfiedTiers": ["artifact-ready"],
+      "workers": [],
+      "transitions": {
+        "next": null,
+        "manual": true
+      }
+    },
+    {
+      "id": "Build",
+      "name": "Build",
+      "description": "Create tasks from resolution.md and implement the fix with P4 sync",
+      "blocksOnUnsatisfiedTiers": ["code-ready"],
+      "workers": [
+        {
+          "id": "bug-fix-taskmaster",
+          "type": "agent",
+          "source": "agents/bug-fix-taskmaster.md",
+          "description": "Creates tasks from resolution.md",
+          "disallowTools": ["Skill(superpowers:*)"],
+          "modelTier": "mid"
+        },
+        {
+          "id": "build-task-loop",
+          "type": "taskLoop",
+          "description": "Syncs workspace and executes each fix task",
+          "maxAttempts": 10,
+          "workers": [
+            {
+              "id": "sync-agent",
+              "type": "agent",
+              "source": "agents/sync-agent.md",
+              "description": "Syncs P4 workspace to head and resolves conflicts",
+              "modelTier": "low"
+            },
+            {
+              "id": "builder-agent",
+              "type": "agent",
+              "source": "agents/builder.md",
+              "description": "Implements individual fix tasks",
+              "disallowTools": ["Skill(superpowers:*)"],
+              "modelTier": "mid"
+            }
+          ]
+        },
+        {
+          "id": "bug-fix-qa-agent",
+          "type": "agent",
+          "source": "agents/bug-fix-qa.md",
+          "description": "Holistic QA review of entire fix against resolution.md",
+          "modelTier": "low"
+        }
+      ],
+      "transitions": {
+        "next": "Shelve"
+      },
+      "requiresIsolation": true
+    },
+    {
+      "id": "Shelve",
+      "name": "Shelve",
+      "description": "Shelve changelist for review",
+      "workers": [
+        {
+          "id": "shelve-agent",
+          "type": "agent",
+          "source": "agents/shelve-agent.md",
+          "description": "Creates changelist, shelves files, links to Swarm",
+          "modelTier": "low"
+        }
+      ],
+      "transitions": {
+        "next": null
+      },
+      "requiresIsolation": true
+    }
+  ]
+}
