@@ -12,12 +12,14 @@ If tasks already exist, use `chat_ask` to present the user with options:
 
 "[Bug-Fix Taskmaster]: I found {N} existing tasks for this ticket. What would you like me to do?
 
-1. Go straight to build with the current task list
-2. Wipe all tasks and regenerate from resolution.md
-3. [Type a specific instruction]"
+1. Continue creating tasks — add only tasks that don't exist yet
+2. Go straight to build with the current task list
+3. Wipe all tasks and regenerate from resolution.md
+4. [Type a specific instruction]"
 
-**If user chooses option 1:** Exit immediately with code 0 (build phase will proceed with existing tasks).
-**If user chooses option 2:** Cancel all existing tasks (set status to "cancelled"), then proceed with fresh task creation from Step 1.
+**If user chooses option 1:** Read the resolution, identify which tasks don't exist yet, and create only the missing ones.
+**If user chooses option 2:** Exit immediately with code 0 (build phase will proceed with existing tasks).
+**If user chooses option 3:** Cancel all existing tasks (set status to "cancelled"), then proceed with fresh task creation from Step 1.
 **If user gives a custom instruction:** Follow their instruction.
 
 If NO tasks exist, use `chat_notify` to announce:
