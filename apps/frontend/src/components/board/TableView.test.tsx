@@ -26,7 +26,21 @@ vi.mock('@/hooks/queries', () => ({
   useProjects: () => ({ data: [{ id: 'proj-1', template: { name: 'product-development' } }] }),
   useTemplate: () => ({ data: { phases: [{ name: 'Build' }] } }),
   useUpdateTicket: () => ({ mutate: vi.fn() }),
-  useBrainstorms: () => ({ data: [] }),
+  useBrainstorms: () => ({
+    data: [
+      {
+        id: 'bs-1',
+        name: 'Auth Epic',
+        status: 'epic',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        color: '#3b82f6',
+        icon: 'rocket',
+        ticketCount: 3,
+        activeTicketCount: 1,
+      },
+    ],
+  }),
 }))
 
 // Mock appStore
