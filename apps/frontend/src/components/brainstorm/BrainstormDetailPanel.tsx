@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, Lightbulb, Pencil, Check } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAppStore } from '@/stores/appStore'
@@ -31,6 +31,14 @@ export function BrainstormDetailPanel() {
   // Fetch full brainstorm data to get status and pmEnabled
   const brainstormsQuery = useBrainstorms(brainstormSheetProjectId)
   const brainstorm = brainstormsQuery.data?.find((b) => b.id === brainstormSheetBrainstormId)
+
+  const isEpicPm = brainstorm?.status === 'epic' && brainstorm?.pmEnabled
+  const pmSettingsQuery = useQuery({
+    queryKey: ['boardSettings', brainstormSheetProjectId, brainstorm?.workflowId],
+    queryFn: () => api.getBoardSettings(brainstormSheetProjectId!, brainstorm!.workflowId!),
+    enabled: !!isEpicPm && !!brainstormSheetProjectId && !!brainstorm?.workflowId,
+  })
+  const pmMode = pmSettingsQuery.data?.pmConfig?.mode
 
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false)
@@ -190,13 +198,11 @@ export function BrainstormDetailPanel() {
               <div className="flex items-center gap-2 min-w-0 flex-1 group">
                 <div className="flex items-center gap-1 min-w-0 flex-1">
                   <h2 className="text-text-primary text-lg font-semibold truncate">
-                    {brainstorm?.status === 'epic' && brainstorm?.pmEnabled
-                      ? 'Epic — managed by PM'
-                      : brainstormSheetBrainstormName || 'Brainstorm'}
+                    {brainstormSheetBrainstormName || 'Brainstorm'}
                   </h2>
-                  {brainstorm?.status === 'epic' && brainstorm?.pmEnabled && (
-                    <Badge variant="secondary" className="shrink-0">
-                      Epic
+                  {isEpicPm && (
+                    <Badge variant="secondary" className="shrink-0 capitalize">
+                      {pmMode ?? 'passive'}
                     </Badge>
                   )}
                 </div>
