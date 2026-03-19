@@ -3,17 +3,39 @@ import { DEFAULT_PORT } from "@potato-cannon/shared";
 import { allTools, allHandlers } from "../../mcp/tools/index.js";
 import { appendTicketLog } from "../../stores/ticket-log.store.js";
 import type { McpContext } from "../../types/mcp.types.js";
+import {
+  AGENT_SOURCE_PATTERN,
+  filterToolsByDisallowList,
+  findAgentWorkerInWorkflow,
+} from "./mcp-tools-filter.js";
 
 export function registerMcpRoutes(app: Express): void {
   // List available tools (optional ?scope=external to filter out session-only tools)
-  app.get("/mcp/tools", (req: Request, res: Response) => {
+  // Optional ?agentSource=agents/builder.md&projectId=... to apply disallowTools filtering.
+  app.get("/mcp/tools", async (req: Request, res: Response) => {
     const scope = req.query.scope as string | undefined;
-    if (scope === "external") {
-      const filtered = allTools.filter((t) => t.scope !== "session");
-      res.json({ tools: filtered });
-    } else {
-      res.json({ tools: allTools });
+    const { agentSource, projectId } = req.query as {
+      agentSource?: string;
+      projectId?: string;
+    };
+
+    let tools = scope === "external"
+      ? allTools.filter((t) => t.scope !== "session")
+      : [...allTools];
+
+    // Apply disallowTools filtering when agentSource and projectId are present and valid
+    if (agentSource && projectId && AGENT_SOURCE_PATTERN.test(agentSource)) {
+      try {
+        const agentWorker = await findAgentWorkerInWorkflow(projectId, agentSource);
+        if (agentWorker?.disallowTools?.length) {
+          tools = filterToolsByDisallowList(tools, agentWorker.disallowTools);
+        }
+      } catch {
+        // Non-fatal: if workflow lookup fails, return the full tool list
+      }
     }
+
+    res.json({ tools });
   });
 
   // Call a tool
