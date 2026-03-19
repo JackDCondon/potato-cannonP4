@@ -47,7 +47,6 @@ import type { Ticket, TicketPhase } from "../../types/ticket.types.js";
 import { resolveTargetPhase, getPhaseConfig } from "../../services/session/phase-config.js";
 import type { TemplatePhase } from "@potato-cannon/shared";
 import { brainstormGetTicketCounts, updateBrainstorm } from "../../stores/brainstorm.store.js";
-import { transitionToEpicPm } from "../../services/pm/pm-transition.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -307,8 +306,8 @@ export function registerTicketRoutes(
           const counts = brainstormGetTicketCounts(brainstormId);
           if (counts.ticketCount === 1) {
             // First ticket created from this brainstorm — transition to epic PM mode
-            await updateBrainstorm(projectId, brainstormId, { status: "epic", pmEnabled: true });
-            transitionToEpicPm(projectId, brainstormId);
+            const updated = await updateBrainstorm(projectId, brainstormId, { status: "epic", pmEnabled: true });
+            eventBus.emit("brainstorm:updated", { projectId, brainstorm: updated });
           }
         } catch (transitionError) {
           console.error("Failed to transition brainstorm to epic PM", transitionError);

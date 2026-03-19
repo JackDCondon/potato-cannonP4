@@ -126,8 +126,7 @@ export const epicHandlers: Record<
     }
 
     // Load brainstorm metadata
-    let brainstorm;
-    brainstorm = await getBrainstorm(ctx.projectId, brainstormId);
+    const brainstorm = await getBrainstorm(ctx.projectId, brainstormId);
     if (!brainstorm) {
       return {
         content: [
