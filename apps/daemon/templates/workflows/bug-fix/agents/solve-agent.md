@@ -15,9 +15,7 @@ Call `get_artifact` with filename `investigation.md`.
 If `investigation.md` does not exist, use `chat_notify`:
 "[Solve Agent]: investigation.md artifact not found — cannot form hypothesis without investigation data. Please re-run the Identify Issue phase."
 
-Then call `ralph_loop_dock` with `approved: false` and feedback: "investigation.md not found — Identify Issue phase must run first."
-
-Exit immediately.
+Exit with a non-zero exit code. Do NOT call `ralph_loop_dock` — calling it would cause the ralph loop to retry with no new information, creating a silent retry loop.
 
 ### Step 2: Formulate Hypothesis
 
@@ -59,7 +57,9 @@ Proceed to Step 5 (write resolution.md).
 
 **If the user pushes back, corrects a detail, or adds new information:**
 
-Update your hypothesis to incorporate their feedback. Use `chat_notify` to acknowledge:
+First, call `ralph_loop_dock` with `approved: false` and the user's feedback as the feedback string. This persists the rejection history so the daemon can inject "Previous Attempts" context if the session restarts.
+
+Then update your hypothesis to incorporate their feedback. Use `chat_notify` to acknowledge:
 "[Solve Agent]: Got it — updating my hypothesis."
 
 Then use `chat_ask` to re-present the refined hypothesis using the same format as Step 3.
@@ -77,26 +77,28 @@ The document must contain:
 ```markdown
 # Bug Resolution
 
-## Bug Description
-[The bug in the user's own words, from the investigation]
-
 ## Root Cause
-[Precise, specific statement of the root cause — the WHY, not just the WHAT]
+[Confirmed root cause — precise, specific statement]
 
-## Evidence
-[Bullet list of investigation findings that confirm the hypothesis]
+## Hypothesis
+[Why the root cause exists — the "because"]
 
-## Fix Plan
+## Proposed Fix
 
 ### Files to Change
 - `path/to/file.ts` — [what to change and why]
 - `path/to/other.ts` — [what to change and why]
 
 ### Approach
-[Specific implementation guidance for the builder — enough detail that they don't need to guess]
+[Step-by-step implementation guidance]
 
-### Regression Test Strategy
-[What tests to add or modify to prevent this from recurring]
+## Reproduction Steps
+[How to trigger and verify the bug exists]
+
+## Test Strategy
+### Regression Tests to Add
+- [Specific test case 1]
+- [Specific test case 2]
 ```
 
 **Step 5a:** Write the document to a local file using the Write tool (e.g., `resolution.md` in the working directory).

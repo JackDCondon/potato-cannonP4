@@ -29,7 +29,7 @@ If NO tasks exist, use `chat_notify` to announce:
 
 A bug fix has two distinct deliverables:
 
-1. **Implement the fix** — Apply the changes described in the Fix Plan
+1. **Implement the fix** — Apply the changes described in the Proposed Fix
 2. **Add regression tests** — Add or update tests per the Test Strategy
 
 Each becomes a separate task so the builder has clear, focused work and progress is visible.
@@ -53,15 +53,15 @@ Use the skill: `potato:create-task` for each task.
 
 ### Task 1: Implement the Fix
 
-Extract the Fix Plan section from resolution.md using `body_from`:
+Extract the Proposed Fix section from resolution.md using `body_from`:
 
 ```javascript
 create_task({
   description: "Implement the fix",
   body_from: {
     artifact: "resolution.md",
-    start_marker: "## Fix Plan",
-    end_marker: "### Regression Test Strategy"
+    start_marker: "## Proposed Fix",
+    end_marker: "## Reproduction Steps"
   },
   complexity: "standard"
 });
@@ -69,14 +69,14 @@ create_task({
 
 ### Task 2: Add Regression Tests
 
-Extract the Regression Test Strategy section from resolution.md using `body_from`:
+Extract the Test Strategy section from resolution.md using `body_from`:
 
 ```javascript
 create_task({
   description: "Add regression tests",
   body_from: {
     artifact: "resolution.md",
-    start_marker: "### Regression Test Strategy"
+    start_marker: "## Test Strategy"
   },
   complexity: "simple"
 });
