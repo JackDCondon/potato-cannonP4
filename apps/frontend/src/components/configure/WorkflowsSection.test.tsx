@@ -168,3 +168,51 @@ describe('WorkflowsSection delete safeguards', () => {
     expect(mockDeleteWorkflowMutate).not.toHaveBeenCalled()
   })
 })
+
+describe('WorkflowsSection change default workflow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    cleanup()
+  })
+
+  it('shows Change Default button when 2+ workflows exist', () => {
+    render(
+      <WorkflowsSection
+        project={{ id: 'project-1', slug: 'project-1', path: '/tmp/project-1' }}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Change Default' })).toBeInTheDocument()
+  })
+
+  it('opens modal with warning copy and dropdown on click', async () => {
+    render(
+      <WorkflowsSection
+        project={{ id: 'project-1', slug: 'project-1', path: '/tmp/project-1' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Default' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Change Default Workflow')).toBeInTheDocument()
+      expect(
+        screen.getByText(/New tickets will use the selected workflow by default/),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('confirm button is disabled until a workflow is selected', async () => {
+    render(
+      <WorkflowsSection
+        project={{ id: 'project-1', slug: 'project-1', path: '/tmp/project-1' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Default' }))
+    await screen.findByText('Change Default Workflow')
+
+    const confirmButton = screen.getByRole('button', { name: 'Change Default' })
+    expect(confirmButton).toBeDisabled()
+  })
+})
