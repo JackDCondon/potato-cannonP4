@@ -5,7 +5,9 @@ import { X, Lightbulb, Pencil, Check } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAppStore } from '@/stores/appStore'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useBrainstorms } from '@/hooks/queries'
 import { BrainstormChat } from './BrainstormChat'
 import { BrainstormNewForm } from './BrainstormNewForm'
 import { BrainstormArtifactsTab } from './BrainstormArtifactsTab'
@@ -25,6 +27,10 @@ export function BrainstormDetailPanel() {
   const [createError, setCreateError] = useState<string | null>(null)
   // Track the initial message so BrainstormChat can show a thinking indicator immediately
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
+
+  // Fetch full brainstorm data to get status and pmEnabled
+  const brainstormsQuery = useBrainstorms(brainstormSheetProjectId)
+  const brainstorm = brainstormsQuery.data?.find((b) => b.id === brainstormSheetBrainstormId)
 
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false)
@@ -181,10 +187,19 @@ export function BrainstormDetailPanel() {
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center gap-1 min-w-0 flex-1 group">
-                <h2 className="text-text-primary text-lg font-semibold truncate">
-                  {brainstormSheetBrainstormName || 'Brainstorm'}
-                </h2>
+              <div className="flex items-center gap-2 min-w-0 flex-1 group">
+                <div className="flex items-center gap-1 min-w-0 flex-1">
+                  <h2 className="text-text-primary text-lg font-semibold truncate">
+                    {brainstorm?.status === 'epic' && brainstorm?.pmEnabled
+                      ? 'Epic — managed by PM'
+                      : brainstormSheetBrainstormName || 'Brainstorm'}
+                  </h2>
+                  {brainstorm?.status === 'epic' && brainstorm?.pmEnabled && (
+                    <Badge variant="secondary" className="shrink-0">
+                      Epic
+                    </Badge>
+                  )}
+                </div>
                 {isExistingBrainstorm && (
                   <Button
                     variant="ghost"
