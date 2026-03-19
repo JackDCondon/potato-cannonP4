@@ -24,6 +24,8 @@ export interface UpdateBrainstormInput {
   createdTicketId?: string;
   planSummary?: string;
   pmEnabled?: boolean;
+  color?: string | null;
+  icon?: string | null;
 }
 
 // =============================================================================
@@ -42,6 +44,8 @@ interface BrainstormRow {
   workflow_id: string | null;
   plan_summary: string | null;
   pm_enabled: number;
+  color: string | null;
+  icon: string | null;
 }
 
 // =============================================================================
@@ -61,6 +65,8 @@ function rowToBrainstorm(row: BrainstormRow): Brainstorm {
     workflowId: row.workflow_id,
     planSummary: row.plan_summary ?? undefined,
     pmEnabled: row.pm_enabled === 1,
+    color: row.color ?? null,
+    icon: row.icon ?? null,
   };
 }
 
@@ -183,6 +189,16 @@ export class BrainstormStore {
       values.push(updates.pmEnabled ? 1 : 0);
     }
 
+    if (updates.color !== undefined) {
+      fields.push("color = ?");
+      values.push(updates.color);
+    }
+
+    if (updates.icon !== undefined) {
+      fields.push("icon = ?");
+      values.push(updates.icon);
+    }
+
     values.push(brainstormId);
     this.db
       .prepare(`UPDATE brainstorms SET ${fields.join(", ")} WHERE id = ?`)
@@ -201,6 +217,16 @@ export class BrainstormStore {
       .prepare("DELETE FROM brainstorms WHERE id = ?")
       .run(brainstormId);
     return result.changes > 0;
+  }
+
+  getUsedEpicColors(projectId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT color FROM brainstorms
+         WHERE project_id = ? AND status = 'epic' AND color IS NOT NULL`
+      )
+      .all(projectId) as { color: string }[];
+    return rows.map((r) => r.color);
   }
 
   getTicketCountsForBrainstorm(brainstormId: string): { ticketCount: number; activeTicketCount: number } {
@@ -316,4 +342,8 @@ export function brainstormGetTicketCounts(brainstormId: string): { ticketCount: 
 
 export function brainstormGetTicketCountsBatch(brainstormIds: string[]): Map<string, { ticketCount: number; activeTicketCount: number }> {
   return new BrainstormStore(getDatabase()).getTicketCountsBatch(brainstormIds);
+}
+
+export function brainstormGetUsedEpicColors(projectId: string): string[] {
+  return new BrainstormStore(getDatabase()).getUsedEpicColors(projectId);
 }
