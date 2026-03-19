@@ -11,7 +11,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip'
-import type { DependencyTier, Ticket } from '@potato-cannon/shared'
+import type { Brainstorm, DependencyTier, Ticket } from '@potato-cannon/shared'
 
 interface BoardColumnProps {
   phase: string
@@ -27,6 +27,7 @@ interface BoardColumnProps {
   swimlaneColor?: string
   onColorChange?: (color: string | null) => void
   blockedFromPhaseByTier?: Record<DependencyTier, string>
+  brainstormMap?: Map<string, Brainstorm>
 }
 
 export function BoardColumn({
@@ -42,7 +43,8 @@ export function BoardColumn({
   onToggleDisabled,
   swimlaneColor,
   onColorChange,
-  blockedFromPhaseByTier
+  blockedFromPhaseByTier,
+  brainstormMap
 }: BoardColumnProps) {
   const openAddTicketModal = useAppStore((s) => s.openAddTicketModal)
   const showArchivedTickets = useAppStore((s) => s.showArchivedTickets)
@@ -151,6 +153,7 @@ export function BoardColumn({
                   projectId={projectId}
                   swimlaneColor={swimlaneColor}
                   blockedFromPhaseByTier={blockedFromPhaseByTier}
+                  brainstorm={ticket.brainstormId ? brainstormMap?.get(ticket.brainstormId) : undefined}
                 />
               ))}
               {tickets.length === 0 && (

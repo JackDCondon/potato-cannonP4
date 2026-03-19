@@ -17,7 +17,8 @@ import {
   useUpdateTicket,
   useProjects,
   useToggleDisabledPhase,
-  useUpdateProject
+  useUpdateProject,
+  useBrainstorms
 } from '@/hooks/queries'
 import { TemplateUpgradeBanner } from '@/components/TemplateUpgradeBanner'
 import { ArchivedSwimlane } from './ArchivedSwimlane'
@@ -36,7 +37,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import type { Ticket, TemplatePhase } from '@potato-cannon/shared'
+import type { Brainstorm, Ticket, TemplatePhase } from '@potato-cannon/shared'
 import { getBlockedFromPhaseMap, phaseHasAutomation } from './board-utils'
 
 
@@ -98,6 +99,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
   const { data: workflows } = useWorkflows(projectId)
   const { data: tickets, isLoading: ticketsLoading, error: ticketsError } = useTickets(projectId, workflowId)
   const { data: projectPhases } = useProjectPhases(projectId)
+  const { data: brainstorms } = useBrainstorms(projectId)
 
   // Get current project to access template name
   const currentProject = useMemo(
@@ -258,6 +260,17 @@ export function Board({ projectId, workflowId }: BoardProps) {
     return grouped
   }, [tickets, phases])
 
+  // Build brainstorm lookup map for epic badge rendering
+  const brainstormMap = useMemo(() => {
+    const map = new Map<string, Brainstorm>()
+    if (brainstorms) {
+      for (const b of brainstorms) {
+        map.set(b.id, b)
+      }
+    }
+    return map
+  }, [brainstorms])
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const ticket = event.active.data.current?.ticket as Ticket | undefined
     if (ticket) {
@@ -381,7 +394,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* Board Header */}
       <div className="flex items-center justify-end px-4 py-3">
-        <ViewToggle />
+        <ViewToggle projectSlug={currentProject?.slug} workflowId={activeWorkflow?.id} />
       </div>
 
       {/* Template Upgrade Banner */}
@@ -431,6 +444,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
                       swimlaneColor={currentProject?.swimlaneColors?.[phase]}
                       onColorChange={(color) => handleSwimlaneColorChange(phase, color)}
                       blockedFromPhaseByTier={blockedFromPhaseByTier}
+                      brainstormMap={brainstormMap}
                     />
                   )
                 })}

@@ -80,6 +80,7 @@ vi.mock("@/hooks/queries", () => ({
   useUpdateTicket: () => ({ mutate: mockState.updateTicketMutate }),
   useToggleDisabledPhase: () => ({ mutate: vi.fn() }),
   useUpdateProject: () => ({ mutate: vi.fn() }),
+  useBrainstorms: () => ({ data: [] }),
 }));
 
 vi.mock("@/stores/appStore", () => ({
