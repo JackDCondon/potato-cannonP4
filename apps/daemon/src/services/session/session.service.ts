@@ -1043,6 +1043,7 @@ export class SessionService {
             POTATO_BRAINSTORM_ID: brainstormId,
             POTATO_WORKFLOW_ID: workflowId,
             POTATO_AGENT_MODEL: model || "",
+            POTATO_AGENT_SOURCE: agentType || "",
           },
         },
         ...additionalMcpServers,
@@ -1090,6 +1091,7 @@ export class SessionService {
       POTATO_BRAINSTORM_ID: brainstormId,
       POTATO_WORKFLOW_ID: workflowId,
       POTATO_AGENT_MODEL: model || "",
+      POTATO_AGENT_SOURCE: agentType || "",
     };
     if (spawnProject?.helixSwarmUrl) {
       ptyEnv.HELIX_SWARM_URL = spawnProject.helixSwarmUrl;
@@ -1515,6 +1517,9 @@ export class SessionService {
     // Determine whether this brainstorm should use the PM skill
     const usePm = shouldUsePmSkill(brainstorm);
 
+    // Load agent from template — PM skill takes priority when transition has occurred
+    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
+
     // Only build full prompt for first session; resumed sessions use --resume
     const prompt = existingClaudeSessionId
       ? pendingContext?.response || (usePm ? "Continue as Project Manager." : "Continue the brainstorm.")
@@ -1561,13 +1566,11 @@ export class SessionService {
             POTATO_BRAINSTORM_ID: brainstormId,
             POTATO_WORKFLOW_ID: workflowId,
             POTATO_AGENT_MODEL: "",
+            POTATO_AGENT_SOURCE: agentType,
           },
         },
       },
     };
-
-    // Load agent from template — PM skill takes priority when transition has occurred
-    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
     const agentDefinition = await tryLoadAgentDefinition(projectId, agentType);
 
     if (!agentDefinition) {
@@ -1619,6 +1622,7 @@ export class SessionService {
         POTATO_BRAINSTORM_ID: brainstormId,
         POTATO_WORKFLOW_ID: workflowId,
         POTATO_AGENT_MODEL: "",
+        POTATO_AGENT_SOURCE: agentType,
       },
     });
     console.log(`[spawnForBrainstorm] pty.spawn succeeded, pid=${proc.pid}`);
