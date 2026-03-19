@@ -249,4 +249,29 @@ describe("BoardSettingsStore", () => {
       assert.strictEqual(DEFAULT_PM_CONFIG.alerts.sessionCrashes, true);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Cascade Delete (FK ON DELETE CASCADE)
+  // ---------------------------------------------------------------------------
+
+  describe("cascade delete when workflow is deleted", () => {
+    it("automatically deletes board_settings when workflow is deleted", () => {
+      // Create board settings for the workflow
+      store.upsertSettings(workflowId, { mode: "executing" });
+
+      // Verify the settings exist
+      let settings = store.getSettings(workflowId);
+      assert.ok(settings);
+      assert.strictEqual(settings.workflowId, workflowId);
+
+      // Delete the workflow via the project_workflows table
+      const workflowStore = createProjectWorkflowStore(db);
+      const deleted = workflowStore.deleteWorkflow(workflowId);
+      assert.strictEqual(deleted, true);
+
+      // Verify board_settings row was automatically deleted by FK cascade
+      settings = store.getSettings(workflowId);
+      assert.strictEqual(settings, null);
+    });
+  });
 });
