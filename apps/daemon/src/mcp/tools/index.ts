@@ -5,13 +5,14 @@ import { ralphTools, ralphHandlers } from "./ralph.tools.js";
 import { artifactTools, artifactHandlers } from "./artifact.tools.js";
 import { dependencyTools, dependencyHandlers } from "./dependency.tools.js";
 import { scopeTools, scopeHandlers } from "./scope.tools.js";
+import { epicTools, epicHandlers } from "./epic.tools.js";
 import type {
   ToolDefinition,
   McpContext,
   McpToolResult,
 } from "../../types/mcp.types.js";
 
-export const allTools: ToolDefinition[] = [...ticketTools, ...chatTools, ...taskTools, ...ralphTools, ...artifactTools, ...dependencyTools, ...scopeTools];
+export const allTools: ToolDefinition[] = [...ticketTools, ...chatTools, ...taskTools, ...ralphTools, ...artifactTools, ...dependencyTools, ...scopeTools, ...epicTools];
 
 export const allHandlers: Record<
   string,
@@ -24,7 +25,8 @@ export const allHandlers: Record<
   ...artifactHandlers,
   ...dependencyHandlers,
   ...scopeHandlers,
+  ...epicHandlers,
 };
 
-export { ticketTools, chatTools, taskTools, ralphTools, artifactTools, dependencyTools, scopeTools };
-export { ticketHandlers, chatHandlers, taskHandlers, ralphHandlers, artifactHandlers, dependencyHandlers, scopeHandlers };
+export { ticketTools, chatTools, taskTools, ralphTools, artifactTools, dependencyTools, scopeTools, epicTools };
+export { ticketHandlers, chatHandlers, taskHandlers, ralphHandlers, artifactHandlers, dependencyHandlers, scopeHandlers, epicHandlers };

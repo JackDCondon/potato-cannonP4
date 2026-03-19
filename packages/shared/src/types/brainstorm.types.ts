@@ -1,4 +1,4 @@
-export type BrainstormStatus = 'active' | 'completed'
+export type BrainstormStatus = 'active' | 'completed' | 'epic'
 
 export interface Brainstorm {
   id: string
@@ -14,6 +14,7 @@ export interface Brainstorm {
   planSummary?: string | null
   ticketCount?: number
   activeTicketCount?: number
+  pmEnabled?: boolean
 }
 
 export interface BrainstormQuestion {

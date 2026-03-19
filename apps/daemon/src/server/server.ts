@@ -30,6 +30,7 @@ import {
   registerDependencyRoutes,
   registerChatTelemetryRoutes,
   registerConfigRoutes,
+  registerBoardSettingsRoutes,
   refreshProjects,
   getProjects,
 } from "./routes/index.js";
@@ -97,6 +98,7 @@ import {
 } from "../services/session/worker-state.js";
 import { getPhaseConfig } from "../services/session/phase-config.js";
 import { registerSentinelListeners } from "../services/sentinel.service.js";
+import { PmPoller } from "../services/pm/pm-poller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -106,6 +108,7 @@ let sessionService: SessionService | null = null;
 let telegramProvider: TelegramProvider | null = null;
 let telegramMode = "none";
 let slackProvider: SlackProvider | null = null;
+let pmPoller: PmPoller | null = null;
 let releaseDaemonLock: (() => Promise<void>) | null = null;
 let lifecycleHardeningFlags = {
   strictStaleDrop: false,
@@ -967,6 +970,7 @@ export async function main(): Promise<void> {
   registerWorkflowRoutes(app, sessionService);
   registerDependencyRoutes(app);
   registerChatTelemetryRoutes(app);
+  registerBoardSettingsRoutes(app);
   registerSystemRoutes(app);
 
   // SPA catch-all route - fallback to index.html for SPA routing
@@ -1290,6 +1294,10 @@ export async function main(): Promise<void> {
 
     // Recover interrupted sessions (mid-execution with worker-state.json)
     await recoverInterruptedSessions();
+
+    // Start PM poller for epic health monitoring
+    pmPoller = new PmPoller(sessionService!, getProjects);
+    pmPoller.start();
   });
 
   process.on("SIGINT", shutdown);
@@ -1306,6 +1314,10 @@ async function shutdown(): Promise<void> {
   timeoutId.unref();
 
   artifactChatStore.stopCleanupTimer();
+
+  if (pmPoller) {
+    pmPoller.stop();
+  }
 
   if (telegramProvider) {
     await telegramProvider.shutdown();

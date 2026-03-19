@@ -23,6 +23,7 @@ export interface UpdateBrainstormInput {
   status?: BrainstormStatus;
   createdTicketId?: string;
   planSummary?: string;
+  pmEnabled?: boolean;
 }
 
 // =============================================================================
@@ -40,6 +41,7 @@ interface BrainstormRow {
   created_ticket_id: string | null;
   workflow_id: string | null;
   plan_summary: string | null;
+  pm_enabled: number;
 }
 
 // =============================================================================
@@ -58,6 +60,7 @@ function rowToBrainstorm(row: BrainstormRow): Brainstorm {
     createdTicketId: row.created_ticket_id,
     workflowId: row.workflow_id,
     planSummary: row.plan_summary ?? undefined,
+    pmEnabled: row.pm_enabled === 1,
   };
 }
 
@@ -173,6 +176,11 @@ export class BrainstormStore {
     if (updates.planSummary !== undefined) {
       fields.push("plan_summary = ?");
       values.push(updates.planSummary);
+    }
+
+    if (updates.pmEnabled !== undefined) {
+      fields.push("pm_enabled = ?");
+      values.push(updates.pmEnabled ? 1 : 0);
     }
 
     values.push(brainstormId);

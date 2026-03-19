@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 21;
+const CURRENT_SCHEMA_VERSION = 22;
 
 /**
  * Run database migrations.
@@ -94,6 +94,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 21) {
     migrateV21(db);
+  }
+
+  if (version < 22) {
+    migrateV22(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -997,6 +1001,36 @@ function migrateV21(db: Database.Database): void {
     )
     WHERE brainstorm_id IS NULL
       AND id IN (SELECT created_ticket_id FROM brainstorms WHERE created_ticket_id IS NOT NULL)
+  `);
+}
+
+/**
+ * V22: PM Fields and Board Settings
+ * - Add pm_enabled column to brainstorms (default 0, not null)
+ * - Create board_settings table with workflow_id FK and pm_config JSON storage
+ */
+function migrateV22(db: Database.Database): void {
+  // Add pm_enabled to brainstorms (idempotent check)
+  const brainstormCols = new Set(
+    (db.prepare("PRAGMA table_info(brainstorms)").all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
+  );
+  if (!brainstormCols.has("pm_enabled")) {
+    db.exec(`ALTER TABLE brainstorms ADD COLUMN pm_enabled INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  // Create board_settings table (idempotent with IF NOT EXISTS)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS board_settings (
+      id            TEXT PRIMARY KEY,
+      workflow_id   TEXT NOT NULL UNIQUE REFERENCES project_workflows(id) ON DELETE CASCADE,
+      pm_config     TEXT,
+      created_at    TEXT NOT NULL,
+      updated_at    TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_board_settings_workflow ON board_settings(workflow_id);
   `);
 }
 

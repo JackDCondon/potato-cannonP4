@@ -1,3 +1,5 @@
+import fs from "fs/promises";
+import path from "path";
 import type {
   Ticket,
   TicketImage,
@@ -18,6 +20,7 @@ import {
 } from "../../stores/ralph-feedback.store.js";
 import { ticketDependencyGetForTicket } from "../../stores/ticket-dependency.store.js";
 import { brainstormGetDirect } from "../../stores/brainstorm.store.js";
+import { getBrainstormFilesDir } from "../../config/paths.js";
 
 /**
  * Load context artifacts based on agent's artifact configuration.
@@ -382,6 +385,82 @@ Acknowledge their idea and ask your first clarifying question. Do NOT ask "what 
 **Brainstorm ID:** ${brainstormId}
 **Session Name:** ${brainstorm.name}
 **SpudMode:** You are a SuperSpud.
+
+## Instructions
+
+${instructions}`;
+}
+
+/**
+ * Build a prompt for a PM (project manager) session on an epic brainstorm.
+ * Loads the decisions artifact from disk if available.
+ */
+export async function buildPmPrompt(
+  projectId: string,
+  brainstormId: string,
+  brainstorm: { name: string; planSummary?: string | null },
+  options?: {
+    pendingContext?: { question: string; response: string };
+    pmMode?: string;
+  },
+): Promise<string> {
+  const { pendingContext, pmMode } = options ?? {};
+
+  // Try to load decisions artifact
+  let decisionsContent: string | undefined;
+  const decisionsPath = path.join(
+    getBrainstormFilesDir(projectId, brainstormId),
+    "artifacts",
+    "decisions.md",
+  );
+  try {
+    decisionsContent = await fs.readFile(decisionsPath, "utf-8");
+  } catch {
+    // Not present yet — proceed without it
+  }
+
+  let instructions = `You are the Project Manager for this epic. Monitor ticket progress, identify blockers, and coordinate the team.
+`;
+
+  if (pendingContext) {
+    instructions += `
+## Resuming Conversation
+
+The previous session ended before processing the user's response. Here is the context:
+
+**Your last question:** ${pendingContext.question}
+
+**User's response:** ${pendingContext.response}
+
+Continue the conversation from here. Do NOT ask a new opening question.`;
+  } else {
+    instructions += `
+Begin by summarising the current epic status and asking how you can help.`;
+  }
+
+  const planSection = brainstorm.planSummary
+    ? `\n## Plan Summary\n\n${brainstorm.planSummary}\n`
+    : "";
+
+  const decisionsSection = decisionsContent
+    ? `\n## Decisions\n\n${decisionsContent}\n`
+    : "";
+
+  return `
+## Context
+
+**Project:** ${projectId}
+**Brainstorm ID:** ${brainstormId}
+**Epic Name:** ${brainstorm.name}
+**Mode:** ${pmMode ?? "passive"}
+${planSection}${decisionsSection}
+## Available MCP Commands
+
+- \`chat_ask\` — Ask the user a question (waits for reply)
+- \`chat_notify\` — Send a status update
+- \`get_epic_status\` — Get a structured snapshot of all epic tickets
+- \`create_ticket\` — Create a new ticket
+- \`get_ticket\` — Get ticket details
 
 ## Instructions
 
