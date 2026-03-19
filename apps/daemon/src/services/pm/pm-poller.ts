@@ -10,6 +10,7 @@ import type { SessionService } from "../session/index.js";
 import type { PmConfig } from "@potato-cannon/shared";
 import type { Project } from "../../types/config.types.js";
 import { getDatabase } from "../../stores/db.js";
+import { getTicket } from "../../stores/ticket.store.js";
 import { getBoardPmConfig } from "../../stores/board-settings.store.js";
 import { detectAlerts, type PmAlert } from "./pm-alerts.js";
 
@@ -145,18 +146,31 @@ export class PmPoller {
     project: Project,
   ): Promise<void> {
     try {
-      // All alert types spawn a brainstorm PM session with alert context.
-      // The PM agent receives the alert message and decides the appropriate action
-      // (e.g. unblocking a ticket, retrying a stuck ticket, investigating a crash).
       console.log(
-        `[pm-poller] Spawning PM session for epic ${epic.id}: ${alert.message}`,
+        `[pm-poller] Handling alert for epic ${epic.id}: ${alert.message}`,
       );
-      await this.sessionService.spawnForBrainstorm(
-        alert.projectId,
-        epic.id,
-        project.path,
-        `[PM Alert] ${alert.message}`,
-      );
+
+      // In executing mode, dependency unblocks spawn a ticket session directly
+      // to start the next phase. All other alerts spawn a PM brainstorm session.
+      if (config.mode === "executing" && alert.kind === "dependency_unblock") {
+        // Resolve ticket's current phase for spawnForTicket
+        const ticket = this.getTicketForAlert(alert);
+        if (ticket) {
+          await this.sessionService.spawnForTicket(
+            alert.projectId,
+            alert.ticketId,
+            ticket.phase,
+            project.path,
+          );
+        }
+      } else {
+        await this.sessionService.spawnForBrainstorm(
+          alert.projectId,
+          epic.id,
+          project.path,
+          `[PM Alert] ${alert.message}`,
+        );
+      }
       this.recordSpawn();
     } catch (err) {
       console.error(
@@ -186,6 +200,14 @@ export class PmPoller {
 
   private recordSpawn(): void {
     this.spawnWindow[1]++;
+  }
+
+  private getTicketForAlert(alert: PmAlert): { phase: string } | null {
+    try {
+      return getTicket(alert.projectId, alert.ticketId);
+    } catch {
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
