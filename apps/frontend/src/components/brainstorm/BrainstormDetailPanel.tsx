@@ -1,16 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { X, Lightbulb, Pencil, Check } from 'lucide-react'
+import { X, Lightbulb, Pencil, Check, Settings } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAppStore } from '@/stores/appStore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useBrainstorms } from '@/hooks/queries'
+import { getEpicColor } from '@/lib/epic-icons'
 import { BrainstormChat } from './BrainstormChat'
 import { BrainstormNewForm } from './BrainstormNewForm'
 import { BrainstormArtifactsTab } from './BrainstormArtifactsTab'
+import { EpicSettingsTab } from './EpicSettingsTab'
 
 export function BrainstormDetailPanel() {
   const brainstormSheetOpen = useAppStore((s) => s.brainstormSheetOpen)
@@ -32,7 +34,9 @@ export function BrainstormDetailPanel() {
   const brainstormsQuery = useBrainstorms(brainstormSheetProjectId)
   const brainstorm = brainstormsQuery.data?.find((b) => b.id === brainstormSheetBrainstormId)
 
-  const isEpicPm = brainstorm?.status === 'epic' && brainstorm?.pmEnabled
+  const isEpic = brainstorm?.status === 'epic'
+  const isEpicPm = isEpic && brainstorm?.pmEnabled
+  const epicColor = isEpic ? getEpicColor(brainstorm?.color) : undefined
   const pmSettingsQuery = useQuery({
     queryKey: ['boardSettings', brainstormSheetProjectId, brainstorm?.workflowId],
     queryFn: () => api.getBoardSettings(brainstormSheetProjectId!, brainstorm!.workflowId!),
@@ -200,6 +204,15 @@ export function BrainstormDetailPanel() {
                   <h2 className="text-text-primary text-lg font-semibold truncate">
                     {isEpicPm ? 'Epic \u2014 managed by PM' : (brainstormSheetBrainstormName || 'Brainstorm')}
                   </h2>
+                  {isEpic && epicColor && (
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0"
+                      style={{ backgroundColor: epicColor, color: '#fff' }}
+                    >
+                      Epic
+                    </Badge>
+                  )}
                   {isEpicPm && (
                     <Badge variant="secondary" className="shrink-0 capitalize">
                       {pmMode ?? 'passive'}
@@ -250,6 +263,12 @@ export function BrainstormDetailPanel() {
               <TabsList className="mx-4 mb-2 w-auto self-start">
                 <TabsTrigger value="chat">Chat</TabsTrigger>
                 <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
+                {isEpic && (
+                  <TabsTrigger value="settings" className="flex items-center gap-1">
+                    <Settings className="h-3.5 w-3.5" />
+                    Settings
+                  </TabsTrigger>
+                )}
               </TabsList>
               <TabsContent value="chat" className="flex-1 flex flex-col min-h-0 mt-0">
                 <BrainstormChat
@@ -266,6 +285,17 @@ export function BrainstormDetailPanel() {
                   brainstormId={brainstormSheetBrainstormId}
                 />
               </TabsContent>
+              {isEpic && brainstorm && brainstormSheetProjectId && (
+                <TabsContent value="settings" className="flex-1 min-h-0 mt-0">
+                  <EpicSettingsTab
+                    projectId={brainstormSheetProjectId}
+                    brainstorm={brainstorm}
+                    onBrainstormUpdated={() => {
+                      queryClient.invalidateQueries({ queryKey: ['brainstorms', brainstormSheetProjectId] })
+                    }}
+                  />
+                </TabsContent>
+              )}
             </Tabs>
           ) : null}
         </div>
