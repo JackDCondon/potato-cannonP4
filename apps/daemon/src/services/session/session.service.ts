@@ -2226,7 +2226,7 @@ export class SessionService {
     try {
       let conversationId: string | undefined;
       if (ticketId) {
-        // getTicket() throws if not found — the surrounding try/catch handles this.
+        // getTicket throws if not found — caught by the try/catch wrapping this method
         const ticket = getTicket(projectId, ticketId);
         conversationId = ticket.conversationId;
       } else if (brainstormId) {
@@ -2254,8 +2254,7 @@ export class SessionService {
           ticketId,
           message: { type: "notification", text, timestamp: now },
         });
-      }
-      if (brainstormId) {
+      } else if (brainstormId) {
         eventBus.emit("brainstorm:message", {
           projectId,
           brainstormId,
