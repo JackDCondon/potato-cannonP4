@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react'
-import { MessageSquare, Clock, Layers } from 'lucide-react'
+import { MessageSquare, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn, timeAgo } from '@/lib/utils'
 import { useBrainstormMessage } from '@/hooks/useSSE'
 import { useAppStore } from '@/stores/appStore'
+import { getEpicIcon, getEpicColor } from '@/lib/epic-icons'
 import type { Brainstorm } from '@potato-cannon/shared'
 
 interface BrainstormCardProps {
@@ -51,6 +52,9 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
   const isSelected = brainstormSheetBrainstormId === brainstorm.id
   const isEpic = (brainstorm.ticketCount ?? 0) > 0
 
+  const EpicIcon = getEpicIcon(brainstorm.icon)
+  const epicColor = getEpicColor(brainstorm.color)
+
   return (
     <button
       onClick={handleClick}
@@ -65,7 +69,7 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
     >
       <div className="flex items-center gap-2 min-w-0">
         {isEpic ? (
-          <Layers className="h-4 w-4 text-indigo-500 shrink-0" />
+          <EpicIcon className="h-4 w-4 shrink-0" style={{ color: epicColor }} />
         ) : (
           <MessageSquare className="h-4 w-4 text-text-muted shrink-0" />
         )}
@@ -76,7 +80,7 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
           <Clock className="h-3 w-3" />
           {timeAgo(brainstorm.updatedAt)}
         </span>
-        <StatusIndicator status={brainstorm.status} hasUnseenQuestion={hasUnseenQuestion} isEpic={isEpic} />
+        <StatusIndicator status={brainstorm.status} hasUnseenQuestion={hasUnseenQuestion} isEpic={isEpic} epicColor={epicColor} />
       </div>
     </button>
   )
@@ -85,11 +89,13 @@ export function BrainstormCard({ brainstorm, projectId }: BrainstormCardProps) {
 function StatusIndicator({
   status,
   hasUnseenQuestion,
-  isEpic
+  isEpic,
+  epicColor,
 }: {
   status: Brainstorm['status']
   hasUnseenQuestion: boolean
   isEpic: boolean
+  epicColor: string
 }) {
   if (status === 'completed') {
     return (
@@ -101,7 +107,11 @@ function StatusIndicator({
 
   if (isEpic) {
     return (
-      <Badge variant="default" className="shrink-0 text-xs bg-indigo-600 text-white">
+      <Badge
+        variant="default"
+        className="shrink-0 text-xs text-white"
+        style={{ backgroundColor: epicColor }}
+      >
         Epic
       </Badge>
     )
