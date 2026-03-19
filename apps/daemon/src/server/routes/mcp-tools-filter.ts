@@ -6,7 +6,7 @@
  */
 
 import { projectWorkflowGetDefault } from "../../stores/project-workflow.store.js";
-import { getWorkflowTemplate } from "../../stores/project-template.store.js";
+import { getWorkflowTemplate, getProjectTemplate } from "../../stores/project-template.store.js";
 import { getWorkflow } from "../../stores/template.store.js";
 import type { AgentWorker, Worker } from "../../types/template.types.js";
 
@@ -58,8 +58,11 @@ export async function findAgentWorkerInWorkflow(
   const workflow = projectWorkflowGetDefault(projectId);
   if (!workflow) return null;
 
-  // Prefer the workflow-local template (project copy), fall back to global catalog
+  // Three-tier fallback: workflow-local → project-local → global catalog
   let template = await getWorkflowTemplate(projectId, workflow.id);
+  if (!template) {
+    template = await getProjectTemplate(projectId);
+  }
   if (!template) {
     template = await getWorkflow(workflow.templateName);
   }

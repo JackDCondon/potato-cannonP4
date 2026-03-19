@@ -30,8 +30,9 @@ export function registerMcpRoutes(app: Express): void {
         if (agentWorker?.disallowTools?.length) {
           tools = filterToolsByDisallowList(tools, agentWorker.disallowTools);
         }
-      } catch {
+      } catch (error) {
         // Non-fatal: if workflow lookup fails, return the full tool list
+        console.warn('[MCP] disallowTools lookup failed:', error);
       }
     }
 
