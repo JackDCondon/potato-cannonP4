@@ -242,7 +242,7 @@ export function extractTokensFromResultEvent(
   const usage = event.usage as
     | { input_tokens?: number; output_tokens?: number }
     | undefined;
-  if (!usage?.input_tokens || !usage?.output_tokens) return null;
+  if (usage?.input_tokens == null || usage?.output_tokens == null) return null;
   return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
 }
 
