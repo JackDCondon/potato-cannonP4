@@ -59,6 +59,9 @@ Phase: Build
 | `worktree.ts` | Git worktree creation for code isolation. |
 | `prompts.ts` | Full prompt construction (agent instructions + ticket context). |
 | `ticket-logger.ts` | Debug logging to daemon.log and prompt files. |
+| `pty-text-extractor.ts` | Buffers PTY onData chunks, strips ANSI, extracts assistant text blocks from stream-json output. |
+| `pty-capture-dedup.ts` | Per-session deduplication buffer: detects when PTY-captured text duplicates an explicit chat_notify call. |
+| `resume-prompt.ts` | Builds the resume prompt for suspended sessions, injecting an MCP communication reminder. |
 
 ## State Structure
 

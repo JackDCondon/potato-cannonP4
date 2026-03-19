@@ -10,6 +10,7 @@ Shared utilities for the Potato Cannon daemon.
 | `logger.ts` | Console log capture with file rotation |
 | `semver.ts` | Semantic version comparison utilities |
 | `validation.ts` | Input validation helpers |
+| `strip-ansi.ts` | ANSI escape sequence stripping for PTY output |
 | `index.ts` | Re-exports for cleaner imports |
 
 ## EventBus
