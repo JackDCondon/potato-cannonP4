@@ -8,6 +8,8 @@ This directory contains the JSON schema for defining Potato Cannon workflows and
 |------|---------|
 | `workflow.schema.json` | JSON Schema definition for workflow templates |
 | `product-development/` | Default workflow template with agents |
+| `bug-fix/` | Bug-fix workflow (Git): investigate → confirm hypothesis → build → PR |
+| `bug-fix-p4/` | Bug-fix workflow (Perforce): investigate → confirm hypothesis → build → shelve |
 
 ## Schema Overview
 
@@ -501,3 +503,30 @@ node -e "
 - `src/services/session/loops/task-loop.ts` - Task loop implementation
 - `src/stores/ralph-feedback.store.ts` - Ralph loop feedback storage
 - `src/mcp/tools/ralph.tools.ts` - `ralph_loop_dock` MCP tool
+
+## Bug-Fix Workflow Templates
+
+Two bug-fix variants exist alongside the default `product-development` template:
+
+| Template | VCS | Final Phase | Isolation |
+|----------|-----|-------------|-----------|
+| `bug-fix` | Git | Pull Requests | `requiresWorktree: true` |
+| `bug-fix-p4` | Perforce | Shelve | `requiresIsolation: true` |
+
+Both share the same phase structure:
+1. **Identify Issue** — `debug-agent` investigates and produces `investigation.md`
+2. **Solve Issue** — `solve-agent` in ralph loop iterates hypothesis with user, produces `resolution.md`
+3. **Backlog** — manual gate
+4. **Build** — `bug-fix-taskmaster` → taskLoop(builder) → `bug-fix-qa`
+5. **Pull Requests / Shelve** — VCS-specific final phase
+
+### Key Artifacts
+
+| Artifact | Written by | Read by |
+|----------|-----------|---------|
+| `investigation.md` | debug-agent | solve-agent |
+| `resolution.md` | solve-agent | bug-fix-taskmaster, bug-fix-qa, pr-agent/shelve-agent |
+
+### Parent Template Inheritance
+
+Both templates use `parentTemplate: "product-development"` (not `product-development-p4`) to inherit `builder.md`. The P4-specific agents (`sync-agent.md`, `shelve-agent.md`) are copied directly into `bug-fix-p4/agents/` because parent resolution is single-level.
