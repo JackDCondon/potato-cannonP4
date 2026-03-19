@@ -222,7 +222,7 @@ export class BrainstormStore {
   getUsedEpicColors(projectId: string): string[] {
     const rows = this.db
       .prepare(
-        `SELECT color FROM brainstorms
+        `SELECT DISTINCT color FROM brainstorms
          WHERE project_id = ? AND status = 'epic' AND color IS NOT NULL`
       )
       .all(projectId) as { color: string }[];

@@ -51,5 +51,5 @@ export function getEpicIcon(name?: string | null): LucideIcon {
  * Falls back to #818cf8 (indigo-400) when color is null or undefined.
  */
 export function getEpicColor(color?: string | null): string {
-  return color ?? DEFAULT_EPIC_COLOR
+  return color || DEFAULT_EPIC_COLOR
 }

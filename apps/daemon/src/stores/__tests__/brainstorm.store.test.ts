@@ -314,4 +314,66 @@ describe("BrainstormStore", () => {
       assert.strictEqual(result.has(b1.id), false);
     });
   });
+
+  describe("getUsedEpicColors", () => {
+    it("returns colors of epic brainstorms", () => {
+      const b = store.createBrainstorm(projectId);
+      store.updateBrainstorm(b.id, { status: "epic", color: "#3b82f6" });
+      const colors = store.getUsedEpicColors(projectId);
+      assert.deepStrictEqual(colors, ["#3b82f6"]);
+    });
+
+    it("excludes non-epic brainstorms with colors", () => {
+      const b = store.createBrainstorm(projectId);
+      store.updateBrainstorm(b.id, { color: "#3b82f6" });
+      const colors = store.getUsedEpicColors(projectId);
+      assert.deepStrictEqual(colors, []);
+    });
+
+    it("excludes epics with null color", () => {
+      const b = store.createBrainstorm(projectId);
+      store.updateBrainstorm(b.id, { status: "epic" });
+      const colors = store.getUsedEpicColors(projectId);
+      assert.deepStrictEqual(colors, []);
+    });
+
+    it("returns distinct colors", () => {
+      const b1 = store.createBrainstorm(projectId);
+      const b2 = store.createBrainstorm(projectId);
+      store.updateBrainstorm(b1.id, { status: "epic", color: "#3b82f6" });
+      store.updateBrainstorm(b2.id, { status: "epic", color: "#3b82f6" });
+      const colors = store.getUsedEpicColors(projectId);
+      assert.deepStrictEqual(colors, ["#3b82f6"]);
+    });
+
+    it("returns empty for project with no epics", () => {
+      const colors = store.getUsedEpicColors(projectId);
+      assert.deepStrictEqual(colors, []);
+    });
+  });
+
+  describe("updateBrainstorm color/icon", () => {
+    it("sets color and icon", () => {
+      const b = store.createBrainstorm(projectId);
+      const updated = store.updateBrainstorm(b.id, { color: "#10b981", icon: "rocket" });
+      assert.ok(updated, "updateBrainstorm should return non-null");
+      assert.strictEqual(updated!.color, "#10b981");
+      assert.strictEqual(updated!.icon, "rocket");
+    });
+
+    it("clears color and icon with explicit null", () => {
+      const b = store.createBrainstorm(projectId);
+      store.updateBrainstorm(b.id, { color: "#10b981", icon: "rocket" });
+      const updated = store.updateBrainstorm(b.id, { color: null, icon: null });
+      assert.ok(updated, "updateBrainstorm should return non-null");
+      assert.strictEqual(updated!.color, null);
+      assert.strictEqual(updated!.icon, null);
+    });
+
+    it("new brainstorm has null color and icon", () => {
+      const b = store.createBrainstorm(projectId);
+      assert.strictEqual(b.color, null);
+      assert.strictEqual(b.icon, null);
+    });
+  });
 });
