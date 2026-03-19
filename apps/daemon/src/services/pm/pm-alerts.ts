@@ -166,9 +166,9 @@ export function detectAlerts(
   }
 
   // -------------------------------------------------------------------------
-  // Dependency Unblocks (watching mode only)
+  // Dependency Unblocks (watching + executing modes)
   // -------------------------------------------------------------------------
-  if (config.alerts.dependencyUnblocks && config.mode === "watching") {
+  if (config.alerts.dependencyUnblocks && (config.mode === "watching" || config.mode === "executing")) {
     // Find tickets in "Blocked" phase that have no unsatisfied hard dependencies.
     // We check if a ticket is in Blocked phase and all its dependencies are in
     // a terminal-like phase (Done). This is a simplified heuristic — full

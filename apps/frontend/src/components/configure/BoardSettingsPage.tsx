@@ -39,6 +39,14 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
 
   const hasChanges = currentSnapshot !== savedSnapshot
 
+  // ---------- Helpers ----------
+
+  const applyConfig = useCallback((config: PmConfig) => {
+    setMode(config.mode)
+    setPolling({ ...config.polling })
+    setAlerts({ ...config.alerts })
+  }, [])
+
   // ---------- Load ----------
 
   useEffect(() => {
@@ -59,15 +67,7 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
       })
 
     return () => { cancelled = true }
-  }, [projectId, workflowId])
-
-  // ---------- Helpers ----------
-
-  const applyConfig = useCallback((config: PmConfig) => {
-    setMode(config.mode)
-    setPolling({ ...config.polling })
-    setAlerts({ ...config.alerts })
-  }, [])
+  }, [projectId, workflowId, applyConfig])
 
   const handlePollingChange = useCallback(
     (field: keyof PmPollingConfig, raw: string) => {
