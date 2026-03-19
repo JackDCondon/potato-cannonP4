@@ -144,6 +144,10 @@
             }
           ],
           "description": "Optional model tier to use for this agent. If not specified, runtime defaults apply."
+        },
+        "resumeOnRalphRetry": {
+          "type": "boolean",
+          "description": "When true, resume the previous Claude session on ralph loop retry instead of spawning fresh"
         }
       },
       "additionalProperties": false
