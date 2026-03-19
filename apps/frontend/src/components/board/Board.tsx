@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -183,6 +183,46 @@ export function Board({ projectId, workflowId }: BoardProps) {
     })
   )
 
+  // Convert vertical scroll to horizontal scroll on the board via callback ref,
+  // unless the cursor is over a vertically-scrollable child (e.g. ticket list)
+  const boardScrollRef = useCallback((el: HTMLDivElement | null) => {
+    // Clean up previous listener if any
+    const prev = boardScrollElRef.current
+    if (prev && prev.__wheelHandler) {
+      prev.removeEventListener('wheel', prev.__wheelHandler)
+      delete prev.__wheelHandler
+    }
+    boardScrollElRef.current = el
+    if (!el) return
+
+    const scrollContainer = el
+    function handleWheel(e: WheelEvent) {
+      // Only convert vertical scroll (not already horizontal)
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+
+      // Walk up from the event target to the board container.
+      // If we hit a vertically-scrollable element that actually has overflow, bail out.
+      let target = e.target as HTMLElement | null
+      while (target && target !== scrollContainer) {
+        const { overflowY } = getComputedStyle(target)
+        const isScrollable = overflowY === 'auto' || overflowY === 'scroll'
+        if (isScrollable && target.scrollHeight > target.clientHeight) {
+          const canScrollDown = e.deltaY > 0 && target.scrollTop + target.clientHeight < target.scrollHeight
+          const canScrollUp = e.deltaY < 0 && target.scrollTop > 0
+          if (canScrollDown || canScrollUp) return
+        }
+        target = target.parentElement
+      }
+
+      e.preventDefault()
+      scrollContainer.scrollLeft += e.deltaY
+    }
+
+    ;(el as any).__wheelHandler = handleWheel
+    el.addEventListener('wheel', handleWheel, { passive: false })
+  }, [])
+  const boardScrollElRef = useRef<(HTMLDivElement & { __wheelHandler?: (e: WheelEvent) => void }) | null>(null)
+
   // Local state
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -362,7 +402,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
       ) : (
         <div className="flex-1 min-h-0 h-full">
           <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="h-full overflow-x-auto overflow-y-hidden p-4">
+            <div ref={boardScrollRef} className="h-full overflow-x-auto overflow-y-hidden p-4">
               <div className="flex gap-4 h-full">
                 {/* Brainstorm column */}
                 <div className="shrink-0">
