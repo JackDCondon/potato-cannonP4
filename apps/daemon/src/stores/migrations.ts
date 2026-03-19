@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 23;
+const CURRENT_SCHEMA_VERSION = 24;
 
 /**
  * Run database migrations.
@@ -102,6 +102,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 23) {
     migrateV23(db);
+  }
+
+  if (version < 24) {
+    migrateV24(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1054,6 +1058,33 @@ function migrateV23(db: Database.Database): void {
   }
   if (!brainstormCols.has("icon")) {
     db.exec(`ALTER TABLE brainstorms ADD COLUMN icon TEXT`);
+  }
+}
+
+/**
+ * V24: Add paused state columns to tickets table for pause/retry behavior.
+ * - paused: INTEGER NOT NULL DEFAULT 0, flag indicating if ticket is paused
+ * - pause_reason: TEXT, reason why the ticket was paused
+ * - pause_retry_at: TEXT, ISO timestamp for when to retry
+ * - pause_retry_count: INTEGER NOT NULL DEFAULT 0, number of retry attempts
+ */
+function migrateV24(db: Database.Database): void {
+  const ticketCols = new Set(
+    (db.prepare("PRAGMA table_info(tickets)").all() as { name: string }[]).map(
+      (r) => r.name,
+    ),
+  );
+  if (!ticketCols.has("paused")) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN paused INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!ticketCols.has("pause_reason")) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN pause_reason TEXT`);
+  }
+  if (!ticketCols.has("pause_retry_at")) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN pause_retry_at TEXT`);
+  }
+  if (!ticketCols.has("pause_retry_count")) {
+    db.exec(`ALTER TABLE tickets ADD COLUMN pause_retry_count INTEGER NOT NULL DEFAULT 0`);
   }
 }
 
