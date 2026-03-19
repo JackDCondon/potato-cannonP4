@@ -120,8 +120,8 @@ describe('BrainstormDetailPanel', () => {
 
     render(<BrainstormDetailPanel />)
 
-    // Should show brainstorm name (not replaced)
-    expect(screen.getAllByText('Test Brainstorm').length).toBeGreaterThan(0)
+    // Should show "Epic — managed by PM" header label
+    expect(screen.getByText('Epic — managed by PM')).toBeDefined()
     // Should show PM mode badge
     expect(screen.getByText('watching')).toBeDefined()
   })

@@ -198,7 +198,7 @@ export function BrainstormDetailPanel() {
               <div className="flex items-center gap-2 min-w-0 flex-1 group">
                 <div className="flex items-center gap-1 min-w-0 flex-1">
                   <h2 className="text-text-primary text-lg font-semibold truncate">
-                    {brainstormSheetBrainstormName || 'Brainstorm'}
+                    {isEpicPm ? 'Epic \u2014 managed by PM' : (brainstormSheetBrainstormName || 'Brainstorm')}
                   </h2>
                   {isEpicPm && (
                     <Badge variant="secondary" className="shrink-0 capitalize">
