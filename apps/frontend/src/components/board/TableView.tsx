@@ -5,10 +5,12 @@ import {
   useProjectPhases,
   useProjects,
   useTemplate,
-  useUpdateTicket
+  useUpdateTicket,
+  useBrainstorms
 } from '@/hooks/queries'
 import { useAppStore } from '@/stores/appStore'
 import { cn, timeAgo, parseTicketNumber } from '@/lib/utils'
+import { EpicBadge } from '@/components/board/EpicBadge'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -95,6 +97,7 @@ interface TableViewProps {
 
 export function TableView({ projectId, workflowId }: TableViewProps) {
   const openTicketSheet = useAppStore((s) => s.openTicketSheet)
+  const openBrainstormSheet = useAppStore((s) => s.openBrainstormSheet)
   const isTicketProcessingFn = useAppStore((s) => s.isTicketProcessing)
   const isTicketPendingFn = useAppStore((s) => s.isTicketPending)
 
@@ -102,6 +105,14 @@ export function TableView({ projectId, workflowId }: TableViewProps) {
   const { data: projects } = useProjects()
   const { data: tickets } = useTickets(projectId, workflowId)
   const { data: phases } = useProjectPhases(projectId)
+  const { data: brainstorms } = useBrainstorms(projectId)
+
+  // Build a lookup map: brainstormId → Brainstorm
+  const brainstormMap = useMemo(() => {
+    const map: Record<string, import('@potato-cannon/shared').Brainstorm> = {}
+    brainstorms?.forEach((b) => { map[b.id] = b })
+    return map
+  }, [brainstorms])
 
   // Get current project to access template name
   const currentProject = useMemo(
@@ -298,6 +309,15 @@ export function TableView({ projectId, workflowId }: TableViewProps) {
                       <span className="text-sm text-text-primary truncate max-w-md">
                         {ticket.title}
                       </span>
+                      {ticket.brainstormId && (
+                        <EpicBadge
+                          brainstorm={brainstormMap[ticket.brainstormId]}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openBrainstormSheet(projectId, ticket.brainstormId!, 'Epic')
+                          }}
+                        />
+                      )}
                       {isProcessing && (
                         <span className="inline-block w-2 h-2 bg-accent rounded-full animate-pulse flex-shrink-0" />
                       )}

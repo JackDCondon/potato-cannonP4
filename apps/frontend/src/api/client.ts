@@ -474,7 +474,7 @@ export const api = {
       `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}/artifacts`
     ),
 
-  updateBrainstorm: (projectId: string, brainstormId: string, updates: { name?: string }) =>
+  updateBrainstorm: (projectId: string, brainstormId: string, updates: { name?: string; color?: string | null; icon?: string | null }) =>
     request<Brainstorm>(
       `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}`,
       { method: 'PUT', body: JSON.stringify(updates) }
