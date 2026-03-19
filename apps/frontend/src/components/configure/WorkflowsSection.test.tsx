@@ -4,6 +4,7 @@ import { WorkflowsSection } from './WorkflowsSection'
 
 const mockCreateWorkflowMutate = vi.fn()
 const mockDeleteWorkflowMutate = vi.fn()
+const mockUpdateWorkflowMutate = vi.fn()
 const mockGetWorkflowDeletePreview = vi.fn()
 
 vi.mock('@/hooks/queries', () => ({
@@ -39,6 +40,10 @@ vi.mock('@/hooks/queries', () => ({
   }),
   useDeleteWorkflow: () => ({
     mutate: mockDeleteWorkflowMutate,
+    isPending: false,
+  }),
+  useUpdateWorkflow: () => ({
+    mutate: mockUpdateWorkflowMutate,
     isPending: false,
   }),
 }))
