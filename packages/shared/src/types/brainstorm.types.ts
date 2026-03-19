@@ -15,6 +15,8 @@ export interface Brainstorm {
   ticketCount?: number
   activeTicketCount?: number
   pmEnabled?: boolean
+  color?: string | null
+  icon?: string | null
 }
 
 export interface BrainstormQuestion {
