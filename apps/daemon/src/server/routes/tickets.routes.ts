@@ -46,7 +46,8 @@ import type { Project } from "../../types/config.types.js";
 import type { Ticket, TicketPhase } from "../../types/ticket.types.js";
 import { resolveTargetPhase, getPhaseConfig } from "../../services/session/phase-config.js";
 import type { TemplatePhase } from "@potato-cannon/shared";
-import { brainstormGetTicketCounts, updateBrainstorm } from "../../stores/brainstorm.store.js";
+import { brainstormGetTicketCounts, brainstormGetUsedEpicColors, updateBrainstorm } from "../../stores/brainstorm.store.js";
+import { EPIC_BADGE_COLORS } from "@potato-cannon/shared";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -306,7 +307,18 @@ export function registerTicketRoutes(
           const counts = brainstormGetTicketCounts(brainstormId);
           if (counts.ticketCount === 1) {
             // First ticket created from this brainstorm — transition to epic PM mode
-            const updated = await updateBrainstorm(projectId, brainstormId, { status: "epic", pmEnabled: true });
+            // Auto-assign a color: pick a random unused color, fall back to full set if all taken
+            let autoColor: string | undefined;
+            try {
+              const usedColors = brainstormGetUsedEpicColors(projectId);
+              const usedSet = new Set(usedColors);
+              const available = (EPIC_BADGE_COLORS as readonly string[]).filter(c => !usedSet.has(c));
+              const pool = available.length > 0 ? available : (EPIC_BADGE_COLORS as readonly string[]);
+              autoColor = pool[Math.floor(Math.random() * pool.length)];
+            } catch (colorError) {
+              console.warn("Failed to auto-assign epic color, proceeding without color", colorError);
+            }
+            const updated = await updateBrainstorm(projectId, brainstormId, { status: "epic", pmEnabled: true, ...(autoColor ? { color: autoColor } : {}) });
             eventBus.emit("brainstorm:updated", { projectId, brainstorm: updated });
           }
         } catch (transitionError) {
