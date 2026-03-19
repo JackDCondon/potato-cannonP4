@@ -66,8 +66,8 @@ function rowToSession(row: SessionRow): StoredSession {
     exitCode: row.exit_code ?? undefined,
     phase: row.phase || undefined,
     metadata: parseSessionMetadata(row.metadata),
-    inputTokens: row.input_tokens || undefined,
-    outputTokens: row.output_tokens || undefined,
+    inputTokens: row.input_tokens ?? undefined,
+    outputTokens: row.output_tokens ?? undefined,
   };
 }
 
