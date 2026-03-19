@@ -401,9 +401,10 @@ export async function buildPmPrompt(
   brainstorm: { name: string; planSummary?: string | null },
   options?: {
     pendingContext?: { question: string; response: string };
+    pmMode?: string;
   },
 ): Promise<string> {
-  const { pendingContext } = options ?? {};
+  const { pendingContext, pmMode } = options ?? {};
 
   // Try to load decisions artifact
   let decisionsContent: string | undefined;
@@ -451,7 +452,7 @@ Begin by summarising the current epic status and asking how you can help.`;
 **Project:** ${projectId}
 **Brainstorm ID:** ${brainstormId}
 **Epic Name:** ${brainstorm.name}
-**Mode:** Epic Project Manager
+**Mode:** ${pmMode ?? "passive"}
 ${planSection}${decisionsSection}
 ## Available MCP Commands
 

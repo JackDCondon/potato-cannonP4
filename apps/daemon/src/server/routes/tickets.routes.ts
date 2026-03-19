@@ -301,12 +301,17 @@ export function registerTicketRoutes(
       eventBus.emit("ticket:created", { projectId, ticket });
 
       // Auto-transition brainstorm to epic status on first ticket creation (idempotent)
+      // Wrapped in try/catch so transition failures don't mask successful ticket creation
       if (brainstormId) {
-        const counts = brainstormGetTicketCounts(brainstormId);
-        if (counts.ticketCount === 1) {
-          // First ticket created from this brainstorm — transition to epic PM mode
-          await updateBrainstorm(projectId, brainstormId, { status: "epic" });
-          await transitionToEpicPm(projectId, brainstormId);
+        try {
+          const counts = brainstormGetTicketCounts(brainstormId);
+          if (counts.ticketCount === 1) {
+            // First ticket created from this brainstorm — transition to epic PM mode
+            await updateBrainstorm(projectId, brainstormId, { status: "epic", pmEnabled: true });
+            transitionToEpicPm(projectId, brainstormId);
+          }
+        } catch (transitionError) {
+          console.error("Failed to transition brainstorm to epic PM", transitionError);
         }
       }
 

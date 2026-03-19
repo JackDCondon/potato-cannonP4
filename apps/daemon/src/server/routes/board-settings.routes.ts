@@ -28,7 +28,7 @@ function validatePmConfig(body: Partial<PmConfig>): ValidationError[] {
     });
   }
 
-  if (body.polling !== undefined) {
+  if (body.polling !== undefined && body.polling !== null && typeof body.polling === "object") {
     const { polling } = body;
 
     if (
