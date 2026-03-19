@@ -31,4 +31,5 @@ export interface BrainstormMessage {
   askedAt?: string
   sentAt?: string
   timestamp?: string
+  metadata?: Record<string, unknown>
 }

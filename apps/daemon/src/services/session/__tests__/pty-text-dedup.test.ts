@@ -74,4 +74,25 @@ describe("PtyCaptureDedup", () => {
     assert.equal(matchFirst, "msg-first");
     assert.equal(matchSecond, "msg-second");
   });
+
+  it("matches texts with different content after position 200 (PREFIX_LENGTH boundary)", () => {
+    // Build a 200-char prefix (exactly at the boundary)
+    const prefix = "A".repeat(200);
+    // Two texts that share the same 200-char prefix but differ after position 200
+    const textA = prefix + " --- suffix A that is unique to this message";
+    const textB = prefix + " --- suffix B that is completely different from A";
+
+    assert.ok(textA.length > 200, "textA must be longer than PREFIX_LENGTH");
+    assert.ok(textB.length > 200, "textB must be longer than PREFIX_LENGTH");
+
+    dedup.recordCapture(textA, "msg-boundary");
+
+    // textB differs after position 200 but shares the same prefix → should match
+    const match = dedup.findMatchingCapture(textB);
+    assert.equal(
+      match,
+      "msg-boundary",
+      "Two texts with identical 200-char prefix should match regardless of content after position 200",
+    );
+  });
 });

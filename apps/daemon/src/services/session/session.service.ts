@@ -78,7 +78,7 @@ import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
 import { PtyTextExtractor } from "./pty-text-extractor.js";
-import { getPtyCaptureDedup } from "./pty-capture-dedup.js";
+import { getPtyCaptureDedup, clearPtyCaptureDedup } from "./pty-capture-dedup.js";
 import { buildResumePrompt } from "./resume-prompt.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
@@ -1305,6 +1305,12 @@ export class SessionService {
         });
       }
       this.sessions.delete(sessionId);
+
+      // Clean up PTY-capture dedup registry for this session's context
+      const dedupKey = ticketId || brainstormId;
+      if (dedupKey) {
+        clearPtyCaptureDedup(dedupKey);
+      }
 
       // End stored session in database (for ticket sessions tracked in SQLite)
       endStoredSession(sessionId, exitCode);
