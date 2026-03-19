@@ -30,6 +30,7 @@ import {
   registerDependencyRoutes,
   registerChatTelemetryRoutes,
   registerConfigRoutes,
+  registerBoardSettingsRoutes,
   refreshProjects,
   getProjects,
 } from "./routes/index.js";
@@ -967,6 +968,7 @@ export async function main(): Promise<void> {
   registerWorkflowRoutes(app, sessionService);
   registerDependencyRoutes(app);
   registerChatTelemetryRoutes(app);
+  registerBoardSettingsRoutes(app);
   registerSystemRoutes(app);
 
   // SPA catch-all route - fallback to index.html for SPA routing
