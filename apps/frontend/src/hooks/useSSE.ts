@@ -76,6 +76,8 @@ export function useSSE() {
 
       // Ticket updated - apply payload to cache immediately for responsive board updates,
       // then invalidate queries as a safety net to reconcile any related fields.
+      // Cancel in-flight ticket fetches first to prevent stale data (e.g. from session:ended
+      // refetch racing with a phase transition) from overwriting this authoritative update.
       eventSource.addEventListener('ticket:updated', (e) => {
         try {
           const data = JSON.parse(e.data) as {
@@ -84,6 +86,7 @@ export function useSSE() {
           }
           const { projectId, ticket } = data
           if (projectId && ticket?.id) {
+            queryClient.cancelQueries({ queryKey: ['tickets', projectId] })
             queryClient.setQueriesData(
               { queryKey: ['tickets', projectId], exact: false },
               (old: unknown) => {
@@ -107,6 +110,7 @@ export function useSSE() {
       })
 
       // Ticket moved - phase is enough to patch cache quickly; ticket:updated will also fire.
+      // Cancel in-flight ticket fetches first to prevent stale data from overwriting.
       eventSource.addEventListener('ticket:moved', (e) => {
         try {
           const data = JSON.parse(e.data) as {
@@ -116,6 +120,7 @@ export function useSSE() {
           }
           const { projectId, ticketId, to } = data
           if (projectId && ticketId && to) {
+            queryClient.cancelQueries({ queryKey: ['tickets', projectId] })
             queryClient.setQueriesData(
               { queryKey: ['tickets', projectId], exact: false },
               (old: unknown) => {
