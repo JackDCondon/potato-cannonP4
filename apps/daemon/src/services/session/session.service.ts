@@ -21,7 +21,7 @@ import {
 } from "../../stores/ticket.store.js";
 import { getDatabase } from "../../stores/db.js";
 import { getProjectById } from "../../stores/project.store.js";
-import { getBrainstorm } from "../../stores/brainstorm.store.js";
+import { getBrainstorm, brainstormGetDirect } from "../../stores/brainstorm.store.js";
 import {
   createStoredSession,
   endStoredSession,
@@ -76,6 +76,7 @@ import { getPhaseConfig, phaseRequiresIsolation, getNextEnabledPhase } from "./p
 import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt } from "./prompts.js";
+import { PtyTextExtractor } from "./pty-text-extractor.js";
 import { buildResumePrompt } from "./resume-prompt.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
@@ -1172,6 +1173,8 @@ export class SessionService {
     // original session ID. The stored session already has the correct one.
     let claudeSessionIdCaptured = !!claudeResumeSessionId;
 
+    const ptyTextExtractor = new PtyTextExtractor();
+
     proc.onData((data: string) => {
       // Scan for remote-control URL in raw PTY output (BEFORE per-line loop)
       if (this.remoteControlState.get(sessionId)?.pending) {
@@ -1230,6 +1233,21 @@ export class SessionService {
             timestamp: new Date().toISOString(),
           };
           logStream.write(JSON.stringify(logEntry) + "\n");
+        }
+      }
+
+      // Capture assistant text blocks from PTY stream
+      if (meta.ticketId || meta.brainstormId) {
+        const texts = ptyTextExtractor.feed(data);
+        for (const text of texts) {
+          this.handleCapturedPtyText(
+            text,
+            meta.projectId,
+            meta.ticketId,
+            meta.brainstormId,
+            phase,
+            agentType,
+          );
         }
       }
     });
@@ -2190,6 +2208,63 @@ export class SessionService {
       from: previousPhase,
       to: "Blocked",
     });
+  }
+
+  /**
+   * Store captured PTY assistant text as a conversation notification.
+   * This catches reasoning text that the agent outputs directly instead
+   * of sending via chat_notify.
+   */
+  private handleCapturedPtyText(
+    text: string,
+    projectId: string,
+    ticketId: string | undefined,
+    brainstormId: string | undefined,
+    phase: TicketPhase | undefined,
+    agentType: string,
+  ): void {
+    try {
+      let conversationId: string | undefined;
+      if (ticketId) {
+        // getTicket() throws if not found — the surrounding try/catch handles this.
+        const ticket = getTicket(projectId, ticketId);
+        conversationId = ticket.conversationId;
+      } else if (brainstormId) {
+        const brainstorm = brainstormGetDirect(brainstormId);
+        conversationId = brainstorm?.conversationId ?? undefined;
+      }
+
+      if (!conversationId) return;
+
+      addMessage(conversationId, {
+        type: "notification",
+        text,
+        metadata: {
+          source: "pty-capture",
+          phase,
+          agentSource: agentType,
+        },
+      });
+
+      // Emit SSE event so the frontend updates in real time
+      const now = new Date().toISOString();
+      if (ticketId) {
+        eventBus.emit("ticket:message", {
+          projectId,
+          ticketId,
+          message: { type: "notification", text, timestamp: now },
+        });
+      }
+      if (brainstormId) {
+        eventBus.emit("brainstorm:message", {
+          projectId,
+          brainstormId,
+          message: { type: "notification", text, timestamp: now },
+        });
+      }
+    } catch (err) {
+      console.error("[handleCapturedPtyText] Failed to store captured text:", err);
+    }
   }
 
   async stopAll(timeout: number = 4000): Promise<void> {
