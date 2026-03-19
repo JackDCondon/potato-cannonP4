@@ -1,7 +1,7 @@
 {
   "$schema": "../workflow.schema.json",
-  "name": "bug-fix",
-  "description": "Structured bug-fix workflow: investigate, confirm hypothesis with user, build fix, create PR.",
+  "name": "bug-fix-p4",
+  "description": "Structured bug-fix workflow for Perforce: investigate, confirm hypothesis, build fix, shelve for review.",
   "version": "2.0.0",
   "parentTemplate": "product-development",
   "phases": [
@@ -62,7 +62,7 @@
     {
       "id": "Build",
       "name": "Build",
-      "description": "Create tasks from resolution.md and implement the fix",
+      "description": "Create tasks from resolution.md and implement the fix with P4 sync",
       "blocksOnUnsatisfiedTiers": ["code-ready"],
       "workers": [
         {
@@ -76,9 +76,16 @@
         {
           "id": "build-task-loop",
           "type": "taskLoop",
-          "description": "Executes each fix task",
+          "description": "Syncs workspace and executes each fix task",
           "maxAttempts": 10,
           "workers": [
+            {
+              "id": "sync-agent",
+              "type": "agent",
+              "source": "agents/sync-agent.md",
+              "description": "Syncs P4 workspace to head and resolves conflicts",
+              "modelTier": "low"
+            },
             {
               "id": "builder-agent",
               "type": "agent",
@@ -98,26 +105,27 @@
         }
       ],
       "transitions": {
-        "next": "Pull Requests"
+        "next": "Shelve"
       },
-      "requiresWorktree": true
+      "requiresIsolation": true
     },
     {
-      "id": "Pull Requests",
-      "name": "Pull Requests",
-      "description": "Create pull request for the bug fix",
+      "id": "Shelve",
+      "name": "Shelve",
+      "description": "Shelve changelist for review",
       "workers": [
         {
-          "id": "pr-agent",
+          "id": "shelve-agent",
           "type": "agent",
-          "source": "agents/pr-agent.md",
-          "description": "Creates PR with fix summary and test evidence",
+          "source": "agents/shelve-agent.md",
+          "description": "Creates changelist, shelves files, links to Swarm",
           "modelTier": "low"
         }
       ],
       "transitions": {
         "next": null
-      }
+      },
+      "requiresIsolation": true
     }
   ]
 }
