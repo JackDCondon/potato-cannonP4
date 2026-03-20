@@ -318,7 +318,7 @@ export async function buildAgentPrompt(
         // Instead, inject only the most recent rejection as a fresh instruction.
         const lastRejection = [...iterations].reverse().find((i) => !i.approved);
         if (lastRejection) {
-          previousAttemptsSection = `\n\n## Reviewer Feedback\n\nYour previous work was rejected. Please address the following feedback:\n\n- Reviewer: ${lastRejection.reviewer}\n- Feedback: ${lastRejection.feedback}\n`;
+          previousAttemptsSection = `\n\n## Reviewer Feedback\n\nYour previous work was rejected. Please address the following feedback:\n\n- Reviewer: ${lastRejection.reviewer}\n- Feedback: ${(lastRejection.feedback ?? "").trim()}\n`;
         }
       } else {
         previousAttemptsSection = formatPreviousAttempts(feedback, iterations);
