@@ -132,7 +132,7 @@ describe("SessionStore", () => {
             worktreePath: "D:/tmp/worktree",
             branchName: "potato/POT-1",
             agentDefinitionPromptHash: "abc123",
-            mcpServerNames: ["potato-cannon", "p4"],
+            mcpServerNames: ["potato-ticket", "p4"],
             model: "sonnet",
             disallowedTools: ["Skill(superpowers:*)"],
           },
@@ -148,7 +148,7 @@ describe("SessionStore", () => {
         worktreePath: "D:/tmp/worktree",
         branchName: "potato/POT-1",
         agentDefinitionPromptHash: "abc123",
-        mcpServerNames: ["potato-cannon", "p4"],
+        mcpServerNames: ["potato-ticket", "p4"],
         model: "sonnet",
         disallowedTools: ["Skill(superpowers:*)"],
       });

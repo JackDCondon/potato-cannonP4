@@ -56,6 +56,7 @@ export const ticketTools: ToolDefinition[] = [
   },
   {
     name: "add_ticket_comment",
+    mcpServer: "pm" as const,
     description:
       "Add a comment/note to the ticket for tracking progress or issues",
     inputSchema: {
@@ -75,6 +76,7 @@ export const ticketTools: ToolDefinition[] = [
   },
   {
     name: "create_ticket",
+    mcpServer: "pm" as const,
     description:
       "Create a new ticket in the current project. Use this to convert a brainstorm into a formal ticket.",
     inputSchema: {
@@ -136,6 +138,7 @@ export const ticketTools: ToolDefinition[] = [
   },
   {
     name: "list_tickets",
+    mcpServer: "pm" as const,
     description:
       "List tickets for the current project. Returns a compact array with id, title, phase, complexity, and active session status.",
     inputSchema: {

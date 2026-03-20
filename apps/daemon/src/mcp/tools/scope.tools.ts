@@ -36,6 +36,7 @@ export const scopeTools: ToolDefinition[] = [
   },
   {
     name: "get_dependents",
+    mcpServer: "pm" as const,
     description:
       "Get tickets that depend on this ticket (reverse dependency lookup). Shows what downstream work is waiting for your completion.",
     inputSchema: {

@@ -175,6 +175,9 @@ Key files:
 | `chat_notify` | Send notification (no response) |
 | `chat_init` | Initialize chat threads for ticket/brainstorm |
 | `get_ticket` | Get ticket details |
+| `move_ticket` | Move a ticket to a different phase (PM only) |
+| `update_ticket` | Update ticket title/description (PM only) |
+| `set_ticket_complexity` | Set ticket complexity (PM only) |
 | `create_ticket` | Create new ticket |
 | `create_task` | Create task in current phase |
 | `update_task_status` | Update task status |

@@ -26,7 +26,7 @@ The shared daemon `ChatService` now sends outbound questions and notifications d
 
 ### proxy.ts (~100 lines)
 
-1. **Startup**: Reads `POTATO_PROJECT_ID`, `POTATO_TICKET_ID`, `POTATO_BRAINSTORM_ID` from environment
+1. **Startup**: Reads `POTATO_PROJECT_ID`, `POTATO_TICKET_ID`, `POTATO_BRAINSTORM_ID`, `POTATO_MCP_SCOPE` from environment
 2. **ListTools**: Fetches tool list from daemon (`GET /mcp/tools`), caches it
 3. **CallTool**: Forwards to daemon (`POST /mcp/call`) with context, returns result
 
@@ -53,6 +53,15 @@ When both are provided, the daemon filters the tool list using a three-tier casc
 | 3 (lowest) | Global template | Agent config in `templates/{templateName}/workflow.json` |
 
 The first matching `disallowTools` array found is used to remove those tools from the ListTools response. If neither query param is provided, the full tool list is returned unfiltered.
+
+### MCP Server Scopes
+
+The proxy advertises one of two MCP server names based on `POTATO_MCP_SCOPE`:
+
+- `potato-ticket` for ticket-agent sessions
+- `potato-pm` for PM/brainstorm sessions that need the extra management tools
+
+The proxy passes `mcpServer=ticket|pm` to `GET /mcp/tools`, and the daemon uses that to filter the shared tool registry. Ticket agents see the ticket server tools only; PM sessions get the ticket tools plus the PM-only tools.
 
 ### /mcp/call Request
 
@@ -85,17 +94,33 @@ The `SessionService` spawns Claude Code with MCP config pointing to the proxy:
 ```typescript
 const mcpConfig = {
   mcpServers: {
-    "potato-cannon": {
+    "potato-ticket": {
       command: "node",
       args: ["/path/to/dist/mcp/proxy.js"],
       env: {
         POTATO_PROJECT_ID: projectId,
         POTATO_TICKET_ID: ticketId, // or empty for brainstorms
         POTATO_BRAINSTORM_ID: "", // or brainstormId
+        POTATO_MCP_SCOPE: "ticket",
       },
     },
   },
 };
+```
+
+PM/brainstorm sessions also add a second server entry:
+
+```typescript
+"potato-pm": {
+  command: "node",
+  args: ["/path/to/dist/mcp/proxy.js"],
+  env: {
+    POTATO_PROJECT_ID: projectId,
+    POTATO_TICKET_ID: "",
+    POTATO_BRAINSTORM_ID: brainstormId,
+    POTATO_MCP_SCOPE: "pm",
+  },
+}
 ```
 
 ## Tools (defined in tools/)

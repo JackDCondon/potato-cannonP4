@@ -310,6 +310,77 @@ function compatibilityKeysExactlyMatch(
   );
 }
 
+export function buildTicketMcpServers(input: {
+  nodePath: string;
+  mcpProxyPath: string;
+  projectId: string;
+  ticketId: string;
+  brainstormId: string;
+  workflowId: string;
+  agentModel: string;
+  agentSource: string;
+  additionalMcpServers?: Record<string, McpServerConfig>;
+}): Record<string, McpServerConfig> {
+  return {
+    "potato-ticket": {
+      command: input.nodePath,
+      args: [input.mcpProxyPath],
+      env: {
+        POTATO_PROJECT_ID: input.projectId,
+        POTATO_TICKET_ID: input.ticketId,
+        POTATO_BRAINSTORM_ID: input.brainstormId,
+        POTATO_WORKFLOW_ID: input.workflowId,
+        POTATO_AGENT_MODEL: input.agentModel,
+        POTATO_AGENT_SOURCE: input.agentSource,
+        POTATO_MCP_SCOPE: "ticket",
+      },
+    },
+    ...(input.additionalMcpServers ?? {}),
+  };
+}
+
+export function buildBrainstormMcpServers(input: {
+  nodePath: string;
+  mcpProxyPath: string;
+  projectId: string;
+  brainstormId: string;
+  workflowId: string;
+  agentSource: string;
+  usePm: boolean;
+}): Record<string, McpServerConfig> {
+  const baseEnv = {
+    POTATO_PROJECT_ID: input.projectId,
+    POTATO_TICKET_ID: "",
+    POTATO_BRAINSTORM_ID: input.brainstormId,
+    POTATO_WORKFLOW_ID: input.workflowId,
+    POTATO_AGENT_MODEL: "",
+    POTATO_AGENT_SOURCE: input.agentSource,
+  };
+
+  return {
+    "potato-ticket": {
+      command: input.nodePath,
+      args: [input.mcpProxyPath],
+      env: {
+        ...baseEnv,
+        POTATO_MCP_SCOPE: "ticket",
+      },
+    },
+    ...(input.usePm
+      ? {
+          "potato-pm": {
+            command: input.nodePath,
+            args: [input.mcpProxyPath],
+            env: {
+              ...baseEnv,
+              POTATO_MCP_SCOPE: "pm",
+            },
+          },
+        }
+      : {}),
+  };
+}
+
 /**
  * Select the Claude session ID that belongs to the current compatibility chain.
  * Prevents using a stale ID from a different phase/agent/generation.
@@ -1063,21 +1134,17 @@ export class SessionService {
     const nodePath = resolveNode();
 
     const mcpConfig = {
-      mcpServers: {
-        "potato-cannon": {
-          command: nodePath,
-          args: [mcpProxyPath],
-          env: {
-            POTATO_PROJECT_ID: projectId,
-            POTATO_TICKET_ID: ticketId,
-            POTATO_BRAINSTORM_ID: brainstormId,
-            POTATO_WORKFLOW_ID: workflowId,
-            POTATO_AGENT_MODEL: model || "",
-            POTATO_AGENT_SOURCE: agentType || "",
-          },
-        },
-        ...additionalMcpServers,
-      },
+      mcpServers: buildTicketMcpServers({
+        nodePath,
+        mcpProxyPath,
+        projectId,
+        ticketId,
+        brainstormId,
+        workflowId,
+        agentModel: model || "",
+        agentSource: agentType || "",
+        additionalMcpServers,
+      }),
     };
 
     const args = [
@@ -1619,20 +1686,15 @@ export class SessionService {
     const nodePath = resolveNode();
 
     const mcpConfig = {
-      mcpServers: {
-        "potato-cannon": {
-          command: nodePath,
-          args: [mcpProxyPath],
-          env: {
-            POTATO_PROJECT_ID: projectId,
-            POTATO_TICKET_ID: "",
-            POTATO_BRAINSTORM_ID: brainstormId,
-            POTATO_WORKFLOW_ID: workflowId,
-            POTATO_AGENT_MODEL: "",
-            POTATO_AGENT_SOURCE: agentType,
-          },
-        },
-      },
+      mcpServers: buildBrainstormMcpServers({
+        nodePath,
+        mcpProxyPath,
+        projectId,
+        brainstormId,
+        workflowId,
+        agentSource: agentType,
+        usePm,
+      }),
     };
     const agentDefinition = await tryLoadAgentDefinition(projectId, agentType);
 
@@ -1863,7 +1925,7 @@ export class SessionService {
       worktreePath,
       branchName: workspaceLabel,
       agentPrompt: agentDefinition.prompt,
-      mcpServerNames: ["potato-cannon", ...Object.keys(additionalMcpServers)],
+      mcpServerNames: ["potato-ticket", ...Object.keys(additionalMcpServers)],
       model: resolvedModel ?? "default",
       disallowedTools,
     });
@@ -2123,7 +2185,7 @@ export class SessionService {
       worktreePath,
       branchName: workspaceLabel,
       agentPrompt: "resume",
-      mcpServerNames: ["potato-cannon", ...Object.keys(additionalMcpServers)],
+      mcpServerNames: ["potato-ticket", ...Object.keys(additionalMcpServers)],
       model: "default",
       disallowedTools: ["Skill(superpowers:*)"],
     });

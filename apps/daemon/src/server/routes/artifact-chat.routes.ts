@@ -318,13 +318,14 @@ async function spawnArtifactChatSession(
 
   const mcpConfig = {
     mcpServers: {
-      "potato-cannon": {
+      "potato-ticket": {
         command: "node",
         args: [mcpProxyPath],
         env: {
           POTATO_PROJECT_ID: projectId,
           POTATO_TICKET_ID: ticketId,
           POTATO_BRAINSTORM_ID: session.contextId, // Use contextId for chat routing
+          POTATO_MCP_SCOPE: "ticket",
         },
       },
     },

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "potato-cannon": {
+    "potato-ticket": {
       "command": "node",
       "args": ["D:/GIT/potato-cannonP4/apps/daemon/dist/mcp/external-proxy.js"],
       "env": {

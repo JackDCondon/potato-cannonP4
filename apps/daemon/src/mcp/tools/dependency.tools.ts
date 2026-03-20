@@ -19,6 +19,7 @@ import type { BlockedByEntry } from "@potato-cannon/shared";
 export const dependencyTools: ToolDefinition[] = [
   {
     name: "get_dependencies",
+    mcpServer: "pm" as const,
     description:
       "Get the dependency artifacts for a ticket. Returns each dependency with its satisfaction status, artifact filenames, and whether it has further dependencies. Defaults to the current ticket; pass a different ticketId only if the current ticket depends on it (directly or transitively).",
     inputSchema: {
@@ -35,6 +36,7 @@ export const dependencyTools: ToolDefinition[] = [
   },
   {
     name: "add_dependency",
+    mcpServer: "pm" as const,
     description:
       "Add a dependency edge between two existing tickets. Use this to set dependencies on tickets that were already created without them.",
     inputSchema: {
@@ -60,6 +62,7 @@ export const dependencyTools: ToolDefinition[] = [
   },
   {
     name: "delete_dependency",
+    mcpServer: "pm" as const,
     description: "Delete a dependency edge between two tickets.",
     inputSchema: {
       type: "object",

@@ -24,6 +24,7 @@ import {
 export const epicTools: ToolDefinition[] = [
   {
     name: "get_epic_status",
+    mcpServer: "pm" as const,
     description:
       "Get a structured snapshot of an entire epic's state: all tickets with their phase, tasks, dependencies, and how long they have been in the current phase. Use this to understand epic health and identify stuck or blocked tickets.",
     inputSchema: {
@@ -41,6 +42,7 @@ export const epicTools: ToolDefinition[] = [
   },
   {
     name: "set_epic_pm_mode",
+    mcpServer: "pm" as const,
     description:
       'Set the PM monitoring mode for the current epic. Use "passive" to disable monitoring, "watching" to enable alerts, "executing" to enable autonomous advancement.',
     inputSchema: {

@@ -6,6 +6,8 @@ import {
   SessionService,
   TicketLifecycleConflictError,
   StaleTicketInputError,
+  buildBrainstormMcpServers,
+  buildTicketMcpServers,
   resolveWorkerModelForSpawn,
   resolveStoredContinuityContext,
 } from "../session.service.js";
@@ -147,7 +149,7 @@ describe("resolveStoredContinuityContext", () => {
     worktreePath: "D:/AgentWorkspaces/potato-POT-1",
     branchName: "potato-POT-1",
     agentDefinitionPromptHash: "a".repeat(64),
-    mcpServerNames: ["p4", "potato-cannon"],
+    mcpServerNames: ["p4", "potato-ticket"],
     model: "opus",
     disallowedTools: ["Skill(superpowers:*)"],
   };
@@ -659,12 +661,12 @@ describe("SessionService continuity compatibility key", () => {
       worktreePath: "/tmp/worktree",
       branchName: "potato/POT-22",
       agentPrompt: "never persist this prompt raw",
-      mcpServerNames: ["zeta", "alpha", "potato-cannon"],
+      mcpServerNames: ["zeta", "alpha", "potato-ticket"],
       model: "sonnet",
       disallowedTools: ["B", "A"],
     });
 
-    assert.deepStrictEqual(compatibility.mcpServerNames, ["alpha", "potato-cannon", "zeta"]);
+    assert.deepStrictEqual(compatibility.mcpServerNames, ["alpha", "potato-ticket", "zeta"]);
     assert.deepStrictEqual(compatibility.disallowedTools, ["A", "B"]);
     assert.notStrictEqual(
       compatibility.agentDefinitionPromptHash,
@@ -686,7 +688,7 @@ describe("SessionService continuity metadata persistence helpers", () => {
       worktreePath: "/tmp/wt",
       branchName: "potato/POT-22",
       agentPrompt: "Build implementation",
-      mcpServerNames: ["potato-cannon"],
+      mcpServerNames: ["potato-ticket"],
       model: "sonnet",
       disallowedTools: ["Skill(superpowers:*)"],
     });
@@ -745,6 +747,56 @@ describe("SessionService continuity metadata persistence helpers", () => {
   });
 });
 
+describe("session MCP server config helpers", () => {
+  it("buildTicketMcpServers wires the renamed ticket server with ticket scope", () => {
+    const mcpServers = buildTicketMcpServers({
+      nodePath: "node",
+      mcpProxyPath: "/tmp/proxy.js",
+      projectId: "proj-1",
+      ticketId: "POT-1",
+      brainstormId: "",
+      workflowId: "wf-1",
+      agentModel: "sonnet",
+      agentSource: "agents/build.md",
+      additionalMcpServers: {
+        p4: { command: "p4", args: ["mcp"] },
+      },
+    });
+
+    assert.deepStrictEqual(Object.keys(mcpServers), ["potato-ticket", "p4"]);
+    assert.deepStrictEqual(mcpServers["potato-ticket"], {
+      command: "node",
+      args: ["/tmp/proxy.js"],
+      env: {
+        POTATO_PROJECT_ID: "proj-1",
+        POTATO_TICKET_ID: "POT-1",
+        POTATO_BRAINSTORM_ID: "",
+        POTATO_WORKFLOW_ID: "wf-1",
+        POTATO_AGENT_MODEL: "sonnet",
+        POTATO_AGENT_SOURCE: "agents/build.md",
+        POTATO_MCP_SCOPE: "ticket",
+      },
+    });
+  });
+
+  it("buildBrainstormMcpServers adds the PM server only for PM brainstorm sessions", () => {
+    const mcpServers = buildBrainstormMcpServers({
+      nodePath: "node",
+      mcpProxyPath: "/tmp/proxy.js",
+      projectId: "proj-1",
+      brainstormId: "brain-1",
+      workflowId: "wf-1",
+      agentSource: "agents/project-manager.md",
+      usePm: true,
+    });
+
+    assert.deepStrictEqual(Object.keys(mcpServers), ["potato-ticket", "potato-pm"]);
+    assert.strictEqual(mcpServers["potato-ticket"]?.env?.POTATO_MCP_SCOPE, "ticket");
+    assert.strictEqual(mcpServers["potato-pm"]?.env?.POTATO_MCP_SCOPE, "pm");
+    assert.strictEqual(mcpServers["potato-pm"]?.env?.POTATO_BRAINSTORM_ID, "brain-1");
+  });
+});
+
 describe("evaluateResumeEligibility", () => {
   const baseKey = {
     ticketId: "POT-1",
@@ -755,7 +807,7 @@ describe("evaluateResumeEligibility", () => {
     worktreePath: "/tmp/wt",
     branchName: "potato/POT-1",
     agentDefinitionPromptHash: "a".repeat(64),
-    mcpServerNames: ["potato-cannon", "p4"],
+    mcpServerNames: ["potato-ticket", "p4"],
     model: "sonnet",
     disallowedTools: ["Skill(superpowers:*)"],
   };
@@ -781,7 +833,7 @@ describe("evaluateResumeEligibility", () => {
       { worktreePath: "/tmp/wt2" },
       { branchName: "potato/POT-2" },
       { agentDefinitionPromptHash: "b".repeat(64) },
-      { mcpServerNames: ["potato-cannon"] },
+      { mcpServerNames: ["potato-ticket"] },
       { model: "haiku" },
       { disallowedTools: [] as string[] },
     ];
@@ -853,7 +905,7 @@ describe("decideContinuityMode", () => {
     worktreePath: "/tmp/wt",
     branchName: "potato/POT-1",
     agentDefinitionPromptHash: "a".repeat(64),
-    mcpServerNames: ["potato-cannon", "p4"],
+    mcpServerNames: ["potato-ticket", "p4"],
     model: "sonnet",
     disallowedTools: ["Skill(superpowers:*)"],
   };
@@ -1025,7 +1077,7 @@ describe("SessionService decideContinuityForTicket", () => {
     worktreePath: "/tmp/wt",
     branchName: "potato/POT-1",
     agentDefinitionPromptHash: "a".repeat(64),
-    mcpServerNames: ["potato-cannon", "p4"],
+    mcpServerNames: ["potato-ticket", "p4"],
     model: "sonnet",
     disallowedTools: ["Skill(superpowers:*)"],
   };
