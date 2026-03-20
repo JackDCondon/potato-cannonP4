@@ -2325,6 +2325,56 @@ export class SessionService {
   }
 
   /**
+   * Recover paused ticket retries on daemon startup.
+   * Iterates through all projects and tickets, re-scheduling retry timers
+   * for paused tickets that have pauseRetryAt set.
+   */
+  async recoverPausedTickets(): Promise<void> {
+    const db = getDatabase();
+    let recoveryCount = 0;
+
+    try {
+      // Get all projects
+      const projects = db
+        .prepare("SELECT id FROM projects ORDER BY id")
+        .all() as Array<{ id: string }>;
+
+      for (const project of projects) {
+        // Get all tickets for this project
+        const tickets = db
+          .prepare(
+            `SELECT id, paused, pause_retry_at
+             FROM tickets
+             WHERE project_id = ? AND paused = 1 AND pause_retry_at IS NOT NULL`,
+          )
+          .all(project.id) as Array<{
+          id: string;
+          paused: number;
+          pause_retry_at: string | null;
+        }>;
+
+        for (const ticket of tickets) {
+          if (ticket.pause_retry_at && retryScheduler) {
+            console.log(
+              `[recoverPausedTickets] Scheduling retry for ${ticket.id} at ${ticket.pause_retry_at}`,
+            );
+            retryScheduler.schedule(project.id, ticket.id, ticket.pause_retry_at);
+            recoveryCount++;
+          }
+        }
+      }
+
+      console.log(
+        `[recoverPausedTickets] Recovered ${recoveryCount} paused ticket(s)`,
+      );
+    } catch (err) {
+      console.error(
+        `[recoverPausedTickets] Error recovering paused tickets: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
    * Handle ticket blocked - move to Blocked phase
    */
   private async handleTicketBlocked(

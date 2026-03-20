@@ -1296,6 +1296,9 @@ export async function main(): Promise<void> {
     // Recover interrupted sessions (mid-execution with worker-state.json)
     await recoverInterruptedSessions();
 
+    // Recover paused tickets — re-schedule retry timers
+    await sessionService!.recoverPausedTickets();
+
     // Start PM poller for epic health monitoring
     pmPoller = new PmPoller(sessionService!, getProjects);
     pmPoller.start();
