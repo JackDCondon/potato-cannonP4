@@ -59,6 +59,10 @@ interface TicketRow {
   worker_state: string | null;
   workflow_id: string;
   brainstorm_id: string | null;
+  paused: number;
+  pause_reason: string | null;
+  pause_retry_at: string | null;
+  pause_retry_count: number;
 }
 
 interface HistoryRow {
@@ -292,6 +296,26 @@ export class TicketStore {
       values.push(updates.complexity);
     }
 
+    if (updates.paused !== undefined) {
+      fields.push("paused = ?");
+      values.push(updates.paused ? 1 : 0);
+    }
+
+    if (updates.pauseReason !== undefined) {
+      fields.push("pause_reason = ?");
+      values.push(updates.pauseReason);
+    }
+
+    if (updates.pauseRetryAt !== undefined) {
+      fields.push("pause_retry_at = ?");
+      values.push(updates.pauseRetryAt);
+    }
+
+    if (updates.pauseRetryCount !== undefined) {
+      fields.push("pause_retry_count = ?");
+      values.push(updates.pauseRetryCount);
+    }
+
     if (updates.phase !== undefined && updates.phase !== existing.phase) {
       fields.push("phase = ?");
       values.push(updates.phase);
@@ -491,6 +515,10 @@ export class TicketStore {
       conversationId: row.conversation_id || undefined,
       workflowId: row.workflow_id || undefined,
       brainstormId: row.brainstorm_id || undefined,
+      paused: row.paused === 1,
+      pauseReason: row.pause_reason || undefined,
+      pauseRetryAt: row.pause_retry_at || undefined,
+      pauseRetryCount: row.pause_retry_count,
     };
   }
 
