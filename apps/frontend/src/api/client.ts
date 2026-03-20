@@ -296,6 +296,11 @@ export const api = {
       body: JSON.stringify({ targetPhase })
     }),
 
+  resumeTicket: (projectId: string, ticketId: string) =>
+    request<{ ticket: Ticket }>(`/api/tickets/${encodeURIComponent(projectId)}/${ticketId}/resume`, {
+      method: 'POST'
+    }),
+
   getArchivedTickets: (projectId: string) =>
     request<Ticket[]>(`/api/tickets/${encodeURIComponent(projectId)}?archived=true`),
 
