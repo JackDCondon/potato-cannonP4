@@ -13,6 +13,7 @@ import {
 } from '../../stores/brainstorm.store.js';
 import { writeResponse, readQuestion } from '../../stores/chat.store.js';
 import { getMessages, addMessage, answerQuestion, getPendingQuestion } from '../../stores/conversation.store.js';
+import { chatService } from '../../services/chat.service.js';
 import { getActiveSessionForBrainstorm } from '../../stores/session.store.js';
 import { summarizeToTitle } from '../../services/summarize.js';
 import { getBrainstormFilesDir } from '../../config/paths.js';
@@ -197,6 +198,18 @@ export function registerBrainstormRoutes(
 
       // Write response file for session to pick up
       await writeResponse(projectId, brainstormId, { answer: message });
+
+      // Resolve the chat queue item so the global question lock is released.
+      // Without this, the orchestrator leaves the previous question as 'awaiting_reply'
+      // and blocks any subsequent questions from being dispatched to Telegram/Slack.
+      const pendingIpcQuestion = await readQuestion(projectId, brainstormId);
+      if (pendingIpcQuestion?.questionId) {
+        await chatService.reconcileWebAnswer(
+          { projectId, brainstormId },
+          pendingIpcQuestion.questionId,
+          message,
+        );
+      }
 
       // Save user message to conversation store (askAsync doesn't wait, so we save here)
       const brainstorm = await getBrainstorm(projectId, brainstormId);

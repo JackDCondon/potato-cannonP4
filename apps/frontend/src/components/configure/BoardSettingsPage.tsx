@@ -4,8 +4,10 @@ import { RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SettingsSection } from './SettingsSection'
+import { PmModeSelector } from './PmModeSelector'
+import { PmAlertToggles } from './PmAlertToggles'
 import { api } from '@/api/client'
-import type { PmPollingConfig } from '@potato-cannon/shared'
+import type { PmConfig, PmMode, PmAlertConfig, PmPollingConfig } from '@potato-cannon/shared'
 import { DEFAULT_PM_CONFIG } from '@potato-cannon/shared'
 
 interface BoardSettingsPageProps {
@@ -17,15 +19,17 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // Current form state (only polling — mode/alerts managed in EpicSettingsTab)
+  // Current form state
+  const [mode, setMode] = useState<PmMode>(DEFAULT_PM_CONFIG.mode)
   const [polling, setPolling] = useState<PmPollingConfig>({ ...DEFAULT_PM_CONFIG.polling })
+  const [alerts, setAlerts] = useState<PmAlertConfig>({ ...DEFAULT_PM_CONFIG.alerts })
 
   // Snapshot of last-saved state for dirty checking
   const [savedSnapshot, setSavedSnapshot] = useState('')
 
-  const currentConfig = useMemo(
-    () => ({ polling }),
-    [polling],
+  const currentConfig = useMemo<PmConfig>(
+    () => ({ mode, polling, alerts }),
+    [mode, polling, alerts],
   )
 
   const currentSnapshot = useMemo(
@@ -34,11 +38,14 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
   )
 
   const hasChanges = currentSnapshot !== savedSnapshot
+  const isPassive = mode === 'passive'
 
   // ---------- Helpers ----------
 
-  const applyPolling = useCallback((polling: PmPollingConfig) => {
-    setPolling({ ...polling })
+  const applyConfig = useCallback((config: PmConfig) => {
+    setMode(config.mode)
+    setPolling({ ...config.polling })
+    setAlerts({ ...config.alerts })
   }, [])
 
   // ---------- Load ----------
@@ -49,8 +56,8 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
     api.getBoardSettings(projectId, workflowId)
       .then(({ pmConfig }) => {
         if (cancelled) return
-        applyPolling(pmConfig.polling)
-        setSavedSnapshot(JSON.stringify({ polling: pmConfig.polling }))
+        applyConfig(pmConfig)
+        setSavedSnapshot(JSON.stringify(pmConfig))
       })
       .catch((error) => {
         const message = error instanceof Error ? error.message : 'Failed to load board settings'
@@ -61,7 +68,7 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
       })
 
     return () => { cancelled = true }
-  }, [projectId, workflowId, applyPolling])
+  }, [projectId, workflowId, applyConfig])
 
   const handlePollingChange = useCallback(
     (field: keyof PmPollingConfig, raw: string) => {
@@ -87,9 +94,9 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
 
     setSaving(true)
     try {
-      const { pmConfig } = await api.updateBoardPmSettings(projectId, workflowId, { polling } as any)
-      applyPolling(pmConfig.polling)
-      setSavedSnapshot(JSON.stringify({ polling: pmConfig.polling }))
+      const { pmConfig } = await api.updateBoardPmSettings(projectId, workflowId, currentConfig)
+      applyConfig(pmConfig)
+      setSavedSnapshot(JSON.stringify(pmConfig))
       toast.success('Board settings saved')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save board settings'
@@ -97,7 +104,7 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
     } finally {
       setSaving(false)
     }
-  }, [projectId, workflowId, polling, applyPolling])
+  }, [projectId, workflowId, currentConfig, applyConfig, polling])
 
   // ---------- Reset ----------
 
@@ -105,8 +112,8 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
     setSaving(true)
     try {
       const { pmConfig } = await api.resetBoardPmSettings(projectId, workflowId)
-      applyPolling(pmConfig.polling)
-      setSavedSnapshot(JSON.stringify({ polling: pmConfig.polling }))
+      applyConfig(pmConfig)
+      setSavedSnapshot(JSON.stringify(pmConfig))
       toast.success('Board settings reset to defaults')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to reset board settings'
@@ -114,7 +121,7 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
     } finally {
       setSaving(false)
     }
-  }, [projectId, workflowId, applyPolling])
+  }, [projectId, workflowId, applyConfig])
 
   // ---------- Render ----------
 
@@ -122,6 +129,33 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
     <div className="@container h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto p-6 pb-12">
         <div className="space-y-2">
+          <SettingsSection
+            title="PM Mode"
+            description="Choose how the Project Manager operates on this board."
+          >
+            <PmModeSelector
+              value={mode}
+              onChange={setMode}
+              disabled={loading || saving}
+            />
+          </SettingsSection>
+
+          <SettingsSection
+            title="Alert Categories"
+            description="Enable or disable specific alert types. Greyed out in passive mode."
+          >
+            <PmAlertToggles
+              value={alerts}
+              onChange={setAlerts}
+              disabled={loading || saving || isPassive}
+            />
+            {isPassive && (
+              <p className="mt-3 text-xs text-text-secondary">
+                Alerts are inactive in passive mode. Switch to watching or executing to configure.
+              </p>
+            )}
+          </SettingsSection>
+
           <SettingsSection
             title="Polling Configuration"
             description="Timing parameters for the daemon-side polling loop. Only active in watching or executing mode."

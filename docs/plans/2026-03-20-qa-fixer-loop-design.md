@@ -67,6 +67,19 @@ ralphLoop (maxAttempts: 3)
 | `qa-agent` | `high` | Needs to reason about failure patterns across the whole codebase |
 | `qa-fixer` | `low` | Mechanical fix application from explicit failure output |
 
+## Token Optimization Integration (merged 2026-03-20)
+
+The token optimization epic landed before this feature. Three integration points:
+
+**`resumeOnRalphRetry: true` on qa-fixer**
+qa-fixer is a doer agent — it makes code changes. Adding this flag means on iteration 2+, the daemon resumes its previous Claude session instead of starting fresh, saving tokens and preserving context of what it already changed.
+
+**`disallowTools` on qa-agent**
+qa-agent is a reviewer (read-only verifier). Per the optimization pattern applied to all reviewer agents, it should receive a restrictive `disallowTools` list. It only needs: `Bash` (to run checks), file read tools, `ralph_loop_dock`, `chat_notify`. No task creation, artifact management, or scope tools.
+
+**`SCOPE_USING_AGENTS` — no change needed**
+`shared-core.md` is intentionally empty. `qa-fixer.md` is NOT a scope-using agent (it doesn't query sibling tickets or dependencies). It must NOT be added to the `SCOPE_USING_AGENTS` set in `agent-loader.ts` — the default (no-op) is correct.
+
 ## Failure Escalation
 
 If all 3 attempts are exhausted without QA approval, the ralph loop exits as failed. The daemon surfaces this to the user as a build phase failure requiring human intervention — same as today, but only after 2 autonomous fix attempts.
