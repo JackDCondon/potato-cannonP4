@@ -200,7 +200,8 @@
                     "attach_artifact", "list_artifacts",
                     "get_scope_context", "get_sibling_tickets", "get_dependents",
                     "set_plan_summary", "add_dependency", "delete_dependency",
-                    "create_ticket"
+                    "create_ticket",
+                    "Skill(superpowers:*)"
                   ],
                   "modelTier": "high"
                 }
