@@ -2164,7 +2164,10 @@ export class SessionService {
       return;
     }
 
-    const ticket = await updateTicket(projectId, ticketId, { phase: nextPhase });
+    const ticket = await updateTicket(projectId, ticketId, {
+      phase: nextPhase,
+      pauseRetryCount: 0,
+    });
     console.log(`[handlePhaseTransition] Transitioned to ${nextPhase}`);
 
     // Emit SSE events so frontend updates
@@ -2248,43 +2251,51 @@ export class SessionService {
 
   /**
    * Resume a paused ticket by re-starting the current phase.
-   * Called automatically by the retry scheduler when retryAt arrives,
-   * or manually by user action.
+   * Clears pause state, cancels any scheduled retry timer, and re-invokes startPhase.
+   * Can be called automatically by the retry scheduler or manually by user action.
    */
-  private async resumePausedTicket(
+  async resumePausedTicket(
     projectId: string,
     ticketId: string,
   ): Promise<void> {
-    console.log(`[resumePausedTicket] Resuming ticket ${ticketId}`);
-
     const ticket = getTicket(projectId, ticketId);
     if (!ticket) {
       throw new Error(`Ticket ${ticketId} not found`);
     }
-
-    const project = getProjectById(projectId);
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
+    if (!ticket.paused) {
+      console.log(
+        `[resumePausedTicket] Ticket ${ticketId} is not paused, skipping`,
+      );
+      return;
     }
 
-    // Clear pause state
-    await updateTicket(projectId, ticketId, {
+    console.log(
+      `[resumePausedTicket] Resuming paused ticket ${ticketId} in phase ${ticket.phase}`,
+    );
+
+    // Cancel any scheduled auto-retry timer
+    if (retryScheduler) {
+      retryScheduler.cancel(ticketId);
+    }
+
+    // Clear paused state but keep retryCount (accumulates within a phase)
+    const updatedTicket = await updateTicket(projectId, ticketId, {
       paused: false,
       pauseReason: null,
       pauseRetryAt: null,
     });
 
-    // Write resume message to conversation
+    // Write notification to conversation
     try {
       if (ticket.conversationId) {
         addMessage(ticket.conversationId, {
           type: "notification",
-          text: "▶ Resumed: Retrying after pausing...",
+          text: "Resuming after pause...",
         });
         eventBus.emit("ticket:message", {
           projectId,
           ticketId,
-          message: { type: "notification", text: "▶ Resumed: Retrying after pausing..." },
+          message: { type: "notification", text: "Resuming after pause..." },
         });
       }
     } catch (err) {
@@ -2293,19 +2304,24 @@ export class SessionService {
       );
     }
 
-    await logToDaemon(projectId, ticketId, `Ticket resumed after pause`);
+    eventBus.emit("ticket:updated", { projectId, ticket: updatedTicket });
 
-    // Emit SSE event
-    eventBus.emit("ticket:updated", { projectId, ticket });
-    eventBus.emit("ticket:paused", {
-      projectId,
-      ticketId,
-      reason: null,
-      retryAt: null,
-    });
-
-    // Restart the current phase
-    await startPhase(projectId, ticketId, ticket.phase, project.path, this.getExecutorCallbacks());
+    // Re-invoke startPhase with existing phase — worker state is preserved,
+    // so this uses the same recovery path as daemon restart.
+    const project = getProjectById(projectId);
+    if (project) {
+      await startPhase(
+        projectId,
+        ticketId,
+        ticket.phase as TicketPhase,
+        project.path,
+        this.getExecutorCallbacks(),
+      );
+    } else {
+      console.error(
+        `[resumePausedTicket] Project ${projectId} not found, cannot resume`,
+      );
+    }
   }
 
   /**
