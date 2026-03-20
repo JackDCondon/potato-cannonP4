@@ -84,6 +84,17 @@ await mock.module("../../../stores/project.store.js", {
 
 // 2. fs mock
 await mock.module("fs", {
+  defaultExport: {
+    access: (_path: string, callback: (error: Error | null) => void) => callback(null),
+    accessSync: (_path: string, _mode: number) => {},
+    mkdirSync: (_path: string, _opts: unknown) => {
+      sideEffects.mkdirCalled = true;
+      if (fsState.mkdirSyncThrows) {
+        throw new Error(fsState.mkdirSyncError);
+      }
+    },
+    constants: { F_OK: 0 },
+  },
   namedExports: {
     accessSync: (_path: string, _mode: number) => {
       if (fsState.accessSyncThrows) {
@@ -127,6 +138,20 @@ await mock.module("../../../stores/ticket.store.js", {
     saveWorkerState: async () => {},
     initWorkerState: async () => ({}),
     clearWorkerState: async () => {},
+  },
+});
+
+await mock.module("../../../stores/template.store.js", {
+  namedExports: {
+    WorkflowContextError: class WorkflowContextError extends Error {
+      code: string;
+
+      constructor(code: string, message: string) {
+        super(message);
+        this.code = code;
+      }
+    },
+    installDefaultTemplates: async () => {},
   },
 });
 
@@ -197,6 +222,8 @@ await mock.module("../loops/ralph-loop.js", {
   namedExports: {
     initRalphLoop: () => ({}),
     handleAgentCompletion: () => ({ nextState: null, result: { status: "approved" } }),
+    captureDoerSessionIdIfNeeded: () => {},
+    getCurrentWorker: () => null,
   },
 });
 

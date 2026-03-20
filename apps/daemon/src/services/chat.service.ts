@@ -30,7 +30,10 @@ import type {
   ConversationMessageMetadata,
   ConversationMessageOrigin,
 } from "../types/conversation.types.js";
-import { getActiveSessionForTicket } from "../stores/session.store.js";
+import {
+  getActiveSessionForBrainstorm,
+  getActiveSessionForTicket,
+} from "../stores/session.store.js";
 import { TERMINAL_PHASES } from "@potato-cannon/shared";
 
 export class ChatService {
@@ -594,10 +597,26 @@ export class ChatService {
     let cancelled = 0;
     for (const item of candidates) {
       if (!item.ticketId) {
-        // Brainstorm items are not ticket-scoped; skip ticket-based prune checks.
-        // Brainstorm awaiting_reply items must NOT be cancelled here — the
-        // exit-on-question pattern means the session intentionally exits after
-        // asking, so "no active session" is normal and expected.
+        if (!item.brainstormId) {
+          continue;
+        }
+
+        checked++;
+
+        // Brainstorm items are not ticket-scoped, but awaiting_reply items can
+        // become orphaned if the session that asked the question died before a
+        // replacement session was scheduled. Keep queued/dispatching items so
+        // the normal exit-on-question handoff path stays intact.
+        if (item.status !== "awaiting_reply") {
+          continue;
+        }
+
+        if (getActiveSessionForBrainstorm(item.brainstormId)) {
+          continue;
+        }
+
+        queueStore.markCancelled(item.id, "system");
+        cancelled++;
         continue;
       }
       checked++;

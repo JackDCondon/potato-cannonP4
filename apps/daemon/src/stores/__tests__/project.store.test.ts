@@ -377,6 +377,28 @@ describe("ProjectStore", () => {
       });
       assert.strictEqual(cleared?.providerOverride, undefined);
     });
+
+    it("should persist p4 connection override settings", () => {
+      const created = store.createProject({
+        displayName: "Perforce Project",
+        path: "/perforce",
+      });
+
+      const updated = store.updateProject(created.id, {
+        p4UseEnvVars: false,
+        p4Port: "ssl:p4.example.com:1666",
+        p4User: "alice",
+      });
+
+      assert.strictEqual(updated?.p4UseEnvVars, false);
+      assert.strictEqual(updated?.p4Port, "ssl:p4.example.com:1666");
+      assert.strictEqual(updated?.p4User, "alice");
+
+      const project = store.getProjectById(created.id);
+      assert.strictEqual(project?.p4UseEnvVars, false);
+      assert.strictEqual(project?.p4Port, "ssl:p4.example.com:1666");
+      assert.strictEqual(project?.p4User, "alice");
+    });
   });
 
   describe("updateProjectTemplate", () => {

@@ -5,7 +5,9 @@ let phaseTasks: Array<{ id: string; description: string; status: string }> = [];
 const spawnCalls: Array<{ phaseEntryContext?: unknown }> = [];
 
 await mock.module("fs", {
-  defaultExport: {},
+  defaultExport: {
+    access: (_path: string, callback: (error: Error | null) => void) => callback(null),
+  },
 });
 
 await mock.module("child_process", {
@@ -57,12 +59,27 @@ await mock.module("../../../stores/ticket.store.js", {
     getTicket: () => ({ executionGeneration: 2 }),
     listArtifacts: () => [],
     getArtifactContent: async () => "",
+    getTicketsByBrainstormId: () => [],
   },
 });
 
 await mock.module("../../../stores/project.store.js", {
   namedExports: {
     getProjectById: () => null,
+  },
+});
+
+await mock.module("../../../stores/template.store.js", {
+  namedExports: {
+    WorkflowContextError: class WorkflowContextError extends Error {
+      code: string;
+
+      constructor(code: string, message: string) {
+        super(message);
+        this.code = code;
+      }
+    },
+    installDefaultTemplates: async () => {},
   },
 });
 
@@ -118,6 +135,8 @@ await mock.module("../loops/ralph-loop.js", {
       nextState: null,
       result: { status: "approved" },
     }),
+    captureDoerSessionIdIfNeeded: () => {},
+    getCurrentWorker: () => null,
   },
 });
 

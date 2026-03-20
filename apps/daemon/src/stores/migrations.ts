@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 25;
+const CURRENT_SCHEMA_VERSION = 26;
 
 /**
  * Run database migrations.
@@ -110,6 +110,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 25) {
     migrateV25(db);
+  }
+
+  if (version < 26) {
+    migrateV26(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1110,6 +1114,27 @@ function migrateV25(db: Database.Database): void {
   }
 }
 
+/**
+ * V26: Add per-project Perforce connection override columns to projects.
+ */
+function migrateV26(db: Database.Database): void {
+  const projectCols = new Set(
+    (db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  );
+
+  if (!projectCols.has("p4_use_env_vars")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_use_env_vars INTEGER`);
+  }
+  if (!projectCols.has("p4_port")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_port TEXT`);
+  }
+  if (!projectCols.has("p4_user")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_user TEXT`);
+  }
+}
+
 function normalizeTemplateVersion(version: string | null | undefined): string | null {
   if (!version) {
     return null;
@@ -1133,10 +1158,10 @@ function readWorkflowLocalTemplateVersion(
       projectId,
       workflowId
     )}/workflow.json`;
-    if (!existsSync(workflowTemplatePath)) {
+    if (!nodeFs.existsSync(workflowTemplatePath)) {
       return null;
     }
-    const raw = readFileSync(workflowTemplatePath, "utf-8");
+    const raw = nodeFs.readFileSync(workflowTemplatePath, "utf-8");
     const parsed = JSON.parse(raw) as { version?: string | number };
     if (typeof parsed.version === "number") {
       return `${parsed.version}.0.0`;

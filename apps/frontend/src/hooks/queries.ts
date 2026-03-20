@@ -39,7 +39,7 @@ export function useAddProject() {
 export function useUpdateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string; providerOverride?: string | null } }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; p4UseEnvVars?: boolean; p4Port?: string; p4User?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string; providerOverride?: string | null } }) =>
       api.updateProject(id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })

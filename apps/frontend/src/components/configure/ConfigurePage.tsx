@@ -63,6 +63,9 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
   const [agentWorkspaceRootError, setAgentWorkspaceRootError] = useState<string | null>(null)
   const [helixSwarmUrl, setHelixSwarmUrl] = useState('')
   const [helixSwarmUrlError, setHelixSwarmUrlError] = useState<string | null>(null)
+  const [p4UseEnvVars, setP4UseEnvVars] = useState(true)
+  const [p4Port, setP4Port] = useState('')
+  const [p4User, setP4User] = useState('')
   const [providerOverride, setProviderOverride] = useState('')
   const [globalAiConfig, setGlobalAiConfig] = useState<GlobalConfigResponse['ai'] | null>(null)
 
@@ -84,6 +87,9 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
       setAgentWorkspaceRootError(null)
       setHelixSwarmUrl(project.helixSwarmUrl || '')
       setHelixSwarmUrlError(null)
+      setP4UseEnvVars(project.p4UseEnvVars ?? true)
+      setP4Port(project.p4Port || '')
+      setP4User(project.p4User || '')
       setProviderOverride(project.providerOverride || '__inherit__')
     }
   }, [project])
@@ -228,6 +234,36 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
   }, [helixSwarmUrl, helixSwarmUrlError, project, projectId, updateProject])
 
   const handleHelixSwarmUrlKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur()
+    }
+  }, [])
+
+  const handleP4UseEnvVarsChange = useCallback(
+    (checked: boolean) => {
+      setP4UseEnvVars(checked)
+      updateProject.mutate({ id: projectId, updates: { p4UseEnvVars: checked } })
+    },
+    [projectId, updateProject],
+  )
+
+  const handleP4PortBlur = useCallback(() => {
+    if (!project) return
+    const newPort = p4Port.trim()
+    if (newPort !== (project.p4Port || '')) {
+      updateProject.mutate({ id: projectId, updates: { p4Port: newPort || undefined } })
+    }
+  }, [p4Port, project, projectId, updateProject])
+
+  const handleP4UserBlur = useCallback(() => {
+    if (!project) return
+    const newUser = p4User.trim()
+    if (newUser !== (project.p4User || '')) {
+      updateProject.mutate({ id: projectId, updates: { p4User: newUser || undefined } })
+    }
+  }, [p4User, project, projectId, updateProject])
+
+  const handleP4FieldKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.currentTarget.blur()
     }
@@ -423,6 +459,53 @@ export function ConfigurePage({ projectId }: ConfigurePageProps) {
                     </p>
                   )}
                 </div>
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={p4UseEnvVars}
+                      onChange={(e) => handleP4UseEnvVarsChange(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm font-medium text-text-primary">
+                      Use environment variables for P4PORT and P4USER
+                    </span>
+                  </label>
+                  <p className="pl-6 text-sm text-text-secondary">
+                    When enabled, P4PORT and P4USER are inherited from the daemon process
+                    environment.
+                  </p>
+                </div>
+                {!p4UseEnvVars && (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-text-primary">P4 Port</label>
+                      <Input
+                        value={p4Port}
+                        onChange={(e) => setP4Port(e.target.value)}
+                        onBlur={handleP4PortBlur}
+                        onKeyDown={handleP4FieldKeyDown}
+                        placeholder="ssl:perforce.company.com:1666"
+                      />
+                      <p className="text-sm text-text-secondary">
+                        Passed as <code>-p</code> to all p4 commands for this project.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium text-text-primary">P4 User</label>
+                      <Input
+                        value={p4User}
+                        onChange={(e) => setP4User(e.target.value)}
+                        onBlur={handleP4UserBlur}
+                        onKeyDown={handleP4FieldKeyDown}
+                        placeholder="username"
+                      />
+                      <p className="text-sm text-text-secondary">
+                        Passed as <code>-u</code> to all p4 commands for this project.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </SettingsSection>
           )}

@@ -30,6 +30,10 @@ export interface P4ProviderConfig {
   helixSwarmUrl?: string;
   /** Project slug used in workspace naming (will be truncated to 20 chars) */
   projectSlug: string;
+  /** Optional per-project P4PORT override */
+  p4Port?: string;
+  /** Optional per-project P4USER override */
+  p4User?: string;
 }
 
 /**
@@ -99,12 +103,20 @@ function buildClientSpec(
 export class P4Provider implements IVCSProvider {
   constructor(private readonly config: P4ProviderConfig) {}
 
+  private p4Args(cmd: string[]): string[] {
+    return [
+      ...(this.config.p4Port ? ["-p", this.config.p4Port] : []),
+      ...(this.config.p4User ? ["-u", this.config.p4User] : []),
+      ...cmd,
+    ];
+  }
+
   /**
    * Sync a workspace to latest depot state before agent execution.
    */
   private async syncWorkspace(workspaceName: string, workspaceRootPath: string): Promise<void> {
     await fs.mkdir(workspaceRootPath, { recursive: true });
-    const syncResult = spawnSync("p4", ["-c", workspaceName, "sync"], {
+    const syncResult = spawnSync("p4", this.p4Args(["-c", workspaceName, "sync"]), {
       cwd: workspaceRootPath,
       encoding: "utf-8",
     });
@@ -145,7 +157,7 @@ export class P4Provider implements IVCSProvider {
     // Check for existing workspace using `p4 clients -e <name>`.
     // Non-empty stdout means the workspace exists.
     // Do NOT use `p4 client -o <name>` — it always emits a template for any name.
-    const existsResult = spawnSync("p4", ["clients", "-e", workspaceName], {
+    const existsResult = spawnSync("p4", this.p4Args(["clients", "-e", workspaceName]), {
       encoding: "utf-8",
     });
 
@@ -187,7 +199,7 @@ export class P4Provider implements IVCSProvider {
     await fs.mkdir(workspaceRootPath, { recursive: true });
 
     // Pipe spec to `p4 client -i` using spawnSync (handles stdin safely)
-    const createResult = spawnSync("p4", ["client", "-i"], {
+    const createResult = spawnSync("p4", this.p4Args(["client", "-i"]), {
       input: specString,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
@@ -247,7 +259,7 @@ export class P4Provider implements IVCSProvider {
     // Step 1: Revert all open files (keep local files on disk; dir deletion handles removal)
     const revertResult = spawnSync(
       "p4",
-      ["-c", workspaceName, "revert", "-k", "//..."],
+      this.p4Args(["-c", workspaceName, "revert", "-k", "//..."]),
       { encoding: "utf-8" }
     );
     if (revertResult.status !== 0 || revertResult.error) {
@@ -257,7 +269,7 @@ export class P4Provider implements IVCSProvider {
     }
 
     // Step 2: Delete the client spec from the Perforce server
-    const deleteResult = spawnSync("p4", ["client", "-d", "-f", workspaceName], {
+    const deleteResult = spawnSync("p4", this.p4Args(["client", "-d", "-f", workspaceName]), {
       encoding: "utf-8",
     });
     if (deleteResult.status !== 0 || deleteResult.error) {
@@ -330,7 +342,11 @@ export class P4Provider implements IVCSProvider {
       "perforce-p4": {
         command: nodePath,
         args: [p4McpPath],
-        env: { P4CLIENT: workspaceName },
+        env: {
+          P4CLIENT: workspaceName,
+          ...(this.config.p4Port ? { P4PORT: this.config.p4Port } : {}),
+          ...(this.config.p4User ? { P4USER: this.config.p4User } : {}),
+        },
       },
     };
   }

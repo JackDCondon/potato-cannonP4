@@ -28,6 +28,8 @@ export function createVCSProvider(project: Project): IVCSProvider {
       agentWorkspaceRoot: project.agentWorkspaceRoot,
       helixSwarmUrl: project.helixSwarmUrl,
       projectSlug: project.slug,
+      p4Port: project.p4UseEnvVars ? undefined : project.p4Port,
+      p4User: project.p4UseEnvVars ? undefined : project.p4User,
     });
   }
 
