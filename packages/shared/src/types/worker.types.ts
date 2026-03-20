@@ -7,6 +7,7 @@ export interface WorkerNode {
   agentType?: string
   modelTier?: ModelTier | ModelTierMap
   hasOverride?: boolean
+  skipOnFirstIteration?: boolean
   maxAttempts?: number
   workers?: WorkerNode[]
 }

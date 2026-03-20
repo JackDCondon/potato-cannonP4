@@ -127,6 +127,16 @@ export function WorkerTreeItem({
           </Badge>
         )}
 
+        {isAgent && node.skipOnFirstIteration && (
+          <Badge
+            variant="outline"
+            className="text-[10px] px-1.5 py-0 border-accent-yellow/30 text-accent-yellow"
+            title="Skipped on iteration 1; starts running on retry iteration 2+"
+          >
+            Skip Iteration 1
+          </Badge>
+        )}
+
         {/* Chevron for clickable agents */}
         {isAgent && node.agentType && (
           <ChevronRight className="h-3 w-3 text-text-muted ml-auto shrink-0" />

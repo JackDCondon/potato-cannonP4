@@ -380,4 +380,23 @@ describe("WorkerTreeItem tier terminology", () => {
     fireEvent.click(screen.getByText("Verify Quality Agent").closest('[role="button"]') as HTMLElement);
     expect(onAgentClick).toHaveBeenCalledWith("verify-quality-agent", "Verify Quality Agent", "low/mid/high");
   });
+
+  it("renders a skip badge for agents skipped on the first ralph iteration", () => {
+    const onAgentClick = vi.fn();
+    render(
+      <WorkerTreeItem
+        node={{
+          id: "qa-fixer-agent",
+          type: "agent",
+          agentType: "qa-fixer-agent",
+          skipOnFirstIteration: true,
+        }}
+        depth={0}
+        isLastChild={true}
+        onAgentClick={onAgentClick}
+      />,
+    );
+
+    expect(screen.getByText("Skip Iteration 1")).toBeTruthy();
+  });
 });

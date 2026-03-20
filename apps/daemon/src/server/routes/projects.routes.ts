@@ -1012,6 +1012,7 @@ export function registerProjectRoutes(
               agentType?: string;
               model?: string;
               hasOverride?: boolean;
+              skipOnFirstIteration?: boolean;
               maxAttempts?: number;
               workers?: Array<unknown>;
             } = {
@@ -1031,6 +1032,9 @@ export function registerProjectRoutes(
               }
               // Model is typically in the worker config but may need template lookup
               // For now, we'll leave model as undefined - can be added later if available
+              if (worker.skipOnFirstIteration) {
+                node.skipOnFirstIteration = true;
+              }
             }
 
             if (worker.type === "ralphLoop" || worker.type === "taskLoop") {
