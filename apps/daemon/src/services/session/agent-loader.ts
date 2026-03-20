@@ -53,8 +53,11 @@ export async function loadAgentDefinition(
     prompt = promptContent.slice(frontmatterMatch[0].length);
   }
 
-  // Load shared preamble if available and prepend to agent prompt
-  const sharedContent = await loadSharedPreamble(projectId);
+  // Load shared preamble if available and prepend to agent prompt.
+  // Only pass scope content to agents that use scope/dependency tools.
+  const agentFilename = agentType.replace(/^.*\//, ""); // basename only
+  const includeScope = SCOPE_USING_AGENTS.has(agentFilename);
+  const sharedContent = await loadSharedPreamble(projectId, includeScope);
   if (sharedContent) {
     prompt = `${sharedContent}\n\n---\n\n${prompt}`;
   }
@@ -66,23 +69,52 @@ export async function loadAgentDefinition(
 }
 
 /**
- * Load the shared preamble content (agents/shared.md) for a project.
- * Returns the content with frontmatter stripped, or null if not found.
+ * Agent filenames that use scope/dependency tools and need the scope preamble.
  */
-async function loadSharedPreamble(
+const SCOPE_USING_AGENTS = new Set([
+  "refinement.md",
+  "architect.md",
+  "specification.md",
+  "builder.md",
+  "taskmaster.md",
+  "bug-fix-taskmaster.md",
+]);
+
+/**
+ * Load the shared preamble content for a project.
+ * Always loads shared-core.md. Appends shared-scope.md when includeScope is true.
+ * Returns the combined content with frontmatter stripped, or null if nothing found.
+ */
+export async function loadSharedPreamble(
   projectId: string,
+  includeScope = false,
 ): Promise<string | null> {
+  const stripFrontmatter = (raw: string): string => {
+    const fmMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
+    return fmMatch ? raw.slice(fmMatch[0].length) : raw;
+  };
+
+  const parts: string[] = [];
+
   try {
-    const sharedRaw = await getAgentPromptForProject(projectId, "agents/shared.md");
-    // Strip frontmatter from shared content independently
-    const fmMatch = sharedRaw.match(/^---\s*\n([\s\S]*?)\n---\s*\n?/);
-    if (fmMatch) {
-      return sharedRaw.slice(fmMatch[0].length);
-    }
-    return sharedRaw;
+    const coreRaw = await getAgentPromptForProject(projectId, "agents/shared-core.md");
+    const core = stripFrontmatter(coreRaw).trim();
+    if (core) parts.push(core);
   } catch {
-    return null;
+    // shared-core.md not found — continue
   }
+
+  if (includeScope) {
+    try {
+      const scopeRaw = await getAgentPromptForProject(projectId, "agents/shared-scope.md");
+      const scope = stripFrontmatter(scopeRaw).trim();
+      if (scope) parts.push(scope);
+    } catch {
+      // shared-scope.md not found — continue
+    }
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
 /**

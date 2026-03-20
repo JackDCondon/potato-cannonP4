@@ -331,7 +331,10 @@ function recoverCrashedWorker(worker: WorkerState): WorkerState {
         };
       }
 
-      // Otherwise, restart current iteration from beginning (existing behavior)
+      // Otherwise, restart current iteration from beginning (existing behavior).
+      // Intentional: lastDoerClaudeSessionId is preserved through crash recovery —
+      // Claude session IDs outlive the daemon process, so the stored ID is still valid
+      // and will be used as --resume on the next iteration after restart.
       return {
         ...loop,
         workerIndex: 0,

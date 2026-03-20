@@ -18,6 +18,7 @@ import {
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { pathToFileURL } from 'node:url';
 
 // Context from environment (set by session spawner)
 const PROJECT_ID = process.env.POTATO_PROJECT_ID || '';
@@ -25,6 +26,14 @@ const TICKET_ID = process.env.POTATO_TICKET_ID || '';
 const BRAINSTORM_ID = process.env.POTATO_BRAINSTORM_ID || '';
 const WORKFLOW_ID = process.env.POTATO_WORKFLOW_ID || '';
 const AGENT_MODEL = process.env.POTATO_AGENT_MODEL || '';
+const AGENT_SOURCE = process.env.POTATO_AGENT_SOURCE ?? '';
+
+export function buildToolsUrl(daemonUrl: string, agentSource: string, projectId: string): string {
+  const url = new URL(`${daemonUrl}/mcp/tools`);
+  if (agentSource) url.searchParams.set('agentSource', agentSource);
+  if (projectId) url.searchParams.set('projectId', projectId);
+  return url.toString();
+}
 
 async function getDaemonUrl(): Promise<string> {
   const daemonFile = path.join(os.homedir(), '.potato-cannon', 'daemon.json');
@@ -36,9 +45,10 @@ async function getDaemonUrl(): Promise<string> {
   }
 }
 
-async function fetchTools(daemonUrl: string): Promise<unknown[]> {
+async function fetchTools(daemonUrl: string, agentSource?: string, projectId?: string): Promise<unknown[]> {
   try {
-    const response = await fetch(`${daemonUrl}/mcp/tools`);
+    const url = buildToolsUrl(daemonUrl, agentSource ?? '', projectId ?? '');
+    const response = await fetch(url);
     const data = await response.json();
     return data.tools || [];
   } catch (error) {
@@ -82,7 +92,7 @@ let cachedTools: unknown[] = [];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   if (cachedTools.length === 0) {
-    cachedTools = await fetchTools(daemonUrl);
+    cachedTools = await fetchTools(daemonUrl, AGENT_SOURCE, PROJECT_ID);
   }
   return { tools: cachedTools };
 });
@@ -124,7 +134,7 @@ async function main() {
   daemonUrl = await getDaemonUrl();
 
   // Pre-fetch tools to validate daemon connection
-  cachedTools = await fetchTools(daemonUrl);
+  cachedTools = await fetchTools(daemonUrl, AGENT_SOURCE, PROJECT_ID);
   if (cachedTools.length === 0) {
     console.error('Warning: No tools fetched from daemon - is it running?');
   }
@@ -133,7 +143,11 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((error) => {
-  console.error('MCP proxy error:', error);
-  process.exit(1);
-});
+// Only run main if this module is being executed directly (not imported for testing)
+const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (entryUrl && import.meta.url === entryUrl) {
+  main().catch((error) => {
+    console.error('MCP proxy error:', error);
+    process.exit(1);
+  });
+}

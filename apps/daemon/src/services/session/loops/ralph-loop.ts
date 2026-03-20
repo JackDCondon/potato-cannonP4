@@ -1,6 +1,6 @@
 // src/services/session/loops/ralph-loop.ts
 
-import type { RalphLoopWorker, Worker } from "../../../types/template.types.js";
+import type { RalphLoopWorker, AgentWorker, Worker } from "../../../types/template.types.js";
 import type { RalphLoopState, WorkerState } from "../../../types/orchestration.types.js";
 import { createRalphLoopState } from "../worker-state.js";
 
@@ -99,4 +99,22 @@ export function handleAgentCompletion(
     },
     result: { status: "continue", nextWorkerIndex: 0, nextIteration: state.iteration + 1 },
   };
+}
+
+/**
+ * Capture the doer agent's Claude session ID into RalphLoopState so it can be
+ * passed to `--resume` on the next iteration. Only captures when the agent has
+ * `resumeOnRalphRetry: true` (i.e. it is the "doer" agent, not the reviewer).
+ *
+ * Must be called with the session ID captured at spawn time — NOT re-read from
+ * DB after PTY exit, because resumed sessions get a transient new ID.
+ */
+export function captureDoerSessionIdIfNeeded(
+  ralphState: RalphLoopState,
+  agentWorker: AgentWorker,
+  claudeSessionId: string
+): void {
+  if (agentWorker.resumeOnRalphRetry) {
+    ralphState.lastDoerClaudeSessionId = claudeSessionId;
+  }
 }

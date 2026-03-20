@@ -8,7 +8,8 @@ export type ContinuityReason =
   | "packet_available"
   | "packet_unavailable"
   | "disabled"
-  | "default_fallback";
+  | "default_fallback"
+  | "ralph_retry_resume";
 
 export type ContinuityPacketScope =
   | "same_lifecycle"

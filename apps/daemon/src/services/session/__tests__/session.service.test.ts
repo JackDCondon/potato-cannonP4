@@ -1163,3 +1163,30 @@ describe("SessionService decideContinuityForTicket", () => {
     });
   });
 });
+
+import { extractTokensFromResultEvent } from "../session.service.js";
+
+describe("extractTokensFromResultEvent", () => {
+  it("parses usage from result event", () => {
+    const event = {
+      type: "result",
+      subtype: "success",
+      result: "done",
+      usage: { input_tokens: 1500, output_tokens: 300 },
+    };
+    const tokens = extractTokensFromResultEvent(event);
+    assert.deepStrictEqual(tokens, { inputTokens: 1500, outputTokens: 300 });
+  });
+
+  it("returns null when no usage", () => {
+    const event = { type: "result", subtype: "error", result: "failed" };
+    const tokens = extractTokensFromResultEvent(event);
+    assert.strictEqual(tokens, null);
+  });
+
+  it("returns null when usage has zero values (== null guard, not falsy)", () => {
+    const event = { type: "result", usage: { input_tokens: 0, output_tokens: 0 } };
+    const tokens = extractTokensFromResultEvent(event);
+    assert.deepStrictEqual(tokens, { inputTokens: 0, outputTokens: 0 });
+  });
+});

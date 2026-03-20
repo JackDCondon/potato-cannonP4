@@ -29,6 +29,7 @@ export interface RalphLoopState extends BaseWorkerState {
   maxAttempts?: number;
   workerIndex: number;
   activeWorker: WorkerState | null;
+  lastDoerClaudeSessionId?: string;
 }
 
 /**

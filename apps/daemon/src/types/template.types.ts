@@ -52,6 +52,7 @@ export interface AgentWorker extends BaseWorker {
   disallowTools?: string[];
   modelTier?: ModelTier | ModelTierMap;
   model?: ModelSpec;
+  resumeOnRalphRetry?: boolean;
 }
 
 export interface RalphLoopWorker extends BaseWorker {

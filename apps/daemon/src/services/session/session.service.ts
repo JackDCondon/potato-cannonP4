@@ -29,6 +29,7 @@ import {
   getLatestClaudeSessionIdForTicket,
   getRecentSessionsForContinuity,
   updateClaudeSessionId,
+  updateSessionTokens,
   getActiveSessionForBrainstorm,
   getActiveSessionForTicket,
   getSessionsByTicket,
@@ -229,6 +230,20 @@ export function extractRateLimitNotice(event: unknown): string | null {
   }
 
   return `Claude rate limit reached (${limitType}).`;
+}
+
+/**
+ * Extract token usage from a Claude stream `result` event.
+ * Returns { inputTokens, outputTokens } if present, null otherwise.
+ */
+export function extractTokensFromResultEvent(
+  event: Record<string, unknown>,
+): { inputTokens: number; outputTokens: number } | null {
+  const usage = event.usage as
+    | { input_tokens?: number; output_tokens?: number }
+    | undefined;
+  if (usage?.input_tokens == null || usage?.output_tokens == null) return null;
+  return { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
 }
 
 interface ResolveWorkerModelInput {
@@ -1043,6 +1058,7 @@ export class SessionService {
             POTATO_BRAINSTORM_ID: brainstormId,
             POTATO_WORKFLOW_ID: workflowId,
             POTATO_AGENT_MODEL: model || "",
+            POTATO_AGENT_SOURCE: agentType || "",
           },
         },
         ...additionalMcpServers,
@@ -1090,6 +1106,7 @@ export class SessionService {
       POTATO_BRAINSTORM_ID: brainstormId,
       POTATO_WORKFLOW_ID: workflowId,
       POTATO_AGENT_MODEL: model || "",
+      POTATO_AGENT_SOURCE: agentType || "",
     };
     if (spawnProject?.helixSwarmUrl) {
       ptyEnv.HELIX_SWARM_URL = spawnProject.helixSwarmUrl;
@@ -1175,6 +1192,8 @@ export class SessionService {
     // resumed sessions a new transient ID, but --resume only works with the
     // original session ID. The stored session already has the correct one.
     let claudeSessionIdCaptured = !!claudeResumeSessionId;
+    let capturedInputTokens: number | null = null;
+    let capturedOutputTokens: number | null = null;
 
     const ptyTextExtractor = new PtyTextExtractor();
 
@@ -1229,6 +1248,16 @@ export class SessionService {
             claudeSessionIdCaptured = true;
             updateClaudeSessionId(sessionId, event.session_id);
           }
+
+          // Capture token usage from the final result event
+          if (event.type === "result") {
+            const tokens = extractTokensFromResultEvent(event);
+            if (tokens) {
+              capturedInputTokens = tokens.inputTokens;
+              capturedOutputTokens = tokens.outputTokens;
+              updateSessionTokens(sessionId, tokens.inputTokens, tokens.outputTokens);
+            }
+          }
         } catch {
           const logEntry = {
             type: "raw",
@@ -1262,7 +1291,10 @@ export class SessionService {
 
       // Log to ticket daemon.log
       if (ticketId) {
-        logToDaemon(projectId, ticketId, `Session ${sessionId} exited`, {
+        const tokenSuffix = capturedInputTokens != null && capturedOutputTokens != null
+          ? ` · ${((capturedInputTokens + capturedOutputTokens) / 1000).toFixed(1)}k tokens`
+          : '';
+        logToDaemon(projectId, ticketId, `Session ${sessionId} exited${tokenSuffix}`, {
           agentType,
           exitCode,
           phase,
@@ -1515,6 +1547,9 @@ export class SessionService {
     // Determine whether this brainstorm should use the PM skill
     const usePm = shouldUsePmSkill(brainstorm);
 
+    // Load agent from template — PM skill takes priority when transition has occurred
+    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
+
     // Only build full prompt for first session; resumed sessions use --resume
     const prompt = existingClaudeSessionId
       ? pendingContext?.response || (usePm ? "Continue as Project Manager." : "Continue the brainstorm.")
@@ -1561,13 +1596,11 @@ export class SessionService {
             POTATO_BRAINSTORM_ID: brainstormId,
             POTATO_WORKFLOW_ID: workflowId,
             POTATO_AGENT_MODEL: "",
+            POTATO_AGENT_SOURCE: agentType,
           },
         },
       },
     };
-
-    // Load agent from template — PM skill takes priority when transition has occurred
-    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
     const agentDefinition = await tryLoadAgentDefinition(projectId, agentType);
 
     if (!agentDefinition) {
@@ -1619,6 +1652,7 @@ export class SessionService {
         POTATO_BRAINSTORM_ID: brainstormId,
         POTATO_WORKFLOW_ID: workflowId,
         POTATO_AGENT_MODEL: "",
+        POTATO_AGENT_SOURCE: agentType,
       },
     });
     console.log(`[spawnForBrainstorm] pty.spawn succeeded, pid=${proc.pid}`);
@@ -1726,6 +1760,7 @@ export class SessionService {
     taskContext?: TaskContext,
     ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null },
     phaseEntryContext?: PhaseEntryContext,
+    resumeClaudeSessionId?: string,
   ): Promise<string> {
     console.log(`[spawnAgentWorker] Spawning ${agentWorker.source} for phase ${phase}`);
     this.rateLimitNoticeByTicket.delete(ticketId);
@@ -1775,7 +1810,10 @@ export class SessionService {
       project: { providerOverride: project.providerOverride },
       config: globalConfig,
     });
-    const disallowedTools = ["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])];
+    // Deduplicate: Skill(superpowers:*) is always disallowed; workflow.json disallowTools
+    // may also list it for the MCP filter system (ix6.12), so dedup to avoid duplicate
+    // entries in the --disallowed-tools CSV passed to Claude CLI.
+    const disallowedTools = [...new Set(["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])])];
     const compatibilityKey = this.buildContinuityCompatibilityKey({
       ticketId,
       phase,
@@ -1800,22 +1838,34 @@ export class SessionService {
     );
     const { storedCompatibility, claudeSessionId: existingClaudeSessionId } =
       resolveStoredContinuityContext(continuitySessions);
-    const continuityDecision = await this.decideContinuityForTicket({
-      ticketId,
-      conversationId: ticket.conversationId,
-      filter: {
-        phase,
-        agentSource: agentWorker.source,
-        executionGeneration: ticket.executionGeneration ?? 0,
-      },
-      limits: this.getLifecycleContinuityLimits(),
-      resumeEligibility: {
-        stored: storedCompatibility,
-        current: compatibilityKey,
-        claudeSessionId: existingClaudeSessionId,
-        lifecycleInvalidated: false,
-      },
-    });
+    let continuityDecision: ContinuityDecision;
+    if (resumeClaudeSessionId) {
+      // Explicit resume from ralph retry — bypass compatibility check entirely.
+      // The caller already knows which session to resume; no need to evaluate
+      // stored compatibility or lifecycle limits.
+      continuityDecision = {
+        mode: "resume",
+        reason: "ralph_retry_resume",
+        sourceSessionId: resumeClaudeSessionId,
+      };
+    } else {
+      continuityDecision = await this.decideContinuityForTicket({
+        ticketId,
+        conversationId: ticket.conversationId,
+        filter: {
+          phase,
+          agentSource: agentWorker.source,
+          executionGeneration: ticket.executionGeneration ?? 0,
+        },
+        limits: this.getLifecycleContinuityLimits(),
+        resumeEligibility: {
+          stored: storedCompatibility,
+          current: compatibilityKey,
+          claudeSessionId: existingClaudeSessionId,
+          lifecycleInvalidated: false,
+        },
+      });
+    }
     const continuityMetadata = this.buildStoredSessionContinuityMetadata(
       continuityDecision,
       compatibilityKey,
@@ -1827,13 +1877,16 @@ export class SessionService {
       this.buildContinuityDecisionLogFields(continuityDecision),
     ).catch(() => {});
     const resumeSessionId =
-      continuityDecision.mode === "resume"
+      resumeClaudeSessionId ??
+      (continuityDecision.mode === "resume"
         ? continuityDecision.sourceSessionId ??
           existingClaudeSessionId ??
           undefined
-        : undefined;
+        : undefined);
+    // Suppress handoff when using an explicit resume session (ralph retry): injecting a
+    // handoff packet alongside --resume would conflict with the resumed conversation context.
     const handoffDecision =
-      continuityDecision.mode === "handoff" ? continuityDecision : undefined;
+      !resumeClaudeSessionId && continuityDecision.mode === "handoff" ? continuityDecision : undefined;
 
     // Build prompt with task context if provided
     let prompt = agentDefinition.prompt;
@@ -1841,7 +1894,10 @@ export class SessionService {
       prompt += `\n\n---\n\n${formatTaskContext(taskContext)}`;
     }
 
-    // Build ticket context with optional continuity and phase-entry sections
+    // Build ticket context with optional continuity and phase-entry sections.
+    // When an explicit resumeClaudeSessionId is provided (ralph retry), suppress
+    // the full "Previous Attempts" history since the agent already has that context
+    // from its resumed session. Only the latest rejection reason is injected.
     const ticketContext = await buildAgentPrompt(
       projectId,
       ticketId,
@@ -1853,6 +1909,7 @@ export class SessionService {
       ralphContext,
       phaseEntryContext,
       handoffDecision,
+      !!resumeClaudeSessionId, // suppressPreviousAttempts
     );
     prompt += `\n\n---\n\n${ticketContext}`;
 

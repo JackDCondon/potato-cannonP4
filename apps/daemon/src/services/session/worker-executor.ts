@@ -33,7 +33,7 @@ import {
   prepareForRecovery,
   hasMatchingExecutionGeneration,
 } from "./worker-state.js";
-import { initRalphLoop, handleAgentCompletion as handleRalphLoopAgentCompletion } from "./loops/ralph-loop.js";
+import { initRalphLoop, handleAgentCompletion as handleRalphLoopAgentCompletion, captureDoerSessionIdIfNeeded, getCurrentWorker as getRalphCurrentWorker } from "./loops/ralph-loop.js";
 import {
   initTaskLoop,
   getNextTask,
@@ -44,6 +44,7 @@ import {
 } from "./loops/task-loop.js";
 import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./phase-config.js";
 import { getTicket } from "../../stores/ticket.store.js";
+import { getLatestClaudeSessionIdForTicket } from "../../stores/session.store.js";
 import { getProjectById } from "../../stores/project.store.js";
 import { readQuestion, clearQuestion } from "../../stores/chat.store.js";
 import { getTask, listTasks, updateTaskStatus } from "../../stores/task.store.js";
@@ -71,6 +72,7 @@ export interface ExecutorCallbacks {
     taskContext?: TaskContext,
     ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null },
     phaseEntryContext?: PhaseEntryContext,
+    resumeClaudeSessionId?: string,
   ) => Promise<string>;
   onPhaseComplete: (
     projectId: string,
@@ -171,6 +173,25 @@ function findTaskLoopInState(workerState: WorkerState | null): TaskLoopState | n
   if (workerState.type === "ralphLoop") {
     const ralphState = workerState as RalphLoopState;
     return findTaskLoopInState(ralphState.activeWorker);
+  }
+
+  return null;
+}
+
+/**
+ * Find ralph loop state by walking down the state tree.
+ * Used to get the parent ralph state when spawning an agent inside a ralph loop.
+ */
+function findRalphLoopInState(workerState: WorkerState | null): RalphLoopState | null {
+  if (!workerState) return null;
+
+  if (workerState.type === "ralphLoop") {
+    return workerState as RalphLoopState;
+  }
+
+  if (workerState.type === "taskLoop") {
+    const taskState = workerState as TaskLoopState;
+    return findRalphLoopInState(taskState.activeWorker);
   }
 
   return null;
@@ -450,6 +471,16 @@ async function executeNextWorker(
         }
       : undefined;
 
+    // When spawning a doer agent on a ralph loop retry (iteration 2+), pass the stored
+    // Claude session ID so the session can be resumed instead of starting fresh.
+    const parentRalphState = findRalphLoopInState(state.activeWorker);
+    const resumeClaudeSessionId =
+      parentRalphState?.lastDoerClaudeSessionId &&
+      worker.resumeOnRalphRetry &&
+      parentRalphState.iteration > 1
+        ? parentRalphState.lastDoerClaudeSessionId
+        : undefined;
+
     return callbacks.spawnAgent(
       projectId,
       ticketId,
@@ -459,6 +490,7 @@ async function executeNextWorker(
       taskContext,
       ralphContext,
       phaseEntryContext,
+      resumeClaudeSessionId,
     );
   }
 
@@ -830,6 +862,15 @@ async function processNestedCompletion(
           loopComplete: false,
           blocked: false,
         };
+      }
+    }
+
+    // Capture doer session ID before state resets (for --resume on next iteration)
+    const currentWorker = getRalphCurrentWorker(worker, ralphState);
+    if (currentWorker && isAgentWorker(currentWorker)) {
+      const latestClaudeSessionId = getLatestClaudeSessionIdForTicket(ticketId);
+      if (latestClaudeSessionId) {
+        captureDoerSessionIdIfNeeded(ralphState, currentWorker, latestClaudeSessionId);
       }
     }
 

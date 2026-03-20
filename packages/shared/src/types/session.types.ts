@@ -28,6 +28,8 @@ export interface SessionMeta {
   continuityScope?: ContinuityPacketScope
   continuitySummary?: string
   continuitySourceSessionId?: string
+  inputTokens?: number | null
+  outputTokens?: number | null
 }
 
 export interface Session {
@@ -45,6 +47,8 @@ export interface Session {
   continuityScope?: ContinuityPacketScope
   continuitySummary?: string
   continuitySourceSessionId?: string
+  inputTokens?: number | null
+  outputTokens?: number | null
 }
 
 /** A single content block within an assistant message */
