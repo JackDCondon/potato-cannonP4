@@ -54,3 +54,5 @@ AGENTS.md
 .claude/agents/5.2.0code-reviewer.md
 docs/PerforceTips.md
 .claude/settings.json
+.claude/scheduled_tasks.lock
+.potato-context.json
