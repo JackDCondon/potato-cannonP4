@@ -322,7 +322,6 @@ export class TelegramProvider implements ChatProvider {
 
     if (message.questionId && typeof sentMessage.message_id === "number") {
       meta.lastQuestionMessageId = sentMessage.message_id;
-      thread.metadata = meta as Record<string, unknown>;
       this.persistThreadMetadata(thread);
     }
   }

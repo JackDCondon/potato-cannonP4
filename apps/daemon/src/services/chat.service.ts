@@ -40,8 +40,6 @@ interface NotifyOptions {
 export class ChatService {
   private providers: Map<string, ChatProvider> = new Map();
 
-  constructor() {}
-
   registerProvider(provider: ChatProvider): void {
     this.providers.set(provider.id, provider);
     console.log(`[ChatService] Registered provider: ${provider.name}`);
