@@ -90,11 +90,36 @@
           ]
         },
         {
-          "id": "bug-fix-qa-agent",
-          "type": "agent",
-          "source": "agents/bug-fix-qa.md",
-          "description": "Holistic QA review of entire fix against resolution.md",
-          "modelTier": "low"
+          "id": "qa-ralph-loop",
+          "type": "ralphLoop",
+          "description": "QA verification with auto-fix on failure",
+          "maxAttempts": 3,
+          "workers": [
+            {
+              "id": "qa-fixer-agent",
+              "type": "agent",
+              "source": "agents/qa-fixer.md",
+              "description": "Applies targeted fixes for QA failures",
+              "modelTier": "low",
+              "resumeOnRalphRetry": true
+            },
+            {
+              "id": "bug-fix-qa-agent",
+              "type": "agent",
+              "source": "agents/bug-fix-qa.md",
+              "description": "Verifies fix against resolution.md and runs quality checks",
+              "modelTier": "high",
+              "disallowTools": [
+                "Write", "Edit", "MultiEdit",
+                "create_task", "update_task_status", "add_comment_to_task",
+                "attach_artifact",
+                "create_ticket",
+                "get_scope_context", "get_sibling_tickets", "get_dependents",
+                "set_plan_summary", "add_dependency", "delete_dependency",
+                "Skill(superpowers:*)"
+              ]
+            }
+          ]
         }
       ],
       "transitions": {
