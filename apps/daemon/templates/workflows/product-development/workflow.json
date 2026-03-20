@@ -27,6 +27,13 @@
               "type": "agent",
               "source": "agents/adversarial-refinement.md",
               "description": "Reviews refinement draft and identifies gaps",
+              "disallowTools": [
+                "create_task", "update_task_status", "add_comment_to_task",
+                "attach_artifact", "list_artifacts",
+                "get_scope_context", "get_sibling_tickets", "get_dependents",
+                "set_plan_summary", "add_dependency", "delete_dependency",
+                "create_ticket", "Skill(superpowers:*)"
+              ],
               "modelTier": "high"
             }
           ]
@@ -71,6 +78,13 @@
               "type": "agent",
               "source": "agents/adversarial-architect.md",
               "description": "Reviews architecture draft and identifies issues",
+              "disallowTools": [
+                "create_task", "update_task_status", "add_comment_to_task",
+                "attach_artifact", "list_artifacts",
+                "get_scope_context", "get_sibling_tickets", "get_dependents",
+                "set_plan_summary", "add_dependency", "delete_dependency",
+                "create_ticket", "Skill(superpowers:*)"
+              ],
               "modelTier": "high"
             }
           ]
@@ -166,6 +180,13 @@
                   "type": "agent",
                   "source": "agents/verify-spec.md",
                   "description": "Verifies the specification of the individual build tasks against the specification",
+                  "disallowTools": [
+                    "create_task", "update_task_status", "add_comment_to_task",
+                    "attach_artifact", "list_artifacts",
+                    "get_scope_context", "get_sibling_tickets", "get_dependents",
+                    "set_plan_summary", "add_dependency", "delete_dependency",
+                    "create_ticket", "Skill(superpowers:*)"
+                  ],
                   "modelTier": "low"
                 },
                 {
@@ -173,7 +194,14 @@
                   "type": "agent",
                   "source": "agents/verify-quality.md",
                   "description": "Verifies the quality of the individual build task code",
-                  "disallowTools": ["TodoWrite"],
+                  "disallowTools": [
+                    "TodoWrite",
+                    "create_task", "update_task_status", "add_comment_to_task",
+                    "attach_artifact", "list_artifacts",
+                    "get_scope_context", "get_sibling_tickets", "get_dependents",
+                    "set_plan_summary", "add_dependency", "delete_dependency",
+                    "create_ticket"
+                  ],
                   "modelTier": "high"
                 }
               ]
