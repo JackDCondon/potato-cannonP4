@@ -182,7 +182,7 @@ Backend:
 Frontend:
 
 - update `apps/frontend/src/components/configure/BoardSettingsPage.tsx`
-- ensure the page uses board settings API-backed data rather than local-only storage for board-specific values
+- keep existing local PM-default behavior intact, but back the new `Phone Notifications` section with board settings API data
 - add collapsible section components or extend `SettingsSection`
 
 Chat system:
@@ -207,7 +207,7 @@ Chat system:
 | Incomplete classification | Some noisy messages might bypass policy | Audit known `chatService.notify` and `chat_ask` call sites and add explicit categories |
 | Wrong filtering layer | Putting logic in Telegram would block future provider reuse | Keep logic only in shared board-aware chat service path |
 | Settings page sprawl | More board settings will keep accumulating | Add collapsible sections now as part of the same feature |
-| UI/API mismatch | Board settings page appears partially local today | Use this feature to finish API-backed board settings wiring |
+| Mixed local and persisted settings | Users may assume every setting on the page is board-persisted | Clearly label `Phone Notifications` as board-wide external delivery policy and leave PM defaults behavior unchanged |
 | Silent data loss perception | Users may think mute hides messages entirely | Add clear explanatory copy in `Phone Notifications` section |
 
 ## Files Likely Touched

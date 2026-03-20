@@ -4,7 +4,7 @@
 
 **Goal:** Add board-level control over which outbound chat notifications reach external providers, while leaving Potato Cannon UI/history unchanged and making the board settings page scalable with collapsible sections.
 
-**Architecture:** Store a provider-agnostic notification policy on `board_settings`, classify outbound chat messages with stable categories, resolve the current board from ticket/brainstorm context in the shared chat service, and suppress provider delivery before fan-out. On the frontend, make board settings API-backed and add a `Phone Notifications` section with preset + advanced controls.
+**Architecture:** Store a provider-agnostic notification policy on `board_settings`, classify outbound chat messages with stable categories, resolve the current board from ticket/brainstorm context in the shared chat service, and suppress provider delivery before fan-out. On the frontend, add a backend-backed `Phone Notifications` section while leaving existing local PM defaults behavior intact.
 
 **Tech Stack:** TypeScript, Node.js, better-sqlite3, Express, React 19, Vitest, Node test runner
 
@@ -12,7 +12,7 @@
 - **Dedicated board settings column:** Add a nullable `chat_notification_policy` column to `board_settings` rather than overloading `pm_config`, so PM configuration and notification delivery policy remain independent.
 - **Shared filtering layer:** Apply mute logic in `ChatService` before provider fan-out, not in Telegram or any provider implementation, so future providers inherit the behavior automatically.
 - **Explicit categories over text matching:** Extend outbound chat metadata with a stable `category` field instead of filtering by message text, because text-based muting would be brittle and hard to test.
-- **Board settings API as source of truth:** Replace local-storage-only PM defaults in board settings flows so board-scoped configuration is truly per workflow and can be reused from both `BoardSettingsPage` and `EpicSettingsTab`.
+- **Split local defaults from persisted board policy:** Keep PM defaults for new epic setup in frontend local storage, but persist the new phone notification policy in backend `board_settings` because daemon-side delivery must enforce it.
 - **Preset + advanced toggles:** Store the resolved category booleans and a selected preset, with presets writing the booleans under the hood. This keeps the model simple while preserving a user-friendly UI.
 
 ---
@@ -309,57 +309,49 @@ git commit -m "feat(chat): classify outbound board notifications by category"
 
 ---
 
-## Task 5: Replace Local Storage Board Defaults With API-Backed State
+## Task 5: Add Backend-Backed Phone Notification State To Board Settings Page
 **Depends on:** Task 2
 **Complexity:** standard
 **Files:**
 - Modify: `apps/frontend/src/components/configure/BoardSettingsPage.tsx`
 - Modify: `apps/frontend/src/components/configure/BoardSettingsPage.test.tsx`
-- Modify: `apps/frontend/src/components/brainstorm/EpicSettingsTab.tsx`
-- Modify: `apps/frontend/src/components/brainstorm/EpicSettingsTab.test.tsx`
-- Delete: `apps/frontend/src/lib/pm-storage.ts` if unused after refactor
 
-**Purpose:** Make board settings genuinely board-scoped by loading/saving them from the API instead of browser local storage.
+**Purpose:** Add API-backed load/save behavior for the new persisted phone notification policy without changing the existing local PM defaults workflow.
 
-**Not In Scope:** The new phone notification controls UI itself; this task only fixes the data flow.
+**Not In Scope:** Refactoring PM defaults off local storage or changing `EpicSettingsTab` behavior.
 
-**Gotchas:** `EpicSettingsTab` still uses `loadBoardPmDefaults()` as a fallback when an epic lacks its own PM config. That behavior must be updated to use board settings from the API or a shared hook, otherwise board-level defaults remain inconsistent.
+**Gotchas:** `BoardSettingsPage.tsx` currently uses local state for PM defaults. This task should add parallel state for the persisted phone notification policy rather than trying to migrate PM defaults at the same time.
 
 **Step 1: Rewrite the existing failing assumptions in tests**
-- Replace local-storage assertions in `BoardSettingsPage.test.tsx` with API-backed assertions:
-  - page loads `pmConfig` from `api.getBoardSettings`
-  - PM changes save via `api.updateBoardPmSettings`
-  - board changes re-load when `projectId`/`workflowId` change
-- Update `EpicSettingsTab.test.tsx` so PM fallback comes from board settings API data instead of `pm-storage`.
+- Extend `BoardSettingsPage.test.tsx` with API-backed assertions for phone notification policy:
+  - page loads `chatNotificationPolicy` from `api.getBoardSettings`
+  - policy changes save via `api.updateBoardNotificationSettings`
+  - board changes re-load the persisted phone-notification values when `projectId`/`workflowId` change
+- Keep the existing PM local-storage tests intact.
 
 **Step 2: Run frontend tests to verify failure**
 ```bash
-pnpm --filter @potato-cannon/frontend test -- run src/components/configure/BoardSettingsPage.test.tsx src/components/brainstorm/EpicSettingsTab.test.tsx
+pnpm --filter @potato-cannon/frontend test -- run src/components/configure/BoardSettingsPage.test.tsx
 ```
 Expected: FAIL
 
-**Step 3: Implement API-backed board settings state**
+**Step 3: Implement API-backed notification-policy state**
 - In `BoardSettingsPage.tsx`:
-  - fetch `api.getBoardSettings(projectId, workflowId)` in `useEffect`
-  - maintain local editable state initialized from API response
-  - persist PM changes with `api.updateBoardPmSettings`
-- In `EpicSettingsTab.tsx`:
-  - fetch board settings for `workflowId`
-  - use returned `pmConfig` as the fallback instead of local storage
+  - fetch `api.getBoardSettings(projectId, workflowId)` in `useEffect` for the persisted notification policy
+  - maintain local editable notification state initialized from API response
+  - persist phone-notification changes with `api.updateBoardNotificationSettings`
+  - leave PM local-storage behavior unchanged in this feature
 
-**Step 4: Remove obsolete local-storage helper**
-- Delete `apps/frontend/src/lib/pm-storage.ts` if no call sites remain.
-
-**Step 5: Run frontend tests to verify pass**
+**Step 4: Run frontend tests to verify pass**
 ```bash
-pnpm --filter @potato-cannon/frontend test -- run src/components/configure/BoardSettingsPage.test.tsx src/components/brainstorm/EpicSettingsTab.test.tsx
+pnpm --filter @potato-cannon/frontend test -- run src/components/configure/BoardSettingsPage.test.tsx
 ```
 Expected: PASS
 
-**Step 6: Commit**
+**Step 5: Commit**
 ```bash
-git add apps/frontend/src/components/configure/BoardSettingsPage.tsx apps/frontend/src/components/configure/BoardSettingsPage.test.tsx apps/frontend/src/components/brainstorm/EpicSettingsTab.tsx apps/frontend/src/components/brainstorm/EpicSettingsTab.test.tsx apps/frontend/src/lib/pm-storage.ts
-git commit -m "feat(frontend): back board settings with API data instead of local storage"
+git add apps/frontend/src/components/configure/BoardSettingsPage.tsx apps/frontend/src/components/configure/BoardSettingsPage.test.tsx
+git commit -m "feat(frontend): add API-backed board phone notification state"
 ```
 
 ---
@@ -505,7 +497,6 @@ Focused verification during implementation:
 pnpm --filter @potato-cannon/daemon build
 pnpm --filter @potato-cannon/daemon test
 pnpm --filter @potato-cannon/frontend test -- run src/components/configure/BoardSettingsPage.test.tsx
-pnpm --filter @potato-cannon/frontend test -- run src/components/brainstorm/EpicSettingsTab.test.tsx
 ```
 
 Final verification:
@@ -527,9 +518,9 @@ pnpm test
 **Risk:** Defaulting every uncategorized `chat_notify` to `builder_updates` could suppress some important agent-authored messages unexpectedly.
 **Mitigation:** Add an explicit optional `category` field to the tool schema, default only when omitted, and update known high-signal daemon-owned call sites to pass categories directly.
 
-### R3: Frontend Refactor Could Regress PM Defaults
-**Risk:** Replacing local storage with API-backed board settings could break the existing "board defaults applied to new epic" flow.
-**Mitigation:** Update `EpicSettingsTab` in the same track and keep tests covering its fallback behavior.
+### R3: Mixed Local And Persisted Settings Could Confuse Users
+**Risk:** If PM defaults remain local while phone notifications are persisted per board, users could assume all controls on the page behave the same way.
+**Mitigation:** Label the `Phone Notifications` section clearly as board-wide and external-delivery-specific, and avoid changing PM defaults behavior in this feature.
 
 ### R4: Board Settings Page Scope Creep
 **Risk:** Combining collapsible sections, PM settings refactor, and phone notifications could make `BoardSettingsPage.tsx` balloon.
@@ -560,6 +551,6 @@ pnpm test
 |---|---|---|
 | Draft | CLEAN | Plan structure, dependencies, files, and commands are present for all tasks |
 | Feasibility | CLEAN | Verified actual file locations, current schema version, package test commands, and local-storage board settings seam |
-| Completeness | CLEAN | Includes the missing `EpicSettingsTab` dependency so board defaults remain truly board-scoped |
-| Risk | CLEAN | Calls out workflow resolution, `chat_notify` misclassification, frontend regression, component sprawl, and migration rollback |
+| Completeness | CLEAN | Keeps scope aligned to the approved feature: persisted phone policy only, with PM defaults intentionally left local |
+| Risk | CLEAN | Calls out workflow resolution, `chat_notify` misclassification, mixed local/persisted UX, component sprawl, and migration rollback |
 | Optimality | CLEAN | Chooses additive API and dedicated collapsible component over broader refactors or provider-specific logic |
