@@ -779,7 +779,7 @@ describe("session MCP server config helpers", () => {
     });
   });
 
-  it("buildBrainstormMcpServers adds the PM server only for PM brainstorm sessions", () => {
+  it("buildBrainstormMcpServers always wires both brainstorm MCP servers", () => {
     const mcpServers = buildBrainstormMcpServers({
       nodePath: "node",
       mcpProxyPath: "/tmp/proxy.js",
@@ -787,7 +787,6 @@ describe("session MCP server config helpers", () => {
       brainstormId: "brain-1",
       workflowId: "wf-1",
       agentSource: "agents/project-manager.md",
-      usePm: true,
     });
 
     assert.deepStrictEqual(Object.keys(mcpServers), ["potato-ticket", "potato-pm"]);

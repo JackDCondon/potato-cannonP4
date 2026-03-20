@@ -346,7 +346,6 @@ export function buildBrainstormMcpServers(input: {
   brainstormId: string;
   workflowId: string;
   agentSource: string;
-  usePm: boolean;
 }): Record<string, McpServerConfig> {
   const baseEnv = {
     POTATO_PROJECT_ID: input.projectId,
@@ -366,18 +365,14 @@ export function buildBrainstormMcpServers(input: {
         POTATO_MCP_SCOPE: "ticket",
       },
     },
-    ...(input.usePm
-      ? {
-          "potato-pm": {
-            command: input.nodePath,
-            args: [input.mcpProxyPath],
-            env: {
-              ...baseEnv,
-              POTATO_MCP_SCOPE: "pm",
-            },
-          },
-        }
-      : {}),
+    "potato-pm": {
+      command: input.nodePath,
+      args: [input.mcpProxyPath],
+      env: {
+        ...baseEnv,
+        POTATO_MCP_SCOPE: "pm",
+      },
+    },
   };
 }
 
@@ -1693,7 +1688,6 @@ export class SessionService {
         brainstormId,
         workflowId,
         agentSource: agentType,
-        usePm,
       }),
     };
     const agentDefinition = await tryLoadAgentDefinition(projectId, agentType);
