@@ -74,6 +74,7 @@ export function ActivityTab({
   const [currentPhase, setCurrentPhase] = useState<string | null>(null)
 
   const hasActiveSession = useAppStore((s) => s.isTicketProcessing(projectId, ticketId))
+  const isPendingTicket = useAppStore((s) => s.isTicketPending(projectId, ticketId))
 
   const queryClient = useQueryClient()
 
@@ -91,14 +92,15 @@ export function ActivityTab({
         artifact: msg.artifact
       })) as ChatMessage[]
     },
-    // Backfill missed SSE events while a session is active or we're waiting.
-    refetchInterval: hasActiveSession || isWaitingForResponse ? 2000 : false,
+    // Backfill missed SSE events while a session is active, waiting, or a question is pending.
+    refetchInterval: hasActiveSession || isWaitingForResponse || isPendingTicket ? 2000 : false,
   })
 
   const { data: pendingState } = useQuery({
     queryKey: ['ticket-pending', projectId, ticketId],
     queryFn: () => api.getTicketPending(projectId, ticketId),
-    refetchInterval: hasActiveSession || isWaitingForResponse ? 2000 : false,
+    // Keep polling while a question awaits a reply so questionId stays fresh for submission.
+    refetchInterval: hasActiveSession || isWaitingForResponse || isPendingTicket ? 2000 : false,
   })
 
   // Derive pending options from last message
