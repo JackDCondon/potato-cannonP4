@@ -10,7 +10,8 @@ import { createProviderChannelStore } from "../../../stores/provider-channel.sto
 function createMockApi() {
   return {
     createForumTopic: mock.fn(async () => ({ message_thread_id: 555, name: "Topic" })),
-    sendMessage: mock.fn(async () => ({ ok: true })),
+    sendMessage: mock.fn(async () => ({ ok: true, message_id: 777 })),
+    editMessageReplyMarkup: mock.fn(async () => ({ ok: true })),
     getChat: mock.fn(async () => ({ id: 1, type: "supergroup", is_forum: true })),
     getMe: mock.fn(async () => ({ id: 42, username: "potatobot" })),
     getChatMember: mock.fn(async () => ({ status: "administrator" })),
@@ -85,6 +86,34 @@ describe("TelegramProvider", () => {
     });
 
     assert.equal(responsePayload, "answer:q-abc:1");
+  });
+
+  it("stores the sent question message id on thread metadata", async () => {
+    const context: ChatContext = { projectId: "proj1", ticketId: "POT-1" };
+    const thread = await provider.createThread(context, "Ticket 1");
+
+    await provider.send(thread, {
+      text: "Choose",
+      questionId: "q-abc",
+      options: ["Yes", "No"],
+    });
+
+    assert.equal((thread.metadata as any).lastQuestionMessageId, 777);
+  });
+
+  it("clears inline buttons when notifying about a web answer", async () => {
+    const context: ChatContext = { projectId: "proj1", ticketId: "POT-1" };
+    const thread = await provider.createThread(context, "Ticket 1");
+    (thread.metadata as any).lastQuestionMessageId = 777;
+
+    await provider.notifyAnswered(thread, "Yes");
+
+    assert.equal(api.editMessageReplyMarkup.mock.calls.length, 1);
+    const editArgs = api.editMessageReplyMarkup.mock.calls[0]
+      ?.arguments as unknown as [string, number, { messageThreadId?: number }];
+    assert.equal(editArgs[0], "-100123");
+    assert.equal(editArgs[1], 777);
+    assert.equal(editArgs[2].messageThreadId, 555);
   });
 
   it("ignores legacy DM route when forum mode is enabled", async () => {

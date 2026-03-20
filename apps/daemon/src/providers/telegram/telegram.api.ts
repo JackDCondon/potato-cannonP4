@@ -6,6 +6,11 @@ export interface TelegramConfig {
   forumGroupId?: string;
 }
 
+export interface TelegramMessage {
+  message_id: number;
+  message_thread_id?: number;
+}
+
 export class TelegramApi {
   constructor(private config: TelegramConfig) {}
 
@@ -36,7 +41,7 @@ export class TelegramApi {
       replyMarkup?: unknown;
       parseMode?: string;
     } = {}
-  ): Promise<unknown> {
+  ): Promise<TelegramMessage> {
     const body: Record<string, unknown> = {
       chat_id: chatId,
       text,
@@ -52,6 +57,27 @@ export class TelegramApi {
     }
 
     return this.request("sendMessage", body);
+  }
+
+  async editMessageReplyMarkup(
+    chatId: string,
+    messageId: number,
+    options: {
+      messageThreadId?: number;
+      replyMarkup?: unknown | null;
+    } = {},
+  ): Promise<TelegramMessage> {
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: JSON.stringify(options.replyMarkup ?? null),
+    };
+
+    if (options.messageThreadId) {
+      body.message_thread_id = options.messageThreadId;
+    }
+
+    return this.request("editMessageReplyMarkup", body);
   }
 
   async createForumTopic(
