@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { Brainstorm, BrainstormStatus } from "@potato-cannon/shared";
+import type { Brainstorm, BrainstormStatus, PmConfig } from "@potato-cannon/shared";
 import { getDatabase } from "./db.js";
 import {
   createConversationStore,
@@ -44,6 +44,7 @@ interface BrainstormRow {
   workflow_id: string | null;
   plan_summary: string | null;
   pm_enabled: number;
+  pm_config: string | null;
   color: string | null;
   icon: string | null;
 }
@@ -53,6 +54,15 @@ interface BrainstormRow {
 // =============================================================================
 
 function rowToBrainstorm(row: BrainstormRow): Brainstorm {
+  let pmConfig: PmConfig | null = null;
+  if (row.pm_config) {
+    try {
+      pmConfig = JSON.parse(row.pm_config) as PmConfig;
+    } catch {
+      pmConfig = null;
+    }
+  }
+
   return {
     id: row.id,
     projectId: row.project_id,
@@ -65,6 +75,7 @@ function rowToBrainstorm(row: BrainstormRow): Brainstorm {
     workflowId: row.workflow_id,
     planSummary: row.plan_summary ?? undefined,
     pmEnabled: row.pm_enabled === 1,
+    pmConfig,
     color: row.color ?? null,
     icon: row.icon ?? null,
   };
@@ -346,4 +357,13 @@ export function brainstormGetTicketCountsBatch(brainstormIds: string[]): Map<str
 
 export function brainstormGetUsedEpicColors(projectId: string): string[] {
   return new BrainstormStore(getDatabase()).getUsedEpicColors(projectId);
+}
+
+export function updateBrainstormPmConfig(
+  brainstormId: string,
+  update: { pmEnabled: boolean; pmConfig: PmConfig },
+): void {
+  getDatabase()
+    .prepare("UPDATE brainstorms SET pm_enabled = ?, pm_config = ? WHERE id = ?")
+    .run(update.pmEnabled ? 1 : 0, JSON.stringify(update.pmConfig), brainstormId);
 }

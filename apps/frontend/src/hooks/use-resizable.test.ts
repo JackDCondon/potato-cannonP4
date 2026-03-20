@@ -11,6 +11,14 @@ const baseOpts = {
 }
 
 describe('useResizable', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
   test('returns default width initially', () => {
     const { result } = renderHook(() => useResizable(baseOpts))
     expect(result.current.width).toBe(480)
@@ -45,6 +53,49 @@ describe('useResizable', () => {
       } as unknown as React.MouseEvent)
     })
     expect(result.current.isDragging).toBe(false)
+  })
+
+  test('reads initial width from localStorage when storageKey is provided', () => {
+    localStorage.setItem('potato-panel-width', '550')
+
+    const { result } = renderHook(() =>
+      useResizable({ ...baseOpts, storageKey: 'potato-panel-width' })
+    )
+
+    expect(result.current.width).toBe(550)
+  })
+
+  test('clamps stored width to minWidth when storageKey is provided', () => {
+    localStorage.setItem('potato-panel-width', '100')
+
+    const { result } = renderHook(() =>
+      useResizable({ ...baseOpts, storageKey: 'potato-panel-width' })
+    )
+
+    expect(result.current.width).toBe(480)
+  })
+
+  test('persists drag updates to localStorage when storageKey is provided', () => {
+    const { result } = renderHook(() =>
+      useResizable({ ...baseOpts, storageKey: 'potato-panel-width' })
+    )
+
+    act(() => {
+      result.current.handleProps.onMouseDown({
+        clientX: 500,
+        preventDefault: () => {},
+      } as unknown as React.MouseEvent)
+    })
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 300 }))
+    })
+
+    expect(localStorage.getItem('potato-panel-width')).toBe('680')
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup'))
+    })
   })
 
   describe('drag behavior', () => {

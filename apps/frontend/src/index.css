@@ -1021,15 +1021,49 @@ body.is-resizing * {
   flex-shrink: 0;
   overflow: hidden;
   transition: width 200ms ease-in-out;
+  position: relative;
 }
 
 .brainstorm-detail-panel[data-open="true"] {
-  width: 600px;
-  max-width: 40vw;
+  width: var(--panel-width, 480px);
 }
 
 .brainstorm-detail-panel[data-open="false"] {
   width: 0;
+}
+
+.brainstorm-detail-panel[data-dragging="true"] {
+  transition: none;
+}
+
+.brainstorm-detail-panel__resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brainstorm-detail-panel__resize-handle::before {
+  content: '';
+  width: 3px;
+  height: 24px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 150ms ease;
+}
+
+.brainstorm-detail-panel__resize-handle:hover::before {
+  background: var(--color-text-muted);
+}
+
+.brainstorm-detail-panel:has(.brainstorm-detail-panel__resize-handle:hover) {
+  border-left-color: var(--color-text-muted);
 }
 
 @media (max-width: 640px) {

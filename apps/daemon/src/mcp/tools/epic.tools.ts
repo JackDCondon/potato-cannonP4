@@ -1,5 +1,8 @@
 import { getTicketsByBrainstormId } from "../../stores/ticket.store.js";
-import { getBrainstorm } from "../../stores/brainstorm.store.js";
+import {
+  getBrainstorm,
+  updateBrainstormPmConfig,
+} from "../../stores/brainstorm.store.js";
 import { listTasks } from "../../stores/task.store.js";
 import { ticketDependencyGetForTicket } from "../../stores/ticket-dependency.store.js";
 import type {
@@ -8,7 +11,11 @@ import type {
   McpToolResult,
 } from "../../types/mcp.types.js";
 import type { Ticket } from "../../types/index.js";
-import type { BlockedByEntry } from "@potato-cannon/shared";
+import {
+  DEFAULT_PM_CONFIG,
+  type BlockedByEntry,
+  type PmMode,
+} from "@potato-cannon/shared";
 
 // =============================================================================
 // Tool Definitions
@@ -29,6 +36,28 @@ export const epicTools: ToolDefinition[] = [
         },
       },
       required: [],
+    },
+    scope: "session",
+  },
+  {
+    name: "set_epic_pm_mode",
+    description:
+      'Set the PM monitoring mode for the current epic. Use "passive" to disable monitoring, "watching" to enable alerts, "executing" to enable autonomous advancement.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["passive", "watching", "executing"],
+          description: "The PM mode to set.",
+        },
+        brainstormId: {
+          type: "string",
+          description:
+            "Epic/brainstorm ID. Defaults to the current session context.",
+        },
+      },
+      required: ["mode"],
     },
     scope: "session",
   },
@@ -167,6 +196,76 @@ export const epicHandlers: Record<
 
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    };
+  },
+  set_epic_pm_mode: async (ctx, args) => {
+    const brainstormId = (args.brainstormId as string | undefined) ?? ctx.brainstormId;
+    const mode = args.mode as PmMode | undefined;
+
+    if (!brainstormId) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Error: no brainstormId in context or args",
+          },
+        ],
+      };
+    }
+
+    if (mode !== "passive" && mode !== "watching" && mode !== "executing") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Error: mode must be one of: passive, watching, executing",
+          },
+        ],
+      };
+    }
+
+    let brainstorm;
+    try {
+      brainstorm = await getBrainstorm(ctx.projectId, brainstormId);
+    } catch {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error: epic '${brainstormId}' not found`,
+          },
+        ],
+      };
+    }
+
+    const pmEnabled = mode !== "passive";
+    const existing = brainstorm.pmConfig ?? DEFAULT_PM_CONFIG;
+    const updatedPmConfig = {
+      ...DEFAULT_PM_CONFIG,
+      ...existing,
+      mode,
+      polling: {
+        ...DEFAULT_PM_CONFIG.polling,
+        ...(existing.polling ?? {}),
+      },
+      alerts: {
+        ...DEFAULT_PM_CONFIG.alerts,
+        ...(existing.alerts ?? {}),
+      },
+    };
+
+    updateBrainstormPmConfig(brainstormId, {
+      pmEnabled,
+      pmConfig: updatedPmConfig,
+    });
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `PM mode for epic '${brainstorm.name}' set to '${mode}'`,
+        },
+      ],
     };
   },
 };

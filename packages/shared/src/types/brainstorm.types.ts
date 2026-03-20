@@ -1,3 +1,5 @@
+import type { PmConfig } from "./board-settings.types.js";
+
 export type BrainstormStatus = 'active' | 'completed' | 'epic'
 
 export interface Brainstorm {
@@ -15,6 +17,7 @@ export interface Brainstorm {
   ticketCount?: number
   activeTicketCount?: number
   pmEnabled?: boolean
+  pmConfig?: PmConfig | null
   color?: string | null
   icon?: string | null
 }
