@@ -49,11 +49,17 @@ Run the standard quality checks for the project:
 | **Quality checks pass** | Do linting, type checking, and tests pass? | All green |
 | **No new issues** | Do the changes introduce new bugs or security issues? | Clean diff with no side effects |
 
-## Step 5: Report Results
-
-Use `chat_notify` to post findings.
+## Step 5: Signal Verdict
 
 **If all checks pass:**
+
+Call `ralph_loop_dock` with `approved: true`:
+
+```
+ralph_loop_dock(approved: true)
+```
+
+Also use `chat_notify` to report:
 ```
 ## Bug Fix QA: PASSED
 
@@ -74,24 +80,23 @@ Use `chat_notify` to post findings.
 Fix verified against resolution.md. Build phase complete.
 ```
 
-**If issues found:**
+**If any issues found:**
+
+Call `ralph_loop_dock` with `approved: false` and full failure details:
+
 ```
-## Bug Fix QA: FAILED
-
-### Critical Issues
-- [Issue tied to resolution.md gap or code problem]
-
-### Quality Check Failures
-- [Specific failures from linting/types/tests]
-
-Build cannot proceed until issues are resolved.
+ralph_loop_dock(
+  approved: false,
+  feedback: "## Bug Fix QA Failures\n\n### Critical Issues\n- {issue}\n\n### Quality Check Failures\n- {file}:{line} — {error}"
+)
 ```
+
+Also use `chat_notify` to report the same summary to the user.
 
 ## Guidelines
 
 - Read resolution.md FIRST — you can't verify without knowing the plan
 - Be specific about what passed and what failed
-- Don't try to fix issues — report them
 - The regression test is non-negotiable — fail if missing
 
 ## What NOT to Do
@@ -100,5 +105,4 @@ Build cannot proceed until issues are resolved.
 |------------|--------------|
 | Skip reading resolution.md | Can't verify fix without knowing the plan |
 | Approve without regression test | Bug will recur |
-| Try to fix issues yourself | Not your job — report and let builder fix |
 | Only run tests on changed files | Integration issues may exist elsewhere |
