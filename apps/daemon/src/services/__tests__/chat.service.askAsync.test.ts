@@ -1,6 +1,10 @@
 // src/services/__tests__/chat.service.askAsync.test.ts
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert";
+import {
+  DEFAULT_CHAT_NOTIFICATION_POLICY,
+  type ChatNotificationPolicy,
+} from "@potato-cannon/shared";
 
 /**
  * Tests for ChatService.askAsync method.
@@ -29,6 +33,10 @@ let readQuestionResult: unknown = null;
 let mockTicketConversationId: string | null = null;
 let mockBrainstormConversationId: string | null = null;
 let mockTicketGeneration: number | null = null;
+let mockTicketWorkflowId: string | null = "wf-ticket";
+let mockBrainstormWorkflowId: string | null = "wf-brainstorm";
+let mockBoardChatPolicy: ChatNotificationPolicy =
+  DEFAULT_CHAT_NOTIFICATION_POLICY;
 let resolveQuestionCalls = 0;
 let pendingConversationMessageResult: unknown = null;
 
@@ -90,6 +98,12 @@ const mockDb = {
       if (sql.includes("SELECT execution_generation FROM tickets")) {
         return { execution_generation: mockTicketGeneration };
       }
+      if (sql.includes("SELECT workflow_id FROM tickets")) {
+        return { workflow_id: mockTicketWorkflowId };
+      }
+      if (sql.includes("SELECT workflow_id FROM brainstorms")) {
+        return { workflow_id: mockBrainstormWorkflowId };
+      }
       return null;
     },
     run: () => ({}),
@@ -99,6 +113,12 @@ const mockDb = {
 mock.module("../../stores/db.js", {
   namedExports: {
     getDatabase: () => mockDb,
+  },
+});
+
+mock.module("../../stores/board-settings.store.js", {
+  namedExports: {
+    getBoardChatNotificationPolicy: () => mockBoardChatPolicy,
   },
 });
 
@@ -137,6 +157,9 @@ describe("ChatService.askAsync", () => {
     mockTicketConversationId = null;
     mockBrainstormConversationId = null;
     mockTicketGeneration = null;
+    mockTicketWorkflowId = "wf-ticket";
+    mockBrainstormWorkflowId = "wf-brainstorm";
+    mockBoardChatPolicy = DEFAULT_CHAT_NOTIFICATION_POLICY;
     resolveQuestionCalls = 0;
     pendingConversationMessageResult = null;
 
@@ -373,6 +396,87 @@ describe("ChatService.askAsync", () => {
 
     assert.strictEqual(sendCalls.length, 1);
     assert.ok(sendCalls[0].includes("Build complete"));
+  });
+
+  it("suppresses question delivery when the board mutes questions", async () => {
+    const sendCalls: string[] = [];
+    mockBoardChatPolicy = {
+      ...DEFAULT_CHAT_NOTIFICATION_POLICY,
+      categories: {
+        ...DEFAULT_CHAT_NOTIFICATION_POLICY.categories,
+        questions: false,
+      },
+    };
+    const mockProvider = {
+      id: "mock",
+      name: "Mock",
+      capabilities: { threads: false, buttons: false, formatting: "plain" },
+      initialize: async () => {},
+      shutdown: async () => {},
+      createThread: async () => ({ providerId: "mock", threadId: "t1" }),
+      getThread: async () => ({
+        providerId: "mock",
+        threadId: "t1",
+        metadata: {},
+      }),
+      send: async (_thread: unknown, msg: { text: string }) => {
+        sendCalls.push(msg.text);
+      },
+      notifyAnswered: async () => {},
+    };
+    service.registerProvider(mockProvider as any);
+
+    await service.askAsync(
+      { projectId: "p", ticketId: "TICK-1" },
+      "Are you ready?",
+    );
+
+    assert.strictEqual(sendCalls.length, 0);
+    assert.strictEqual(writeQuestionCalls.length, 1);
+    const ticketEvents = eventBusEmitCalls.filter(
+      (c) => c.event === "ticket:message",
+    );
+    assert.strictEqual(ticketEvents.length, 1);
+  });
+
+  it("suppresses builder-update delivery when the board mutes builder updates", async () => {
+    const sendCalls: string[] = [];
+    mockBoardChatPolicy = {
+      ...DEFAULT_CHAT_NOTIFICATION_POLICY,
+      categories: {
+        ...DEFAULT_CHAT_NOTIFICATION_POLICY.categories,
+        builder_updates: false,
+      },
+    };
+    const mockProvider = {
+      id: "mock",
+      name: "Mock",
+      capabilities: { threads: false, buttons: false, formatting: "plain" },
+      initialize: async () => {},
+      shutdown: async () => {},
+      createThread: async () => ({ providerId: "mock", threadId: "t1" }),
+      getThread: async () => ({
+        providerId: "mock",
+        threadId: "t1",
+        metadata: {},
+      }),
+      send: async (_thread: unknown, msg: { text: string }) => {
+        sendCalls.push(msg.text);
+      },
+      notifyAnswered: async () => {},
+    };
+    service.registerProvider(mockProvider as any);
+
+    await service.notify(
+      { projectId: "p", ticketId: "TICK-1" },
+      "Build complete",
+    );
+
+    assert.strictEqual(sendCalls.length, 0);
+    const ticketEvents = eventBusEmitCalls.filter(
+      (c) => c.event === "ticket:message",
+    );
+    assert.strictEqual(ticketEvents.length, 1);
   });
 
   it("should handle null options", async () => {

@@ -3,7 +3,7 @@ import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 28;
+const CURRENT_SCHEMA_VERSION = 29;
 
 /**
  * Run database migrations.
@@ -122,6 +122,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 28) {
     migrateV28(db);
+  }
+
+  if (version < 29) {
+    migrateV29(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1167,6 +1171,21 @@ function migrateV28(db: Database.Database): void {
     DROP TABLE IF EXISTS chat_delivery_events;
     DROP TABLE IF EXISTS chat_queue_items;
   `);
+}
+
+/**
+ * V29: Add persisted external chat delivery policy to board settings.
+ */
+function migrateV29(db: Database.Database): void {
+  const boardSettingsCols = new Set(
+    (db.prepare("PRAGMA table_info(board_settings)").all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  );
+
+  if (!boardSettingsCols.has("chat_notification_policy")) {
+    db.exec("ALTER TABLE board_settings ADD COLUMN chat_notification_policy TEXT");
+  }
 }
 
 function normalizeTemplateVersion(version: string | null | undefined): string | null {

@@ -5,7 +5,6 @@ const callOrder: string[] = [];
 let deletedTicketArgs: { projectId: string; ticketId: string } | null = null;
 let emittedPayload: unknown = null;
 let cleanupResult = {
-  queueCancelled: 0,
   routesRemoved: 0,
   threadDeletesAttempted: 0,
   threadDeleteErrors: [] as string[],
@@ -50,7 +49,6 @@ describe("ticket deletion lifecycle service", () => {
     deletedTicketArgs = null;
     emittedPayload = null;
     cleanupResult = {
-      queueCancelled: 2,
       routesRemoved: 1,
       threadDeletesAttempted: 3,
       threadDeleteErrors: [],
@@ -81,7 +79,6 @@ describe("ticket deletion lifecycle service", () => {
     });
     assert.deepStrictEqual(report, {
       sessionStopped: true,
-      queueCancelled: 2,
       routesRemoved: 1,
       threadDeletesAttempted: 3,
       threadDeleteErrors: [],
@@ -95,7 +92,6 @@ describe("ticket deletion lifecycle service", () => {
 
   it("preserves provider thread warning errors in the lifecycle report", async () => {
     cleanupResult = {
-      queueCancelled: 0,
       routesRemoved: 0,
       threadDeletesAttempted: 2,
       threadDeleteErrors: ["telegram/thread-1: timeout"],

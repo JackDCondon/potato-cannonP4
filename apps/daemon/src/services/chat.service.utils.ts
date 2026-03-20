@@ -34,6 +34,33 @@ export function getConversationId(context: ChatContext): string | null {
   return null;
 }
 
+export function getWorkflowId(context: ChatContext): string | null {
+  if (context.workflowId) {
+    return context.workflowId;
+  }
+
+  const db = getDatabase();
+  if (context.ticketId) {
+    const row = db
+      .prepare("SELECT workflow_id FROM tickets WHERE project_id = ? AND id = ?")
+      .get(context.projectId, context.ticketId) as
+      | { workflow_id: string | null }
+      | undefined;
+    return row?.workflow_id || null;
+  }
+  if (context.brainstormId) {
+    const row = db
+      .prepare(
+        "SELECT workflow_id FROM brainstorms WHERE project_id = ? AND id = ?",
+      )
+      .get(context.projectId, context.brainstormId) as
+      | { workflow_id: string | null }
+      | undefined;
+    return row?.workflow_id || null;
+  }
+  return null;
+}
+
 export function decodeStructuredAnswer(answer: string): {
   answer: string;
   questionId?: string;

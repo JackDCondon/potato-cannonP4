@@ -34,6 +34,7 @@ import type {
   TicketLifecycleConflictPayload,
   StaleTicketInputPayload,
   TicketLifecycleErrorPayload,
+  ChatNotificationPolicy,
   PmConfig,
   BoardSettings,
 } from '@potato-cannon/shared'
@@ -746,7 +747,7 @@ export const api = {
   // ============ Board Settings ============
 
   getBoardSettings: (projectId: string, workflowId: string) =>
-    request<{ pmConfig: PmConfig }>(
+    request<{ pmConfig: PmConfig; chatNotificationPolicy: ChatNotificationPolicy }>(
       `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/settings`
     ),
 
@@ -756,6 +757,19 @@ export const api = {
       {
         method: 'PUT',
         body: JSON.stringify(config),
+      }
+    ),
+
+  updateBoardNotificationSettings: (
+    projectId: string,
+    workflowId: string,
+    policy: Partial<ChatNotificationPolicy>
+  ) =>
+    request<{ chatNotificationPolicy: ChatNotificationPolicy; settings: BoardSettings }>(
+      `/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}/settings/notifications`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(policy),
       }
     ),
 

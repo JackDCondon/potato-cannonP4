@@ -12,7 +12,11 @@ import {
 } from "../board-settings.store.js";
 import { createProjectStore } from "../project.store.js";
 import { createProjectWorkflowStore } from "../project-workflow.store.js";
-import { DEFAULT_PM_CONFIG } from "@potato-cannon/shared";
+import {
+  BOARD_NOTIFICATION_PRESET_CATEGORIES,
+  DEFAULT_CHAT_NOTIFICATION_POLICY,
+  DEFAULT_PM_CONFIG,
+} from "@potato-cannon/shared";
 import type { PmConfig } from "@potato-cannon/shared";
 
 describe("BoardSettingsStore", () => {
@@ -81,6 +85,7 @@ describe("BoardSettingsStore", () => {
       assert.strictEqual(result.workflowId, workflowId);
       assert.ok(result.pmConfig);
       assert.strictEqual(result.pmConfig.mode, "watching");
+      assert.strictEqual(result.chatNotificationPolicy, null);
     });
   });
 
@@ -186,6 +191,60 @@ describe("BoardSettingsStore", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // upsertChatNotificationPolicy
+  // ---------------------------------------------------------------------------
+
+  describe("upsertChatNotificationPolicy", () => {
+    it("creates a new row with merged notification defaults", () => {
+      const settings = store.upsertChatNotificationPolicy(workflowId, {
+        preset: "important_only",
+        categories: { builder_updates: false },
+      });
+
+      assert.ok(settings.chatNotificationPolicy);
+      assert.strictEqual(settings.chatNotificationPolicy.preset, "important_only");
+      assert.strictEqual(
+        settings.chatNotificationPolicy.categories.builder_updates,
+        false,
+      );
+      assert.strictEqual(
+        settings.chatNotificationPolicy.categories.questions,
+        true,
+      );
+      assert.strictEqual(
+        settings.chatNotificationPolicy.categories.lifecycle_events,
+        BOARD_NOTIFICATION_PRESET_CATEGORIES.important_only.lifecycle_events,
+      );
+    });
+
+    it("applies the preset bundle when only a preset is provided", () => {
+      const settings = store.upsertChatNotificationPolicy(workflowId, {
+        preset: "questions_only",
+      });
+
+      assert.deepStrictEqual(
+        settings.chatNotificationPolicy?.categories,
+        BOARD_NOTIFICATION_PRESET_CATEGORIES.questions_only,
+      );
+    });
+
+    it("updates notification policy without overwriting stored pmConfig", () => {
+      store.upsertSettings(workflowId, { mode: "executing" });
+      const settings = store.upsertChatNotificationPolicy(workflowId, {
+        categories: { lifecycle_events: false },
+      });
+
+      assert.ok(settings.pmConfig);
+      assert.strictEqual(settings.pmConfig.mode, "executing");
+      assert.ok(settings.chatNotificationPolicy);
+      assert.strictEqual(
+        settings.chatNotificationPolicy.categories.lifecycle_events,
+        false,
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // getPmConfig — inheritance
   // ---------------------------------------------------------------------------
 
@@ -219,6 +278,40 @@ describe("BoardSettingsStore", () => {
 
       const config = store.getPmConfig(workflowId);
       assert.deepStrictEqual(config, DEFAULT_PM_CONFIG);
+    });
+  });
+
+  describe("getChatNotificationPolicy", () => {
+    it("returns DEFAULT_CHAT_NOTIFICATION_POLICY when no settings exist", () => {
+      const policy = store.getChatNotificationPolicy(workflowId);
+      assert.deepStrictEqual(policy, DEFAULT_CHAT_NOTIFICATION_POLICY);
+    });
+
+    it("returns DEFAULT_CHAT_NOTIFICATION_POLICY when settings row has null policy", () => {
+      const now = new Date().toISOString();
+      db.prepare(
+        "INSERT INTO board_settings (id, workflow_id, pm_config, chat_notification_policy, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?)"
+      ).run("test-id-null-policy", workflowId, now, now);
+
+      const policy = store.getChatNotificationPolicy(workflowId);
+      assert.deepStrictEqual(policy, DEFAULT_CHAT_NOTIFICATION_POLICY);
+    });
+
+    it("returns stored policy when overrides exist", () => {
+      store.upsertChatNotificationPolicy(workflowId, {
+        preset: "mute_all",
+        categories: {
+          builder_updates: false,
+          pm_alerts: false,
+          lifecycle_events: false,
+          questions: false,
+          critical: false,
+        },
+      });
+
+      const policy = store.getChatNotificationPolicy(workflowId);
+      assert.strictEqual(policy.preset, "mute_all");
+      assert.strictEqual(policy.categories.questions, false);
     });
   });
 

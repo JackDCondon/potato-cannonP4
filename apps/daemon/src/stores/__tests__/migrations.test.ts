@@ -195,7 +195,7 @@ describe('V13 migration Ã¢â‚¬â€ project_workflows table + workflow_id
 
   it('schema version is 27', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -768,14 +768,14 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 
   it('schema version is 27', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -867,7 +867,7 @@ describe('V23 migration - epic color and icon customization', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -882,7 +882,7 @@ describe('V24 migration - token usage columns', () => {
     assert.ok(names.has('output_tokens'), 'sessions table should have output_tokens column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 
   it('is idempotent Ã¢â‚¬â€ running V24 migration twice does not error', () => {
@@ -892,7 +892,7 @@ describe('V24 migration - token usage columns', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -909,7 +909,7 @@ describe('V25 migration - ticket pause state columns', () => {
     assert.ok(names.has('pause_retry_count'), 'tickets table should have pause_retry_count column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 
   it('is idempotent Ã¢â‚¬â€ running V25 migration twice does not error', () => {
@@ -919,7 +919,7 @@ describe('V25 migration - ticket pause state columns', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -935,7 +935,7 @@ describe('V26 migration - per-project p4 connection settings', () => {
     assert.ok(names.has('p4_user'), 'projects table should have p4_user column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 
   it('is idempotent when run repeatedly after V26', () => {
@@ -945,7 +945,7 @@ describe('V26 migration - per-project p4 connection settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V26 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -975,7 +975,7 @@ describe('V28 migration - chat queue cleanup', () => {
     runMigrations(db);
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
   });
 });
 
@@ -998,6 +998,7 @@ describe('V22 migration - PM fields and board settings', () => {
     assert.ok(names.has('id'), 'board_settings should have id column');
     assert.ok(names.has('workflow_id'), 'board_settings should have workflow_id column');
     assert.ok(names.has('pm_config'), 'board_settings should have pm_config column');
+    assert.ok(names.has('chat_notification_policy'), 'board_settings should have chat_notification_policy column');
     assert.ok(names.has('created_at'), 'board_settings should have created_at column');
     assert.ok(names.has('updated_at'), 'board_settings should have updated_at column');
   });
@@ -1049,6 +1050,25 @@ describe('V22 migration - PM fields and board settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 28);
+    assert.equal(version, 29);
+  });
+});
+
+describe('V29 migration - board chat notification policy column', () => {
+  it('adds chat_notification_policy column to board_settings', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(board_settings)') as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    assert.ok(names.has('chat_notification_policy'), 'board_settings should have chat_notification_policy column');
+  });
+
+  it('bumps the schema version to 29', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 29);
   });
 });

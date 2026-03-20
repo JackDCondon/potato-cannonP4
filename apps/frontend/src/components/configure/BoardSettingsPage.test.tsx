@@ -1,48 +1,61 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { DEFAULT_PM_CONFIG } from '@potato-cannon/shared'
+import {
+  DEFAULT_CHAT_NOTIFICATION_POLICY,
+  DEFAULT_PM_CONFIG,
+} from '@potato-cannon/shared'
 import { BoardSettingsPage } from './BoardSettingsPage'
 
 const STORAGE_KEY = 'potato-board-pm-defaults'
 
-const mockGetBoardSettings = vi.fn().mockResolvedValue({ pmConfig: DEFAULT_PM_CONFIG })
+const mockGetBoardSettings = vi.fn().mockResolvedValue({
+  pmConfig: DEFAULT_PM_CONFIG,
+  chatNotificationPolicy: DEFAULT_CHAT_NOTIFICATION_POLICY,
+})
 const mockUpdateBoardPmSettings = vi.fn()
+const mockUpdateBoardNotificationSettings = vi.fn().mockImplementation(
+  async (_projectId: string, _workflowId: string, policy: unknown) => ({
+    chatNotificationPolicy: policy,
+    settings: {},
+  }),
+)
 const mockResetBoardPmSettings = vi.fn()
 
 vi.mock('@/api/client', () => ({
   api: {
     getBoardSettings: (...args: unknown[]) => mockGetBoardSettings(...args),
     updateBoardPmSettings: (...args: unknown[]) => mockUpdateBoardPmSettings(...args),
+    updateBoardNotificationSettings: (...args: unknown[]) =>
+      mockUpdateBoardNotificationSettings(...args),
     resetBoardPmSettings: (...args: unknown[]) => mockResetBoardPmSettings(...args),
   },
 }))
 
-describe('BoardSettingsPage PM defaults', () => {
+describe('BoardSettingsPage', () => {
   beforeEach(() => {
     cleanup()
     localStorage.clear()
     vi.clearAllMocks()
-    mockGetBoardSettings.mockResolvedValue({ pmConfig: DEFAULT_PM_CONFIG })
-  })
-
-  it('loads DEFAULT_PM_CONFIG when localStorage is empty', async () => {
-    render(<BoardSettingsPage projectId="project-1" workflowId="workflow-1" />)
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /passive/i })).toHaveClass('border-accent')
+    mockGetBoardSettings.mockResolvedValue({
+      pmConfig: DEFAULT_PM_CONFIG,
+      chatNotificationPolicy: DEFAULT_CHAT_NOTIFICATION_POLICY,
     })
-    expect(mockGetBoardSettings).not.toHaveBeenCalled()
   })
 
-  it('loads saved config from localStorage on mount', async () => {
+  it('keeps PM defaults browser-local while loading phone policy from the backend', async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...DEFAULT_PM_CONFIG, mode: 'watching' }))
+
     render(<BoardSettingsPage projectId="project-1" workflowId="workflow-1" />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /watching/i })).toHaveClass('border-accent')
+      expect(mockGetBoardSettings).toHaveBeenCalledWith('project-1', 'workflow-1')
     })
+
+    expect(screen.getByRole('button', { name: /watching/i })).toHaveClass('border-accent')
+    expect(mockUpdateBoardPmSettings).not.toHaveBeenCalled()
   })
 
-  it('writes to localStorage when PM mode changes', async () => {
+  it('writes PM mode changes to localStorage only', async () => {
     render(<BoardSettingsPage projectId="project-1" workflowId="workflow-1" />)
 
     fireEvent.click(await screen.findByRole('button', { name: /executing/i }))
@@ -51,15 +64,45 @@ describe('BoardSettingsPage PM defaults', () => {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
       expect(stored.mode).toBe('executing')
     })
+
+    expect(mockUpdateBoardPmSettings).not.toHaveBeenCalled()
   })
 
-  it('does not render a Save Board Settings button', () => {
+  it('saves phone notification toggles through the board settings API', async () => {
     render(<BoardSettingsPage projectId="project-1" workflowId="workflow-1" />)
-    expect(screen.queryByRole('button', { name: /save board settings/i })).not.toBeInTheDocument()
+
+    const builderUpdatesSwitch = await screen.findByRole('switch', { name: /builder updates/i })
+    expect(builderUpdatesSwitch).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.click(builderUpdatesSwitch)
+
+    await waitFor(() => {
+      expect(mockUpdateBoardNotificationSettings).toHaveBeenCalledTimes(1)
+    })
+
+    const savedPolicy = mockUpdateBoardNotificationSettings.mock.calls[0][2]
+    expect(savedPolicy).toMatchObject({
+      categories: {
+        ...DEFAULT_CHAT_NOTIFICATION_POLICY.categories,
+        builder_updates: false,
+      },
+    })
   })
 
-  it('does not render a Reset to Defaults button', () => {
+  it('renders collapsible sections and keeps advanced settings collapsed by default', async () => {
     render(<BoardSettingsPage projectId="project-1" workflowId="workflow-1" />)
-    expect(screen.queryByRole('button', { name: /reset to defaults/i })).not.toBeInTheDocument()
+
+    expect(screen.queryByLabelText(/poll interval/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
+
+    expect(await screen.findByLabelText(/poll interval/i)).toBeInTheDocument()
+  })
+
+  it('shows a local-only badge for PM defaults and a saved-to-board badge for phone notifications', async () => {
+    render(<BoardSettingsPage projectId="project-1" workflowId="workflow-1" />)
+
+    expect(await screen.findByText(/saved to board/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/local only/i)).toHaveLength(2)
   })
 })

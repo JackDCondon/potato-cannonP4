@@ -1,10 +1,13 @@
 // src/providers/chat-provider.types.ts
 
+import type { ChatNotificationCategory } from "@potato-cannon/shared";
+
 /**
  * Context identifying a ticket or brainstorm for chat operations.
  */
 export interface ChatContext {
   projectId: string;
+  workflowId?: string;
   ticketId?: string;
   brainstormId?: string;
   agentSource?: string;
@@ -21,6 +24,7 @@ export interface OutboundMessage {
   questionId?: string;
   phase?: string;
   kind?: "question" | "notification";
+  category?: ChatNotificationCategory;
   contextLabel?: string;
 }
 

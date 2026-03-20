@@ -1,7 +1,11 @@
 import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert";
 
-const notifyCalls: Array<{ context: { projectId: string; ticketId?: string }; message: string }> = [];
+const notifyCalls: Array<{
+  context: { projectId: string; ticketId?: string };
+  message: string;
+  options?: { category?: string };
+}> = [];
 const updateStatusCalls: Array<{ taskId: string; status: string }> = [];
 
 await mock.module("fs", {
@@ -132,8 +136,12 @@ await mock.module("../ticket-logger.js", {
 await mock.module("../../chat.service.js", {
   namedExports: {
     chatService: {
-      notify: async (context: { projectId: string; ticketId?: string }, message: string) => {
-        notifyCalls.push({ context, message });
+      notify: async (
+        context: { projectId: string; ticketId?: string },
+        message: string,
+        options?: { category?: string },
+      ) => {
+        notifyCalls.push({ context, message, options });
       },
     },
   },
@@ -207,6 +215,7 @@ describe("worker executor task-close notifications", () => {
       {
         context: { projectId: "proj-1", ticketId: "POT-1" },
         message: "[Workflow]: Task closed: Implement chatty notifications",
+        options: { category: "builder_updates" },
       },
     ]);
   });

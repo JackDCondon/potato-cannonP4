@@ -4,6 +4,7 @@ import assert from "node:assert";
 type NotifyCall = {
   context: unknown;
   message: string;
+  options?: { category?: string };
 };
 
 const notifyCalls: NotifyCall[] = [];
@@ -12,8 +13,12 @@ mock.module("../../../services/chat.service.js", {
   namedExports: {
     chatService: {
       askAsync: async () => ({ status: "pending", questionId: "q_test" }),
-      notify: async (context: unknown, message: string) => {
-        notifyCalls.push({ context, message });
+      notify: async (
+        context: unknown,
+        message: string,
+        options?: { category?: string },
+      ) => {
+        notifyCalls.push({ context, message, options });
       },
       initChat: async () => {},
     },
@@ -38,7 +43,10 @@ describe("chat tools notify formatting", () => {
         daemonUrl: "http://localhost:8443",
         agentModel: "opus",
       },
-      { message: "[Adversarial Architect Agent]: Reviewing architecture." },
+      {
+        message: "[Adversarial Architect Agent]: Reviewing architecture.",
+        category: "critical",
+      },
     );
 
     assert.strictEqual(notifyCalls.length, 1);
@@ -50,6 +58,7 @@ describe("chat tools notify formatting", () => {
       (notifyCalls[0].context as { agentModel?: string }).agentModel,
       "opus",
     );
+    assert.strictEqual(notifyCalls[0].options?.category, "critical");
   });
 
   it("does not duplicate a model label when one already exists", () => {

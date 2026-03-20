@@ -1,5 +1,6 @@
 // src/services/chat.service.ts
 
+import type { ChatNotificationCategory } from "@potato-cannon/shared";
 import type {
   ChatContext,
   ChatProvider,
@@ -28,6 +29,13 @@ import {
   getConversationId,
   getTicketGeneration,
 } from "./chat.service.utils.js";
+import { shouldDeliverMessageToProviders } from "./chat-notification-policy.js";
+
+interface NotifyOptions {
+  category?: ChatNotificationCategory;
+  persistToConversation?: boolean;
+  emitToUi?: boolean;
+}
 
 export class ChatService {
   private providers: Map<string, ChatProvider> = new Map();
@@ -147,40 +155,55 @@ export class ChatService {
       questionId: logicalQuestionId,
       phase,
       kind: "question",
+      category: "questions",
     });
 
     // Return immediately - don't wait for response
     return { status: 'pending', questionId: logicalQuestionId };
   }
 
-  async notify(context: ChatContext, message: string): Promise<void> {
+  async notify(
+    context: ChatContext,
+    message: string,
+    options: NotifyOptions = {},
+  ): Promise<void> {
     const now = new Date().toISOString();
+    const {
+      category = "builder_updates",
+      persistToConversation = true,
+      emitToUi = true,
+    } = options;
 
-    // Get conversation ID and persist notification
-    const conversationId = getConversationId(context);
-    if (conversationId) {
-      addMessage(conversationId, {
-        type: "notification",
-        text: message,
-        metadata: createConversationMetadata(
-          context,
-          "system",
-          undefined,
-          getTicketGeneration(context),
-        ),
-      });
+    if (persistToConversation) {
+      // Get conversation ID and persist notification
+      const conversationId = getConversationId(context);
+      if (conversationId) {
+        addMessage(conversationId, {
+          type: "notification",
+          text: message,
+          metadata: createConversationMetadata(
+            context,
+            "system",
+            undefined,
+            getTicketGeneration(context),
+          ),
+        });
+      }
     }
 
-    // Emit events for real-time updates
-    this.emitChatEvent(context, {
-      type: "notification",
-      text: message,
-      timestamp: now,
-    });
+    if (emitToUi) {
+      // Emit events for real-time updates
+      this.emitChatEvent(context, {
+        type: "notification",
+        text: message,
+        timestamp: now,
+      });
+    }
 
     await this.sendToProviders(context, {
       text: message,
       kind: "notification",
+      category,
     });
   }
 
@@ -389,6 +412,13 @@ export class ChatService {
     context: ChatContext,
     message: OutboundMessage,
   ): Promise<void> {
+    if (!shouldDeliverMessageToProviders(context, message)) {
+      console.log(
+        `[ChatService] Suppressed ${message.category ?? message.kind ?? "notification"} for ${getContextId(context)} due to board chat notification policy`,
+      );
+      return;
+    }
+
     for (const provider of this.getActiveProviders()) {
       try {
         await this.sendToProvider(provider, context, message);

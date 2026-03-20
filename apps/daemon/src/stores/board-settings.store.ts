@@ -1,8 +1,18 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "crypto";
 import { getDatabase } from "./db.js";
-import type { BoardSettings, PmConfig } from "@potato-cannon/shared";
-import { DEFAULT_PM_CONFIG } from "@potato-cannon/shared";
+import type {
+  BoardSettings,
+  ChatNotificationPolicy,
+  ChatNotificationPolicyInput,
+  PmConfig,
+} from "@potato-cannon/shared";
+import {
+  deriveBoardNotificationPreset,
+  DEFAULT_CHAT_NOTIFICATION_POLICY,
+  DEFAULT_PM_CONFIG,
+  resolveBoardNotificationPresetCategories,
+} from "@potato-cannon/shared";
 
 // =============================================================================
 // Row Types
@@ -12,6 +22,7 @@ interface BoardSettingsRow {
   id: string;
   workflow_id: string;
   pm_config: string | null;
+  chat_notification_policy: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -25,8 +36,32 @@ function rowToSettings(row: BoardSettingsRow): BoardSettings {
     id: row.id,
     workflowId: row.workflow_id,
     pmConfig: row.pm_config ? (JSON.parse(row.pm_config) as PmConfig) : null,
+    chatNotificationPolicy: row.chat_notification_policy
+      ? (JSON.parse(row.chat_notification_policy) as ChatNotificationPolicy)
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mergeNotificationPolicy(
+  existing: ChatNotificationPolicy | null,
+  updates: ChatNotificationPolicyInput,
+): ChatNotificationPolicy {
+  const basePolicy = existing ?? DEFAULT_CHAT_NOTIFICATION_POLICY;
+  const preset =
+    updates.preset ?? deriveBoardNotificationPreset(basePolicy.categories) ?? basePolicy.preset;
+  const baseCategories = updates.preset
+    ? resolveBoardNotificationPresetCategories(updates.preset)
+    : basePolicy.categories;
+
+  return {
+    ...basePolicy,
+    preset,
+    categories: {
+      ...baseCategories,
+      ...(updates.categories ?? {}),
+    },
   };
 }
 
@@ -84,8 +119,39 @@ export class BoardSettingsStore {
       const id = randomUUID();
       this.db
         .prepare(
-          `INSERT INTO board_settings (id, workflow_id, pm_config, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?)`
+          `INSERT INTO board_settings (id, workflow_id, pm_config, chat_notification_policy, created_at, updated_at)
+           VALUES (?, ?, ?, NULL, ?, ?)`
+        )
+        .run(id, workflowId, JSON.stringify(merged), now, now);
+    }
+
+    return this.getSettings(workflowId)!;
+  }
+
+  /**
+   * Insert or update the persisted external chat delivery policy for a board.
+   * Returns the persisted BoardSettings row.
+   */
+  upsertChatNotificationPolicy(
+    workflowId: string,
+    policy: ChatNotificationPolicyInput,
+  ): BoardSettings {
+    const existing = this.getSettings(workflowId);
+    const now = new Date().toISOString();
+    const merged = mergeNotificationPolicy(existing?.chatNotificationPolicy ?? null, policy);
+
+    if (existing) {
+      this.db
+        .prepare(
+          "UPDATE board_settings SET chat_notification_policy = ?, updated_at = ? WHERE workflow_id = ?"
+        )
+        .run(JSON.stringify(merged), now, workflowId);
+    } else {
+      const id = randomUUID();
+      this.db
+        .prepare(
+          `INSERT INTO board_settings (id, workflow_id, pm_config, chat_notification_policy, created_at, updated_at)
+           VALUES (?, ?, NULL, ?, ?, ?)`
         )
         .run(id, workflowId, JSON.stringify(merged), now, now);
     }
@@ -124,6 +190,20 @@ export class BoardSettingsStore {
 
     return settings.pmConfig;
   }
+
+  /**
+   * Return the effective external chat delivery policy for a board.
+   * If no policy is stored, returns DEFAULT_CHAT_NOTIFICATION_POLICY.
+   */
+  getChatNotificationPolicy(workflowId: string): ChatNotificationPolicy {
+    const settings = this.getSettings(workflowId);
+
+    if (!settings || !settings.chatNotificationPolicy) {
+      return DEFAULT_CHAT_NOTIFICATION_POLICY;
+    }
+
+    return settings.chatNotificationPolicy;
+  }
 }
 
 // =============================================================================
@@ -147,10 +227,26 @@ export function upsertBoardSettings(
   return new BoardSettingsStore(getDatabase()).upsertSettings(workflowId, pmConfig);
 }
 
+export function upsertBoardChatNotificationPolicy(
+  workflowId: string,
+  policy: ChatNotificationPolicyInput,
+): BoardSettings {
+  return new BoardSettingsStore(getDatabase()).upsertChatNotificationPolicy(
+    workflowId,
+    policy,
+  );
+}
+
 export function deleteBoardSettings(workflowId: string): boolean {
   return new BoardSettingsStore(getDatabase()).deleteSettings(workflowId);
 }
 
 export function getBoardPmConfig(workflowId: string): PmConfig {
   return new BoardSettingsStore(getDatabase()).getPmConfig(workflowId);
+}
+
+export function getBoardChatNotificationPolicy(
+  workflowId: string,
+): ChatNotificationPolicy {
+  return new BoardSettingsStore(getDatabase()).getChatNotificationPolicy(workflowId);
 }

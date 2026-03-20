@@ -1,17 +1,38 @@
 import type { Express, Request, Response } from "express";
 import { getProjectWorkflowStore } from "../../stores/project-workflow.store.js";
 import {
+  getBoardChatNotificationPolicy,
   getBoardPmConfig,
   upsertBoardSettings,
+  upsertBoardChatNotificationPolicy,
   deleteBoardSettings,
 } from "../../stores/board-settings.store.js";
-import type { PmConfig } from "@potato-cannon/shared";
+import type {
+  BoardNotificationPreset,
+  ChatNotificationCategory,
+  ChatNotificationPolicy,
+  ChatNotificationPolicyInput,
+  PmConfig,
+} from "@potato-cannon/shared";
 
 // =============================================================================
 // Validation helpers
 // =============================================================================
 
 const VALID_PM_MODES = new Set(["passive", "watching", "executing"]);
+const VALID_NOTIFICATION_PRESETS = new Set<BoardNotificationPreset>([
+  "all",
+  "important_only",
+  "questions_only",
+  "mute_all",
+]);
+const VALID_NOTIFICATION_CATEGORIES = new Set<ChatNotificationCategory>([
+  "builder_updates",
+  "pm_alerts",
+  "lifecycle_events",
+  "questions",
+  "critical",
+]);
 
 interface ValidationError {
   field: string;
@@ -67,6 +88,46 @@ function validatePmConfig(body: Partial<PmConfig>): ValidationError[] {
   return errors;
 }
 
+function validateChatNotificationPolicy(
+  body: ChatNotificationPolicyInput,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (
+    body.preset !== undefined &&
+    !VALID_NOTIFICATION_PRESETS.has(body.preset)
+  ) {
+    errors.push({
+      field: "preset",
+      message: "preset must be one of: all, important_only, questions_only, mute_all",
+    });
+  }
+
+  if (
+    body.categories !== undefined &&
+    body.categories !== null &&
+    typeof body.categories === "object"
+  ) {
+    for (const [key, value] of Object.entries(body.categories)) {
+      if (!VALID_NOTIFICATION_CATEGORIES.has(key as ChatNotificationCategory)) {
+        errors.push({
+          field: `categories.${key}`,
+          message: `unknown notification category: ${key}`,
+        });
+        continue;
+      }
+      if (typeof value !== "boolean") {
+        errors.push({
+          field: `categories.${key}`,
+          message: `categories.${key} must be a boolean`,
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
 // =============================================================================
 // Route helpers
 // =============================================================================
@@ -95,7 +156,7 @@ function resolveWorkflow(
 
 export function registerBoardSettingsRoutes(app: Express): void {
   // GET /api/projects/:projectId/workflows/:workflowId/settings
-  // Returns the resolved PmConfig for the board (defaults applied).
+  // Returns the resolved board settings for the board (defaults applied).
   app.get(
     "/api/projects/:projectId/workflows/:workflowId/settings",
     (req: Request, res: Response) => {
@@ -104,8 +165,35 @@ export function registerBoardSettingsRoutes(app: Express): void {
 
         if (!resolveWorkflow(res, projectId, workflowId)) return;
 
-        const config = getBoardPmConfig(workflowId);
-        res.json({ pmConfig: config });
+        const pmConfig = getBoardPmConfig(workflowId);
+        const chatNotificationPolicy = getBoardChatNotificationPolicy(workflowId);
+        res.json({ pmConfig, chatNotificationPolicy });
+      } catch (error) {
+        res.status(500).json({ error: (error as Error).message });
+      }
+    },
+  );
+
+  // PUT /api/projects/:projectId/workflows/:workflowId/settings/notifications
+  // Body: Partial<ChatNotificationPolicy>. Upserts persisted phone notification policy.
+  app.put(
+    "/api/projects/:projectId/workflows/:workflowId/settings/notifications",
+    (req: Request, res: Response) => {
+      try {
+        const { projectId, workflowId } = req.params;
+
+        if (!resolveWorkflow(res, projectId, workflowId)) return;
+
+        const body = req.body as ChatNotificationPolicyInput;
+        const errors = validateChatNotificationPolicy(body);
+        if (errors.length > 0) {
+          res.status(400).json({ error: "Validation failed", details: errors });
+          return;
+        }
+
+        const settings = upsertBoardChatNotificationPolicy(workflowId, body);
+        const chatNotificationPolicy = getBoardChatNotificationPolicy(workflowId);
+        res.json({ chatNotificationPolicy, settings });
       } catch (error) {
         res.status(500).json({ error: (error as Error).message });
       }

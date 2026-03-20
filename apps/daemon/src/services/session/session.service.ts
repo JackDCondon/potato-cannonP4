@@ -85,6 +85,7 @@ import { buildResumePrompt } from "./resume-prompt.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
 import { logToDaemon, savePrompt } from "./ticket-logger.js";
+import { chatService } from "../chat.service.js";
 import {
   startPhase,
   handleAgentCompletion,
@@ -2267,20 +2268,16 @@ export class SessionService {
 
     await logToDaemon(projectId, ticketId, `Ticket paused: ${reason}`);
 
-    // Write warning to conversation so it appears in Activity feed
     try {
-      const pausedTicket = getTicket(projectId, ticketId);
-      if (pausedTicket?.conversationId) {
-        addMessage(pausedTicket.conversationId, {
-          type: "notification",
-          text: `⏸ Paused: ${reason}`,
-        });
-        eventBus.emit("ticket:message", {
+      await chatService.notify(
+        {
           projectId,
           ticketId,
-          message: { type: "notification", text: `⏸ Paused: ${reason}` },
-        });
-      }
+          workflowId: ticket.workflowId ?? undefined,
+        },
+        `Paused: ${reason}`,
+        { category: "lifecycle_events" },
+      );
     } catch (err) {
       console.error(
         `[handleTicketPaused] Failed to write pause message: ${(err as Error).message}`,
@@ -2342,19 +2339,16 @@ export class SessionService {
       pauseRetryAt: null,
     });
 
-    // Write notification to conversation
     try {
-      if (ticket.conversationId) {
-        addMessage(ticket.conversationId, {
-          type: "notification",
-          text: "Resuming after pause...",
-        });
-        eventBus.emit("ticket:message", {
+      await chatService.notify(
+        {
           projectId,
           ticketId,
-          message: { type: "notification", text: "Resuming after pause..." },
-        });
-      }
+          workflowId: ticket.workflowId ?? undefined,
+        },
+        "Resuming after pause...",
+        { category: "lifecycle_events" },
+      );
     } catch (err) {
       console.error(
         `[resumePausedTicket] Failed to write resume message: ${(err as Error).message}`,
@@ -2482,6 +2476,26 @@ export class SessionService {
       }
     } catch (err) {
       console.error(`[handleTicketBlocked] Failed to write error message: ${(err as Error).message}`);
+    }
+
+    try {
+      await chatService.notify(
+        {
+          projectId,
+          ticketId,
+          workflowId: ticket.workflowId ?? undefined,
+        },
+        reason,
+        {
+          category: "critical",
+          persistToConversation: false,
+          emitToUi: false,
+        },
+      );
+    } catch (err) {
+      console.error(
+        `[handleTicketBlocked] Failed to send critical chat notification: ${(err as Error).message}`,
+      );
     }
 
     // Emit SSE events so frontend updates

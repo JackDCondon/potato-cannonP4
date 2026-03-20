@@ -146,6 +146,7 @@ async function updateTaskStatusWithNotification(
     await chatService.notify(
       { projectId, ticketId },
       `[Workflow]: Task closed: ${taskName}`,
+      { category: "builder_updates" },
     );
   }
 }

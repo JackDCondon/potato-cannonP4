@@ -3,6 +3,7 @@
 import type { ToolDefinition, McpContext, McpToolResult } from '../../types/mcp.types.js';
 import { chatService } from '../../services/chat.service.js';
 import type { ChatContext } from '../../providers/chat-provider.types.js';
+import type { ChatNotificationCategory } from '@potato-cannon/shared';
 import { getPtyCaptureDedup } from '../../services/session/pty-capture-dedup.js';
 import { updateMessageMetadata } from '../../stores/conversation.store.js';
 
@@ -87,6 +88,11 @@ export const chatTools: ToolDefinition[] = [
           type: 'string',
           description: 'The notification message to send',
         },
+        category: {
+          type: 'string',
+          enum: ['builder_updates', 'pm_alerts', 'lifecycle_events', 'questions', 'critical'],
+          description: 'Optional provider-agnostic notification category for board-level phone delivery filtering',
+        },
       },
       required: ['message'],
     },
@@ -115,6 +121,7 @@ export const chatTools: ToolDefinition[] = [
 function toContext(ctx: McpContext): ChatContext {
   return {
     projectId: ctx.projectId,
+    workflowId: ctx.workflowId || undefined,
     ticketId: ctx.ticketId || undefined,
     brainstormId: ctx.brainstormId || undefined,
     agentModel: ctx.agentModel || undefined,
@@ -173,7 +180,9 @@ export const chatHandlers: Record<
       }
     }
 
-    await chatService.notify(toContext(ctx), message);
+    await chatService.notify(toContext(ctx), message, {
+      category: args.category as ChatNotificationCategory | undefined,
+    });
     return {
       content: [{ type: 'text', text: 'Notification sent' }],
     };
