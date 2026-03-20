@@ -18,6 +18,14 @@ import { TelegramPoller } from "./telegram.poller.js";
 import { createProviderChannelStore, type ProviderChannelStore } from "../../stores/provider-channel.store.js";
 import { getDatabase } from "../../stores/db.js";
 
+/**
+ * Escape special characters in text for Telegram legacy Markdown parse mode.
+ * Telegram treats *, _, `, and [ as entity delimiters — unbalanced ones cause API errors.
+ */
+function escapeTelegramMarkdown(text: string): string {
+  return text.replace(/([*_`\[])/g, '\\$1');
+}
+
 interface TelegramThreadMetadata {
   chatId: string;
   messageThreadId?: number;
@@ -314,9 +322,10 @@ export class TelegramProvider implements ChatProvider {
       };
     }
 
+    const escapedText = escapeTelegramMarkdown(message.text);
     const sentMessage = await this.api.sendMessage(
       meta.chatId,
-      `*Question:*\n\n${message.text}`,
+      `*Question:*\n\n${escapedText}`,
       options,
     );
 
@@ -344,7 +353,7 @@ export class TelegramProvider implements ChatProvider {
 
     await this.api.sendMessage(
       meta.chatId,
-      `✓ Already answered: "${answer}"`,
+      `✓ Already answered: "${escapeTelegramMarkdown(answer)}"`,
       meta.messageThreadId ? { messageThreadId: meta.messageThreadId } : {},
     );
   }
