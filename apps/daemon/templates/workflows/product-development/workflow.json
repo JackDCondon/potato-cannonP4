@@ -20,6 +20,7 @@
               "type": "agent",
               "source": "agents/refinement.md",
               "description": "Creates refinement draft from brainstorm",
+              "resumeOnRalphRetry": true,
               "modelTier": "high"
             },
             {
@@ -71,6 +72,7 @@
               "source": "agents/architect.md",
               "description": "Creates architecture draft from refinement",
               "disallowTools": ["Skill(superpowers:*)"],
+              "resumeOnRalphRetry": true,
               "modelTier": "high"
             },
             {
@@ -173,6 +175,7 @@
                   "source": "agents/builder.md",
                   "description": "Executes individual build tickets from specification",
                   "disallowTools": ["Skill(superpowers:*)"],
+                  "resumeOnRalphRetry": true,
                   "modelTier": "low"
                 },
                 {
