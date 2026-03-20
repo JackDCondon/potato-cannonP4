@@ -95,6 +95,9 @@ export interface Project {
   suggestedP4Stream?: string;  // AI-detected P4 stream (populated on project creation)
   agentWorkspaceRoot?: string; // Root directory for P4 agent workspaces
   helixSwarmUrl?: string;      // Helix Swarm review server URL
+  p4UseEnvVars?: boolean;      // Default/true means inherit P4PORT and P4USER from daemon env
+  p4Port?: string;             // Optional per-project Perforce server address override
+  p4User?: string;             // Optional per-project Perforce username override
   providerOverride?: string | null;
 }
 

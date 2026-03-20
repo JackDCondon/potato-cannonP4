@@ -40,6 +40,11 @@ import type {
 
 export type { SessionLogEntry } from '@potato-cannon/shared'
 export type TicketSessionResponse = SessionMeta
+export type ProjectResponse = Project & {
+  p4UseEnvVars?: boolean
+  p4Port?: string
+  p4User?: string
+}
 export interface GlobalConfigResponse {
   perforce: {
     mcpServerPath: string
@@ -183,10 +188,10 @@ export const api = {
   // ============ Projects ============
 
   getProjects: () =>
-    request<Project[]>('/api/projects'),
+    request<ProjectResponse[]>('/api/projects'),
 
   addProject: (path: string, displayName?: string | null, template?: string | null) =>
-    request<Project>('/api/projects', {
+    request<ProjectResponse>('/api/projects', {
       method: 'POST',
       body: JSON.stringify({ path, displayName, template })
     }),
@@ -196,8 +201,8 @@ export const api = {
       method: 'DELETE'
     }),
 
-  updateProject: (id: string, updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string; providerOverride?: string | null }) =>
-    request<Project>(`/api/projects/${encodeURIComponent(id)}`, {
+  updateProject: (id: string, updates: { displayName?: string; icon?: string; color?: string; swimlaneColors?: Record<string, string>; branchPrefix?: string; folderId?: string | null; p4Stream?: string; agentWorkspaceRoot?: string; helixSwarmUrl?: string; p4UseEnvVars?: boolean; p4Port?: string; p4User?: string; vcsType?: 'git' | 'perforce'; p4McpServerPath?: string; providerOverride?: string | null }) =>
+    request<ProjectResponse>(`/api/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(updates)
     }),

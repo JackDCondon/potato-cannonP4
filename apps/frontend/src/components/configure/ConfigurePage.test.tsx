@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ConfigurePage } from './ConfigurePage'
 
@@ -156,5 +156,71 @@ describe('ConfigurePage workflow-first surface', () => {
     })
 
     projectsData[0].providerOverride = null
+  })
+})
+
+describe('ConfigurePage p4 connection overrides', () => {
+  beforeEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+    ;(projectsData[0] as any).vcsType = 'perforce'
+    ;(projectsData[0] as any).p4UseEnvVars = true
+    ;(projectsData[0] as any).p4Port = undefined
+    ;(projectsData[0] as any).p4User = undefined
+  })
+
+  afterEach(() => {
+    delete (projectsData[0] as any).vcsType
+    delete (projectsData[0] as any).p4UseEnvVars
+    delete (projectsData[0] as any).p4Port
+    delete (projectsData[0] as any).p4User
+  })
+
+  it('calls updateProject when the env-var toggle is unchecked', async () => {
+    render(<ConfigurePage projectId="project-1" />)
+
+    const checkbox = await screen.findByRole('checkbox', {
+      name: /use environment variables for p4port and p4user/i,
+    })
+    fireEvent.click(checkbox)
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith({
+        id: 'project-1',
+        updates: { p4UseEnvVars: false },
+      })
+    })
+  })
+
+  it('calls updateProject with p4Port on blur when override is active', async () => {
+    ;(projectsData[0] as any).p4UseEnvVars = false
+    render(<ConfigurePage projectId="project-1" />)
+
+    const portInput = await screen.findByPlaceholderText('ssl:perforce.company.com:1666')
+    fireEvent.change(portInput, { target: { value: 'ssl:p4.example.com:1666' } })
+    fireEvent.blur(portInput)
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith({
+        id: 'project-1',
+        updates: { p4Port: 'ssl:p4.example.com:1666' },
+      })
+    })
+  })
+
+  it('calls updateProject with p4User on blur when override is active', async () => {
+    ;(projectsData[0] as any).p4UseEnvVars = false
+    render(<ConfigurePage projectId="project-1" />)
+
+    const userInput = await screen.findByPlaceholderText('username')
+    fireEvent.change(userInput, { target: { value: 'alice' } })
+    fireEvent.blur(userInput)
+
+    await waitFor(() => {
+      expect(mockUpdateMutate).toHaveBeenCalledWith({
+        id: 'project-1',
+        updates: { p4User: 'alice' },
+      })
+    })
   })
 })

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 25;
+const CURRENT_SCHEMA_VERSION = 26;
 
 /**
  * Run database migrations.
@@ -110,6 +110,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 25) {
     migrateV25(db);
+  }
+
+  if (version < 26) {
+    migrateV26(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1107,6 +1111,27 @@ function migrateV25(db: Database.Database): void {
   }
   if (!ticketCols.has("pause_retry_count")) {
     db.exec(`ALTER TABLE tickets ADD COLUMN pause_retry_count INTEGER NOT NULL DEFAULT 0`);
+  }
+}
+
+/**
+ * V26: Add per-project Perforce connection override columns to projects.
+ */
+function migrateV26(db: Database.Database): void {
+  const projectCols = new Set(
+    (db.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  );
+
+  if (!projectCols.has("p4_use_env_vars")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_use_env_vars INTEGER`);
+  }
+  if (!projectCols.has("p4_port")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_port TEXT`);
+  }
+  if (!projectCols.has("p4_user")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN p4_user TEXT`);
   }
 }
 

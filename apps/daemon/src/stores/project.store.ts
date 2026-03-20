@@ -75,6 +75,12 @@ function rowToProject(row: Record<string, unknown>): Project {
     suggestedP4Stream: (row.suggested_p4_stream as string) || undefined,
     agentWorkspaceRoot: (row.agent_workspace_root as string) || undefined,
     helixSwarmUrl: (row.helix_swarm_url as string) || undefined,
+    p4UseEnvVars:
+      row.p4_use_env_vars === null || row.p4_use_env_vars === undefined
+        ? undefined
+        : (row.p4_use_env_vars as number) === 1,
+    p4Port: (row.p4_port as string) || undefined,
+    p4User: (row.p4_user as string) || undefined,
     providerOverride: (row.provider_override as string) || undefined,
   };
 }
@@ -260,6 +266,18 @@ export class ProjectStore {
     if (updates.helixSwarmUrl !== undefined) {
       fields.push("helix_swarm_url = ?");
       values.push(updates.helixSwarmUrl || null);
+    }
+    if (updates.p4UseEnvVars !== undefined) {
+      fields.push("p4_use_env_vars = ?");
+      values.push(updates.p4UseEnvVars ? 1 : 0);
+    }
+    if (updates.p4Port !== undefined) {
+      fields.push("p4_port = ?");
+      values.push(updates.p4Port || null);
+    }
+    if (updates.p4User !== undefined) {
+      fields.push("p4_user = ?");
+      values.push(updates.p4User || null);
     }
     if (updates.providerOverride !== undefined) {
       fields.push("provider_override = ?");

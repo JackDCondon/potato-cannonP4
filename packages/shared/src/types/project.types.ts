@@ -19,5 +19,8 @@ export interface Project {
   providerOverride?: string | null
   agentWorkspaceRoot?: string
   helixSwarmUrl?: string
+  p4UseEnvVars?: boolean
+  p4Port?: string
+  p4User?: string
   suggestedP4Stream?: string
 }
