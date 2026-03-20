@@ -1831,22 +1831,34 @@ export class SessionService {
     );
     const { storedCompatibility, claudeSessionId: existingClaudeSessionId } =
       resolveStoredContinuityContext(continuitySessions);
-    const continuityDecision = await this.decideContinuityForTicket({
-      ticketId,
-      conversationId: ticket.conversationId,
-      filter: {
-        phase,
-        agentSource: agentWorker.source,
-        executionGeneration: ticket.executionGeneration ?? 0,
-      },
-      limits: this.getLifecycleContinuityLimits(),
-      resumeEligibility: {
-        stored: storedCompatibility,
-        current: compatibilityKey,
-        claudeSessionId: existingClaudeSessionId,
-        lifecycleInvalidated: false,
-      },
-    });
+    let continuityDecision: ContinuityDecision;
+    if (resumeClaudeSessionId) {
+      // Explicit resume from ralph retry — bypass compatibility check entirely.
+      // The caller already knows which session to resume; no need to evaluate
+      // stored compatibility or lifecycle limits.
+      continuityDecision = {
+        mode: "resume",
+        reason: "ralph_retry_resume",
+        sourceSessionId: resumeClaudeSessionId,
+      };
+    } else {
+      continuityDecision = await this.decideContinuityForTicket({
+        ticketId,
+        conversationId: ticket.conversationId,
+        filter: {
+          phase,
+          agentSource: agentWorker.source,
+          executionGeneration: ticket.executionGeneration ?? 0,
+        },
+        limits: this.getLifecycleContinuityLimits(),
+        resumeEligibility: {
+          stored: storedCompatibility,
+          current: compatibilityKey,
+          claudeSessionId: existingClaudeSessionId,
+          lifecycleInvalidated: false,
+        },
+      });
+    }
     const continuityMetadata = this.buildStoredSessionContinuityMetadata(
       continuityDecision,
       compatibilityKey,
@@ -1875,7 +1887,10 @@ export class SessionService {
       prompt += `\n\n---\n\n${formatTaskContext(taskContext)}`;
     }
 
-    // Build ticket context with optional continuity and phase-entry sections
+    // Build ticket context with optional continuity and phase-entry sections.
+    // When an explicit resumeClaudeSessionId is provided (ralph retry), suppress
+    // the full "Previous Attempts" history since the agent already has that context
+    // from its resumed session. Only the latest rejection reason is injected.
     const ticketContext = await buildAgentPrompt(
       projectId,
       ticketId,
@@ -1887,6 +1902,7 @@ export class SessionService {
       ralphContext,
       phaseEntryContext,
       handoffDecision,
+      !!resumeClaudeSessionId, // suppressPreviousAttempts
     );
     prompt += `\n\n---\n\n${ticketContext}`;
 

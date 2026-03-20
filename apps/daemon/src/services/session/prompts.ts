@@ -289,6 +289,7 @@ export async function buildAgentPrompt(
   },
   phaseEntryContext?: PhaseEntryContext,
   continuityDecision?: ContinuityDecision,
+  suppressPreviousAttempts?: boolean,
 ): Promise<string> {
   // AgentWorker doesn't have context.artifacts - this is now handled by agent-loader
   const contextArtifacts: string[] = [];
@@ -311,7 +312,17 @@ export async function buildAgentPrompt(
     );
     if (feedback) {
       const iterations = getRalphIterations(feedback.id);
-      previousAttemptsSection = formatPreviousAttempts(feedback, iterations);
+      if (suppressPreviousAttempts) {
+        // When resuming a previous session (ralph retry), omit the full history
+        // to avoid duplicating context already in the resumed conversation.
+        // Instead, inject only the most recent rejection as a fresh instruction.
+        const lastRejection = [...iterations].reverse().find((i) => !i.approved);
+        if (lastRejection) {
+          previousAttemptsSection = `\n\n## Reviewer Feedback\n\nYour previous work was rejected. Please address the following feedback:\n\n- Reviewer: ${lastRejection.reviewer}\n- Feedback: ${lastRejection.feedback}\n`;
+        }
+      } else {
+        previousAttemptsSection = formatPreviousAttempts(feedback, iterations);
+      }
     }
   }
 
