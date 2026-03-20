@@ -1775,6 +1775,7 @@ export class SessionService {
     this.eventEmitter.emit("session:started", { sessionId, ...meta });
 
     let claudeSessionIdCaptured = !!existingClaudeSessionId;
+    const ptyTextExtractor = new PtyTextExtractor();
 
     proc.onData((data: string) => {
       const lines = data.split("\n").filter(Boolean);
@@ -1811,6 +1812,18 @@ export class SessionService {
           logStream.write(JSON.stringify(logEntry) + "\n");
         }
       }
+
+      const texts = ptyTextExtractor.feed(data);
+      for (const text of texts) {
+        this.handleCapturedPtyText(
+          text,
+          projectId,
+          undefined,
+          brainstormId,
+          undefined,
+          agentType,
+        );
+      }
     });
 
     proc.onExit(({ exitCode }) => {
@@ -1839,6 +1852,7 @@ export class SessionService {
           session.exitResolver();
         }
 
+        clearPtyCaptureDedup(brainstormId);
         this.sessions.delete(sessionId);
         this.eventEmitter.emit("session:ended", { sessionId, ...endMeta });
       } catch (err) {

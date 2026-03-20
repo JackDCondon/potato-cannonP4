@@ -21,6 +21,7 @@ import {
 import { ticketDependencyGetForTicket } from "../../stores/ticket-dependency.store.js";
 import { brainstormGetDirect } from "../../stores/brainstorm.store.js";
 import { getBrainstormFilesDir } from "../../config/paths.js";
+import { USER_VISIBLE_OUTPUT_REMINDER } from "./resume-prompt.js";
 
 /**
  * Load context artifacts based on agent's artifact configuration.
@@ -432,6 +433,8 @@ export async function buildPmPrompt(
   }
 
   let instructions = `You are the Project Manager for this epic. Monitor ticket progress, identify blockers, and coordinate the team.
+
+${USER_VISIBLE_OUTPUT_REMINDER}
 `;
 
   if (pendingContext) {
