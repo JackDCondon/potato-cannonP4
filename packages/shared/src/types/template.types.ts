@@ -37,6 +37,7 @@ export interface TemplateWorker {
   source?: string
   workers?: TemplateWorker[]
   maxAttempts?: number
+  skipOnFirstIteration?: boolean
 }
 
 export interface TemplateAgent {

@@ -148,6 +148,10 @@
         "resumeOnRalphRetry": {
           "type": "boolean",
           "description": "When true, resume the previous Claude session on ralph loop retry instead of spawning fresh"
+        },
+        "skipOnFirstIteration": {
+          "type": "boolean",
+          "description": "When true, skip this agent on iteration 1 of a ralph loop and start running it from iteration 2 onward"
         }
       },
       "additionalProperties": false

@@ -224,6 +224,7 @@ await mock.module("../loops/ralph-loop.js", {
     handleAgentCompletion: () => ({ nextState: null, result: { status: "approved" } }),
     captureDoerSessionIdIfNeeded: () => {},
     getCurrentWorker: () => null,
+    getCurrentWorkerIndex: () => 0,
   },
 });
 

@@ -53,6 +53,7 @@ export interface AgentWorker extends BaseWorker {
   modelTier?: ModelTier | ModelTierMap;
   model?: ModelSpec;
   resumeOnRalphRetry?: boolean;
+  skipOnFirstIteration?: boolean;
 }
 
 export interface RalphLoopWorker extends BaseWorker {

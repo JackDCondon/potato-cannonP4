@@ -1,12 +1,15 @@
 import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert";
 
-const notifyCalls: Array<{ context: { projectId: string; ticketId?: string }; message: string }> = [];
-const updateStatusCalls: Array<{ taskId: string; status: string }> = [];
+let currentWorkerState: unknown = null;
+const spawnCalls: Array<{ workerId: string }> = [];
 
 await mock.module("fs", {
   defaultExport: {
     access: (_path: string, callback: (error: Error | null) => void) => callback(null),
+    accessSync: () => {},
+    constants: { F_OK: 0 },
+    mkdirSync: () => {},
   },
 });
 
@@ -26,33 +29,30 @@ await mock.module("../../../types/template.types.js", {
 
 await mock.module("../worker-state.js", {
   namedExports: {
-    getWorkerState: async () => ({
+    getWorkerState: async () => currentWorkerState,
+    saveWorkerState: async (_projectId: string, _ticketId: string, state: unknown) => {
+      currentWorkerState = state;
+    },
+    initWorkerState: async () => ({
       kind: "active",
       phaseId: "Build",
-      executionGeneration: 3,
+      executionGeneration: 2,
       workerIndex: 0,
-      activeWorker: {
-        id: "build-task-loop",
-        type: "taskLoop",
-        workerIndex: 0,
-        currentTaskId: "task-123",
-        pendingTasks: [],
-        completedTasks: [],
-        failedTasks: [],
-        activeWorker: {
-          id: "builder",
-          type: "agent",
-          sessionId: "sess-builder",
-        },
-      },
+      activeWorker: null,
       updatedAt: new Date().toISOString(),
     }),
-    saveWorkerState: async () => {},
-    initWorkerState: async () => ({}),
     clearWorkerState: async () => {},
-    createAgentState: () => ({ id: "builder", type: "agent" }),
+    createAgentState: (id: string) => ({ id, type: "agent" }),
     prepareForRecovery: (state: unknown) => state,
     hasMatchingExecutionGeneration: () => true,
+    createRalphLoopState: (id: string, maxAttempts?: number) => ({
+      id,
+      type: "ralphLoop",
+      iteration: 1,
+      maxAttempts,
+      workerIndex: 0,
+      activeWorker: null,
+    }),
   },
 });
 
@@ -62,9 +62,22 @@ await mock.module("../phase-config.js", {
       id: "Build",
       workers: [
         {
-          id: "build-task-loop",
-          type: "taskLoop",
-          workers: [{ id: "builder", type: "agent", source: "agents/builder.md" }],
+          id: "qa-ralph-loop",
+          type: "ralphLoop",
+          maxAttempts: 3,
+          workers: [
+            {
+              id: "qa-fixer-agent",
+              type: "agent",
+              source: "agents/qa-fixer.md",
+              skipOnFirstIteration: true,
+            },
+            {
+              id: "qa-agent",
+              type: "agent",
+              source: "agents/qa.md",
+            },
+          ],
         },
       ],
     }),
@@ -75,10 +88,7 @@ await mock.module("../phase-config.js", {
 
 await mock.module("../../../stores/ticket.store.js", {
   namedExports: {
-    getTicket: () => ({
-      executionGeneration: 3,
-      workflowId: "wf-product-development",
-    }),
+    getTicket: () => ({ executionGeneration: 2, workflowId: "wf-1" }),
   },
 });
 
@@ -111,14 +121,16 @@ await mock.module("../../../stores/chat.store.js", {
 
 await mock.module("../../../stores/task.store.js", {
   namedExports: {
+    getTask: () => null,
     listTasks: () => [],
-    getTask: () => ({
-      id: "task-123",
-      description: "Implement chatty notifications",
-      status: "in_progress",
-    }),
-    updateTaskStatus: (taskId: string, status: string) => {
-      updateStatusCalls.push({ taskId, status });
+    updateTaskStatus: () => null,
+  },
+});
+
+await mock.module("../../chat.service.js", {
+  namedExports: {
+    chatService: {
+      notify: async () => {},
     },
   },
 });
@@ -129,35 +141,12 @@ await mock.module("../ticket-logger.js", {
   },
 });
 
-await mock.module("../../chat.service.js", {
-  namedExports: {
-    chatService: {
-      notify: async (context: { projectId: string; ticketId?: string }, message: string) => {
-        notifyCalls.push({ context, message });
-      },
-    },
-  },
-});
-
 await mock.module("../../../stores/ralph-feedback.store.js", {
   namedExports: {
     createRalphFeedback: () => {},
     addRalphIteration: () => {},
     updateRalphFeedbackStatus: () => {},
     getRalphFeedbackForLoop: () => null,
-  },
-});
-
-await mock.module("../loops/ralph-loop.js", {
-  namedExports: {
-    initRalphLoop: () => ({}),
-    handleAgentCompletion: () => ({
-      nextState: null,
-      result: { status: "approved" },
-    }),
-    captureDoerSessionIdIfNeeded: () => {},
-    getCurrentWorker: () => null,
-    getCurrentWorkerIndex: () => 0,
   },
 });
 
@@ -175,39 +164,56 @@ await mock.module("../loops/task-loop.js", {
   },
 });
 
-const { handleAgentCompletion } = await import("../worker-executor.js");
+const { startPhase } = await import("../worker-executor.js");
 
 const callbacks = {
-  spawnAgent: async () => "",
+  spawnAgent: async (
+    _projectId: string,
+    _ticketId: string,
+    _phase: string,
+    _projectPath: string,
+    agentWorker: { id: string },
+  ) => {
+    spawnCalls.push({ workerId: agentWorker.id });
+    return "sess_123";
+  },
   onPhaseComplete: async () => {},
   onTicketBlocked: async () => {},
 };
 
-describe("worker executor task-close notifications", () => {
+describe("worker-executor ralph first-iteration worker skipping", () => {
   beforeEach(() => {
-    notifyCalls.length = 0;
-    updateStatusCalls.length = 0;
+    currentWorkerState = null;
+    spawnCalls.length = 0;
   });
 
-  it("notifies chat when a task-loop task transitions to completed", async () => {
-    await handleAgentCompletion(
-      "proj-1",
-      "POT-1",
-      "Build",
-      "D:/tmp/project",
-      0,
-      "builder",
-      { approved: true },
-      callbacks,
-      { sessionId: "sess-builder", executionGeneration: 3 },
-    );
+  it("skips the flagged first worker on iteration 1", async () => {
+    await startPhase("proj-1", "POT-1", "Build", "D:/tmp/project", callbacks);
 
-    assert.deepStrictEqual(updateStatusCalls, [{ taskId: "task-123", status: "completed" }]);
-    assert.deepStrictEqual(notifyCalls, [
-      {
-        context: { projectId: "proj-1", ticketId: "POT-1" },
-        message: "[Workflow]: Task closed: Implement chatty notifications",
+    assert.strictEqual(spawnCalls.length, 1);
+    assert.strictEqual(spawnCalls[0].workerId, "qa-agent");
+  });
+
+  it("still runs the flagged worker on iteration 2", async () => {
+    currentWorkerState = {
+      kind: "active",
+      phaseId: "Build",
+      executionGeneration: 2,
+      workerIndex: 0,
+      activeWorker: {
+        id: "qa-ralph-loop",
+        type: "ralphLoop",
+        iteration: 2,
+        maxAttempts: 3,
+        workerIndex: 0,
+        activeWorker: null,
       },
-    ]);
+      updatedAt: new Date().toISOString(),
+    };
+
+    await startPhase("proj-1", "POT-1", "Build", "D:/tmp/project", callbacks);
+
+    assert.strictEqual(spawnCalls.length, 1);
+    assert.strictEqual(spawnCalls[0].workerId, "qa-fixer-agent");
   });
 });

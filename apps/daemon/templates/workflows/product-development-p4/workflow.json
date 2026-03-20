@@ -206,7 +206,8 @@
               "source": "agents/qa-fixer.md",
               "description": "Applies targeted fixes for QA failures",
               "modelTier": "low",
-              "resumeOnRalphRetry": true
+              "resumeOnRalphRetry": true,
+              "skipOnFirstIteration": true
             },
             {
               "id": "qa-agent",

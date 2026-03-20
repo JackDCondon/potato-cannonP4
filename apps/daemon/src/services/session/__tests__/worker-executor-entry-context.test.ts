@@ -137,6 +137,7 @@ await mock.module("../loops/ralph-loop.js", {
     }),
     captureDoerSessionIdIfNeeded: () => {},
     getCurrentWorker: () => null,
+    getCurrentWorkerIndex: () => 0,
   },
 });
 

@@ -213,6 +213,21 @@ Set `resumeOnRalphRetry: true` on the doer `AgentWorker` in `workflow.json`:
 
 This flag is only meaningful when the agent is the first worker (the doer) inside a `ralphLoop`.
 
+### Skip On First Iteration
+
+Set `skipOnFirstIteration: true` on an `AgentWorker` inside a `ralphLoop` to skip that worker only on iteration 1.
+
+```json
+{
+  "id": "qa-fixer",
+  "type": "agent",
+  "source": "agents/qa-fixer.md",
+  "skipOnFirstIteration": true
+}
+```
+
+This is useful for fixer agents that should only run after the first reviewer rejection. Recovery after a daemon restart remains deterministic because the skip is based on the persisted ralph loop `iteration`.
+
 ### State Tracking
 
 `RalphLoopState` stores `lastDoerClaudeSessionId` — the Claude session ID captured after the doer agent completes its iteration:

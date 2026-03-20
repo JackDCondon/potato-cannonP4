@@ -33,7 +33,13 @@ import {
   prepareForRecovery,
   hasMatchingExecutionGeneration,
 } from "./worker-state.js";
-import { initRalphLoop, handleAgentCompletion as handleRalphLoopAgentCompletion, captureDoerSessionIdIfNeeded, getCurrentWorker as getRalphCurrentWorker } from "./loops/ralph-loop.js";
+import {
+  initRalphLoop,
+  handleAgentCompletion as handleRalphLoopAgentCompletion,
+  captureDoerSessionIdIfNeeded,
+  getCurrentWorker as getRalphCurrentWorker,
+  getCurrentWorkerIndex as getRalphCurrentWorkerIndex,
+} from "./loops/ralph-loop.js";
 import {
   initTaskLoop,
   getNextTask,
@@ -259,7 +265,7 @@ export function validatePhaseWorkers(phase: Phase): void {
 function getCurrentWorker(
   workers: Worker[],
   state: ActiveWorkerStateRoot
-): { worker: Worker; path: string[] } | null {
+): { worker: Worker; path: string[]; normalizedState?: ActiveWorkerStateRoot } | null {
   if (state.workerIndex >= workers.length) {
     return null;
   }
@@ -271,29 +277,78 @@ function getCurrentWorker(
   }
 
   // Traverse into active worker
-  return getNestedCurrentWorker(topWorker, state.activeWorker, [topWorker.id]);
+  const nestedCurrent = getNestedCurrentWorker(topWorker, state.activeWorker, [topWorker.id]);
+  if (!nestedCurrent) {
+    return null;
+  }
+
+  if (!nestedCurrent.normalizedActiveState) {
+    return nestedCurrent;
+  }
+
+  return {
+    worker: nestedCurrent.worker,
+    path: nestedCurrent.path,
+    normalizedState: {
+      ...state,
+      activeWorker: nestedCurrent.normalizedActiveState,
+    },
+  };
 }
 
 function getNestedCurrentWorker(
   worker: Worker,
   activeState: WorkerState,
   path: string[]
-): { worker: Worker; path: string[] } | null {
+): { worker: Worker; path: string[]; normalizedActiveState?: WorkerState } | null {
   if (isAgentWorker(worker)) {
     return { worker, path };
   }
 
   if (isRalphLoopWorker(worker) && activeState.type === "ralphLoop") {
     const ralphState = activeState as RalphLoopState;
-    if (!ralphState.activeWorker) {
-      const currentWorker = worker.workers[ralphState.workerIndex];
-      if (currentWorker) {
-        return { worker: currentWorker, path: [...path, currentWorker.id] };
-      }
+    const currentWorkerIndex = getRalphCurrentWorkerIndex(worker, ralphState);
+    if (currentWorkerIndex === null) {
       return null;
     }
-    const nestedWorker = worker.workers[ralphState.workerIndex];
-    return getNestedCurrentWorker(nestedWorker, ralphState.activeWorker, [...path, nestedWorker.id]);
+
+    if (!ralphState.activeWorker) {
+      const currentWorker = worker.workers[currentWorkerIndex];
+      return {
+        worker: currentWorker,
+        path: [...path, currentWorker.id],
+        normalizedActiveState:
+          currentWorkerIndex !== ralphState.workerIndex
+            ? { ...ralphState, workerIndex: currentWorkerIndex }
+            : undefined,
+      };
+    }
+    const nestedWorker = worker.workers[currentWorkerIndex];
+    const nestedCurrent = getNestedCurrentWorker(
+      nestedWorker,
+      ralphState.activeWorker,
+      [...path, nestedWorker.id]
+    );
+    if (!nestedCurrent) {
+      return null;
+    }
+
+    if (
+      !nestedCurrent.normalizedActiveState &&
+      currentWorkerIndex === ralphState.workerIndex
+    ) {
+      return nestedCurrent;
+    }
+
+    return {
+      worker: nestedCurrent.worker,
+      path: nestedCurrent.path,
+      normalizedActiveState: {
+        ...ralphState,
+        workerIndex: currentWorkerIndex,
+        activeWorker: nestedCurrent.normalizedActiveState ?? ralphState.activeWorker,
+      },
+    };
   }
 
   if (isTaskLoopWorker(worker) && activeState.type === "taskLoop") {
@@ -309,8 +364,28 @@ function getNestedCurrentWorker(
     // Find nested active worker using workerIndex
     const nestedWorker = worker.workers[taskState.workerIndex];
     if (nestedWorker && nestedWorker.id === taskState.activeWorker.id) {
-      return getNestedCurrentWorker(nestedWorker, taskState.activeWorker, [...path, nestedWorker.id]);
+    const nestedCurrent = getNestedCurrentWorker(
+      nestedWorker,
+      taskState.activeWorker,
+      [...path, nestedWorker.id]
+    );
+    if (!nestedCurrent) {
+      return null;
     }
+
+    if (!nestedCurrent.normalizedActiveState) {
+      return nestedCurrent;
+    }
+
+    return {
+      worker: nestedCurrent.worker,
+      path: nestedCurrent.path,
+      normalizedActiveState: {
+        ...taskState,
+        activeWorker: nestedCurrent.normalizedActiveState,
+      },
+    };
+  }
   }
 
   return null;
@@ -439,6 +514,11 @@ async function executeNextWorker(
     // Phase complete
     await handlePhaseComplete(projectId, ticketId, phase, projectPath, callbacks);
     return null;
+  }
+
+  if (current.normalizedState) {
+    state = current.normalizedState;
+    await saveWorkerState(projectId, ticketId, state);
   }
 
   const { worker, path } = current;
@@ -850,11 +930,13 @@ async function processNestedCompletion(
 
     if (ralphState.activeWorker && ralphState.activeWorker.type !== "agent") {
       // Nested loop - recurse
+      const nestedWorkerIndex = getRalphCurrentWorkerIndex(worker, ralphState);
+      const nestedWorker = nestedWorkerIndex === null ? undefined : worker.workers[nestedWorkerIndex];
       const nestedResult = await processNestedCompletion(
         projectId,
         ticketId,
         phase,
-        worker.workers[ralphState.workerIndex],
+        nestedWorker,
         ralphState.activeWorker,
         exitCode,
         verdict,
@@ -892,12 +974,15 @@ async function processNestedCompletion(
     const { nextState, result } = handleRalphLoopAgentCompletion(worker, ralphState, exitCode, verdict);
 
     // Record iteration if this was the final reviewer (last worker in iteration)
-    const isLastWorkerInIteration = ralphState.workerIndex === worker.workers.length - 1;
+    const currentWorkerIndex = getRalphCurrentWorkerIndex(worker, ralphState);
+    const isLastWorkerInIteration =
+      currentWorkerIndex !== null &&
+      getRalphCurrentWorkerIndex(worker, { ...ralphState, workerIndex: currentWorkerIndex + 1 }) === null;
     if (isLastWorkerInIteration) {
-      const reviewerAgent = worker.workers[ralphState.workerIndex];
+      const reviewerAgent = currentWorkerIndex === null ? null : worker.workers[currentWorkerIndex];
       // Look up the feedback record to add iteration
       const feedback = getRalphFeedbackForLoop(ticketId, phase, worker.id, taskId || undefined);
-      if (feedback) {
+      if (feedback && reviewerAgent) {
         addRalphIteration(feedback.id, {
           iteration: ralphState.iteration,
           approved: verdict.approved,

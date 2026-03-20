@@ -109,6 +109,7 @@ Leaf node that spawns a Claude Code session.
 | `disallowTools` | No | Array of tool names to disable for this agent |
 | `modelTier` | No | Model tier to use for this agent (see Tier Routing below) |
 | `resumeOnRalphRetry` | No | When true, the daemon resumes the Claude session from the previous iteration instead of starting fresh. Only meaningful when the agent is the doer (first worker) in a ralphLoop. |
+| `skipOnFirstIteration` | No | When true, skips this agent only on iteration 1 of a ralphLoop. Useful for fixer agents that should wait for the first reviewer rejection. |
 
 **disallowTools**: Prevents the agent from using specific Claude Code tools. Useful when:
 - An agent shouldn't create tasks (e.g., spec agent conflicting with internal TaskCreate)

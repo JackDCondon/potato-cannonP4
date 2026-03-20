@@ -1,5 +1,6 @@
 // src/services/session/loops/ralph-loop.ts
 
+import { isAgentWorker } from "../../../types/template.types.js";
 import type { RalphLoopWorker, AgentWorker, Worker } from "../../../types/template.types.js";
 import type { RalphLoopState, WorkerState } from "../../../types/orchestration.types.js";
 import { createRalphLoopState } from "../worker-state.js";
@@ -24,10 +25,33 @@ export function getCurrentWorker(
   worker: RalphLoopWorker,
   state: RalphLoopState
 ): Worker | null {
-  if (state.workerIndex >= worker.workers.length) {
+  const currentWorkerIndex = getCurrentWorkerIndex(worker, state);
+  if (currentWorkerIndex === null) {
     return null;
   }
-  return worker.workers[state.workerIndex];
+  return worker.workers[currentWorkerIndex];
+}
+
+export function getCurrentWorkerIndex(
+  worker: RalphLoopWorker,
+  state: RalphLoopState
+): number | null {
+  let currentWorkerIndex = state.workerIndex;
+
+  while (currentWorkerIndex < worker.workers.length) {
+    const currentWorker = worker.workers[currentWorkerIndex];
+    if (
+      state.iteration === 1 &&
+      isAgentWorker(currentWorker) &&
+      currentWorker.skipOnFirstIteration
+    ) {
+      currentWorkerIndex += 1;
+      continue;
+    }
+    return currentWorkerIndex;
+  }
+
+  return null;
 }
 
 /**
@@ -40,6 +64,8 @@ export function handleAgentCompletion(
   exitCode: number,
   verdict: { approved: boolean; feedback?: string }
 ): { nextState: RalphLoopState; result: RalphLoopResult } {
+  const currentWorkerIndex = getCurrentWorkerIndex(worker, state);
+
   // Agent failed
   if (exitCode !== 0) {
     // Treat as revision needed, restart iteration
@@ -61,8 +87,11 @@ export function handleAgentCompletion(
   }
 
   // Check if more workers in this iteration
-  const nextWorkerIndex = state.workerIndex + 1;
-  if (nextWorkerIndex < worker.workers.length) {
+  const nextWorkerIndex =
+    currentWorkerIndex === null
+      ? null
+      : getCurrentWorkerIndex(worker, { ...state, workerIndex: currentWorkerIndex + 1 });
+  if (nextWorkerIndex !== null) {
     return {
       nextState: {
         ...state,

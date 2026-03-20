@@ -1,8 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { RalphLoopState } from "../../../types/orchestration.types.js";
-import type { AgentWorker } from "../../../types/template.types.js";
-import { captureDoerSessionIdIfNeeded } from "../loops/ralph-loop.js";
+import type { AgentWorker, RalphLoopWorker } from "../../../types/template.types.js";
+import {
+  captureDoerSessionIdIfNeeded,
+  getCurrentWorkerIndex,
+} from "../loops/ralph-loop.js";
 
 describe("captureDoerSessionIdIfNeeded", () => {
   it("sets lastDoerClaudeSessionId when agent has resumeOnRalphRetry", () => {
@@ -57,5 +60,50 @@ describe("captureDoerSessionIdIfNeeded", () => {
     };
     captureDoerSessionIdIfNeeded(ralphState, agentWorker, "claude-session-new");
     assert.equal(ralphState.lastDoerClaudeSessionId, "claude-session-new");
+  });
+});
+
+describe("getCurrentWorkerIndex", () => {
+  const worker: RalphLoopWorker = {
+    id: "qa-loop",
+    type: "ralphLoop",
+    maxAttempts: 3,
+    workers: [
+      {
+        id: "qa-fixer-agent",
+        type: "agent",
+        source: "agents/qa-fixer.md",
+        skipOnFirstIteration: true,
+      },
+      {
+        id: "qa-agent",
+        type: "agent",
+        source: "agents/qa.md",
+      },
+    ],
+  };
+
+  it("skips the flagged agent on iteration 1", () => {
+    const ralphState: RalphLoopState = {
+      id: "qa-loop",
+      type: "ralphLoop",
+      iteration: 1,
+      workerIndex: 0,
+      activeWorker: null,
+    };
+
+    assert.equal(getCurrentWorkerIndex(worker, ralphState), 1);
+  });
+
+  it("does not skip the flagged agent after recovery into iteration 2", () => {
+    const ralphState: RalphLoopState = {
+      id: "qa-loop",
+      type: "ralphLoop",
+      iteration: 2,
+      workerIndex: 0,
+      activeWorker: null,
+    };
+
+    assert.equal(getCurrentWorkerIndex(worker, ralphState), 0);
   });
 });
