@@ -18,7 +18,7 @@ Run linters, type checkers, and tests to verify the codebase is in a healthy sta
 [ ] Step 2 - Run linters
 [ ] Step 3 - Run type checker
 [ ] Step 4 - Run test suite
-[ ] Step 5 - Report results
+[ ] Step 5 - Signal Verdict
 
 ## Step 1: Detect Project Type
 
