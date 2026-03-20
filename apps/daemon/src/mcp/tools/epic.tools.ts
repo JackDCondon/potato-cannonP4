@@ -5,6 +5,7 @@ import {
 } from "../../stores/brainstorm.store.js";
 import { listTasks } from "../../stores/task.store.js";
 import { ticketDependencyGetForTicket } from "../../stores/ticket-dependency.store.js";
+import { getPendingQuestion } from "../../stores/conversation.store.js";
 import type {
   ToolDefinition,
   McpContext,
@@ -75,6 +76,7 @@ interface TicketSnapshot {
   phase: string;
   complexity: string;
   stuckSince: string | null;
+  hasPendingQuestion: boolean;
   taskCounts: { total: number; completed: number; failed: number };
   blockedBy: Array<{ ticketId: string; title: string; currentPhase: string; tier: string; satisfied: boolean }>;
 }
@@ -123,12 +125,17 @@ function buildTicketSnapshot(ticket: Ticket): TicketSnapshot {
     satisfied: dep.satisfied,
   }));
 
+  const hasPendingQuestion = ticket.conversationId
+    ? Boolean(getPendingQuestion(ticket.conversationId))
+    : false;
+
   return {
     id: ticket.id,
     title: ticket.title,
     phase: ticket.phase,
     complexity: ticket.complexity,
     stuckSince,
+    hasPendingQuestion,
     taskCounts,
     blockedBy,
   };
