@@ -93,6 +93,8 @@ export function registerSessionRoutes(app: Express, sessionService: SessionServi
         return {
           ...s,
           status: !s.endedAt ? 'running' : (s.exitCode === 0 || s.exitCode == null) ? 'completed' : 'failed',
+          inputTokens: s.inputTokens ?? null,
+          outputTokens: s.outputTokens ?? null,
           ...continuity,
         };
       }));
