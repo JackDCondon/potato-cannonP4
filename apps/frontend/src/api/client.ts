@@ -440,7 +440,7 @@ export const api = {
   getBrainstorm: (projectId: string, brainstormId: string) =>
     request<Brainstorm>(`/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}`),
 
-  createBrainstorm: (projectId: string, options?: { name?: string | null; initialMessage?: string }) =>
+  createBrainstorm: (projectId: string, options?: { name?: string | null; initialMessage?: string; workflowId?: string }) =>
     request<CreateBrainstormResponse>(`/api/brainstorms/${encodeURIComponent(projectId)}`, {
       method: 'POST',
       body: JSON.stringify(options ?? {})

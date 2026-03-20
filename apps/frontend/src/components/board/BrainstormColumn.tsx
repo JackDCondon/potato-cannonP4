@@ -6,9 +6,10 @@ import { BrainstormCard } from './BrainstormCard'
 
 interface BrainstormColumnProps {
   projectId: string
+  workflowId?: string
 }
 
-export function BrainstormColumn({ projectId }: BrainstormColumnProps) {
+export function BrainstormColumn({ projectId, workflowId }: BrainstormColumnProps) {
   const { data: brainstorms } = useBrainstorms(projectId)
   const openNewBrainstormSheet = useAppStore((s) => s.openNewBrainstormSheet)
 
@@ -24,7 +25,7 @@ export function BrainstormColumn({ projectId }: BrainstormColumnProps) {
           <span className="text-text-muted text-xs bg-bg-tertiary px-2 py-0.5 rounded-[10px]">
             {brainstorms?.length ?? 0}
           </span>
-          <IconButton tooltip="New brainstorm" onClick={() => openNewBrainstormSheet(projectId)}>
+          <IconButton tooltip="New brainstorm" onClick={() => openNewBrainstormSheet(projectId, workflowId)}>
             <Plus className="h-4 w-4" />
           </IconButton>
         </div>

@@ -70,10 +70,11 @@ interface AppState {
   brainstormSheetOpen: boolean
   brainstormSheetBrainstormId: string | null
   brainstormSheetProjectId: string | null
+  brainstormSheetWorkflowId: string | null
   brainstormSheetBrainstormName: string | null
   brainstormSheetIsCreating: boolean
   openBrainstormSheet: (projectId: string, brainstormId: string, brainstormName: string) => void
-  openNewBrainstormSheet: (projectId: string) => void
+  openNewBrainstormSheet: (projectId: string, workflowId?: string) => void
   closeBrainstormSheet: () => void
 
   addProjectModalOpen: boolean
@@ -233,6 +234,7 @@ export const useAppStore = create<AppState>()(
       brainstormSheetOpen: false,
       brainstormSheetBrainstormId: null,
       brainstormSheetProjectId: null,
+      brainstormSheetWorkflowId: null,
       brainstormSheetBrainstormName: null,
       brainstormSheetIsCreating: false,
       openBrainstormSheet: (projectId, brainstormId, brainstormName) => set({
@@ -246,9 +248,10 @@ export const useAppStore = create<AppState>()(
         ticketSheetTicketId: null,
         ticketSheetProjectId: null
       }),
-      openNewBrainstormSheet: (projectId) => set({
+      openNewBrainstormSheet: (projectId, workflowId) => set({
         brainstormSheetOpen: true,
         brainstormSheetProjectId: projectId,
+        brainstormSheetWorkflowId: workflowId ?? null,
         brainstormSheetBrainstormId: null,
         brainstormSheetBrainstormName: null,
         brainstormSheetIsCreating: true,
@@ -261,6 +264,7 @@ export const useAppStore = create<AppState>()(
         brainstormSheetOpen: false,
         brainstormSheetBrainstormId: null,
         brainstormSheetProjectId: null,
+        brainstormSheetWorkflowId: null,
         brainstormSheetBrainstormName: null,
         brainstormSheetIsCreating: false
       }),

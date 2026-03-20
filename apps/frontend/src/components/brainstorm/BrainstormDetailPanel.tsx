@@ -20,6 +20,7 @@ export function BrainstormDetailPanel() {
   const brainstormSheetOpen = useAppStore((s) => s.brainstormSheetOpen)
   const brainstormSheetBrainstormId = useAppStore((s) => s.brainstormSheetBrainstormId)
   const brainstormSheetProjectId = useAppStore((s) => s.brainstormSheetProjectId)
+  const brainstormSheetWorkflowId = useAppStore((s) => s.brainstormSheetWorkflowId)
   const brainstormSheetBrainstormName = useAppStore((s) => s.brainstormSheetBrainstormName)
   const brainstormSheetIsCreating = useAppStore((s) => s.brainstormSheetIsCreating)
   const closeBrainstormSheet = useAppStore((s) => s.closeBrainstormSheet)
@@ -138,7 +139,7 @@ export function BrainstormDetailPanel() {
     setIsSubmitting(true)
     setCreateError(null)
     try {
-      const response = await api.createBrainstorm(brainstormSheetProjectId, { initialMessage: message })
+      const response = await api.createBrainstorm(brainstormSheetProjectId, { initialMessage: message, workflowId: brainstormSheetWorkflowId ?? undefined })
       const { id, name } = response.brainstorm
 
       // Track the initial message so chat can show thinking indicator immediately

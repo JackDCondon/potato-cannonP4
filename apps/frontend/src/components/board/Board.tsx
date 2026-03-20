@@ -419,7 +419,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
         <div className="h-full flex">
           {/* Desktop only: fixed brainstorm column */}
           <div className="hidden sm:block shrink-0 h-full overflow-y-auto border-r border-border p-4 pr-2">
-            <BrainstormColumn projectId={projectId} />
+            <BrainstormColumn projectId={projectId} workflowId={workflowId} />
           </div>
           <TableView projectId={projectId} workflowId={workflowId} />
         </div>
@@ -430,7 +430,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
               <div className="flex gap-4 h-full">
                 {/* Brainstorm column */}
                 <div className="shrink-0">
-                  <BrainstormColumn projectId={projectId} />
+                  <BrainstormColumn projectId={projectId} workflowId={workflowId} />
                 </div>
 
                 {phases?.map((phase) => {
