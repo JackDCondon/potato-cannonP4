@@ -755,48 +755,44 @@ describe("getWorkflow model tier validation", () => {
   it("loads bundled workflows under strict modelTier validation", async () => {
     const bundledTemplateNames = ["product-development", "product-development-p4", "bug-fix"];
 
-    try {
-      // Ensure this test is deterministic even if prior local installs used legacy model fields.
-      for (const templateName of bundledTemplateNames) {
-        await fsPromises.rm(path.join(templatesDir, templateName), { recursive: true, force: true });
-      }
+    // Ensure this test is deterministic even if prior local installs used legacy model fields.
+    // Do NOT delete templates after the test — they are production defaults and a running daemon
+    // will break if they are removed. The fresh-install pass below is sufficient for determinism.
+    for (const templateName of bundledTemplateNames) {
+      await fsPromises.rm(path.join(templatesDir, templateName), { recursive: true, force: true });
+    }
 
-      await installDefaultTemplates();
+    await installDefaultTemplates();
 
-      const productDevelopment = await getWorkflow("product-development");
-      const productDevelopmentP4 = await getWorkflow("product-development-p4");
-      const bugFix = await getWorkflow("bug-fix");
+    const productDevelopment = await getWorkflow("product-development");
+    const productDevelopmentP4 = await getWorkflow("product-development-p4");
+    const bugFix = await getWorkflow("bug-fix");
 
-      assert.ok(productDevelopment, "product-development should load");
-      assert.ok(productDevelopmentP4, "product-development-p4 should load");
-      assert.ok(bugFix, "bug-fix should load");
+    assert.ok(productDevelopment, "product-development should load");
+    assert.ok(productDevelopmentP4, "product-development-p4 should load");
+    assert.ok(bugFix, "bug-fix should load");
 
-      const missingModelTier: string[] = [];
-      const workflows = [
-        { name: "product-development", workflow: productDevelopment },
-        { name: "product-development-p4", workflow: productDevelopmentP4 },
-        { name: "bug-fix", workflow: bugFix },
-      ];
-      for (const item of workflows) {
-        const phases = (item.workflow.phases ?? []) as Array<{ id?: string; workers?: WorkflowWorkerNode[] }>;
-        for (const phase of phases) {
-          collectAgentsMissingModelTier(
-            phase.workers,
-            [item.name, phase.id || "phase"],
-            missingModelTier,
-          );
-        }
-      }
-      assert.deepStrictEqual(
-        missingModelTier,
-        [],
-        `All bundled agent workers must define modelTier. Missing:\n${missingModelTier.join("\n")}`,
-      );
-    } finally {
-      for (const templateName of bundledTemplateNames) {
-        await fsPromises.rm(path.join(templatesDir, templateName), { recursive: true, force: true });
+    const missingModelTier: string[] = [];
+    const workflows = [
+      { name: "product-development", workflow: productDevelopment },
+      { name: "product-development-p4", workflow: productDevelopmentP4 },
+      { name: "bug-fix", workflow: bugFix },
+    ];
+    for (const item of workflows) {
+      const phases = (item.workflow.phases ?? []) as Array<{ id?: string; workers?: WorkflowWorkerNode[] }>;
+      for (const phase of phases) {
+        collectAgentsMissingModelTier(
+          phase.workers,
+          [item.name, phase.id || "phase"],
+          missingModelTier,
+        );
       }
     }
+    assert.deepStrictEqual(
+      missingModelTier,
+      [],
+      `All bundled agent workers must define modelTier. Missing:\n${missingModelTier.join("\n")}`,
+    );
   });
 });
 

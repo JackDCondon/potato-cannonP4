@@ -43,6 +43,7 @@ import {
   buildTaskContext,
 } from "./loops/task-loop.js";
 import { getPhaseConfig, getNextEnabledPhase, phaseRequiresIsolation } from "./phase-config.js";
+import { WorkflowContextError, installDefaultTemplates } from "../../stores/template.store.js";
 import { getTicket } from "../../stores/ticket.store.js";
 import { getLatestClaudeSessionIdForTicket } from "../../stores/session.store.js";
 import { getProjectById } from "../../stores/project.store.js";
@@ -666,7 +667,20 @@ export async function handleAgentCompletion(
     );
   }
 
-  const phaseConfig = await getPhaseConfig(projectId, phase, workflowId);
+  let phaseConfig;
+  try {
+    phaseConfig = await getPhaseConfig(projectId, phase, workflowId);
+  } catch (err) {
+    if (err instanceof WorkflowContextError && err.code === "WORKFLOW_TEMPLATE_NOT_FOUND") {
+      // Templates may have been deleted (e.g. by test cleanup) while the daemon was running.
+      // Attempt a self-heal reinstall and retry once before giving up.
+      await logToDaemon(projectId, ticketId, `Template missing — attempting reinstall`, { agentId });
+      await installDefaultTemplates();
+      phaseConfig = await getPhaseConfig(projectId, phase, workflowId);
+    } else {
+      throw err;
+    }
+  }
   if (!phaseConfig) return;
 
   const state = await getWorkerState(projectId, ticketId);
