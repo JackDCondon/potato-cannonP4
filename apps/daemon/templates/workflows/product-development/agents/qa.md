@@ -127,6 +127,7 @@ Also use `chat_notify` to report the same summary to the user.
 - Run ALL checks, not just one
 - Report the full output for failures
 - Be specific about what failed and where
+- Pass the complete failure list in the `ralph_loop_dock` feedback so the fixer agent has everything it needs
 
 ## What NOT to Do
 
