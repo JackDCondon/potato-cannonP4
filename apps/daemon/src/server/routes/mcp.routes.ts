@@ -11,9 +11,11 @@ import {
 
 export function registerMcpRoutes(app: Express): void {
   // List available tools (optional ?scope=external to filter out session-only tools)
+  // Optional ?mcpServer=ticket|pm narrows the server-specific tool set.
   // Optional ?agentSource=agents/builder.md&projectId=... to apply disallowTools filtering.
   app.get("/mcp/tools", async (req: Request, res: Response) => {
     const scope = req.query.scope as string | undefined;
+    const mcpServer = req.query.mcpServer as "ticket" | "pm" | undefined;
     const { agentSource, projectId } = req.query as {
       agentSource?: string;
       projectId?: string;
@@ -22,6 +24,12 @@ export function registerMcpRoutes(app: Express): void {
     let tools = scope === "external"
       ? allTools.filter((t) => t.scope !== "session")
       : [...allTools];
+
+    if (mcpServer === "ticket") {
+      tools = tools.filter((t) => t.mcpServer !== "pm");
+    } else if (mcpServer === "pm") {
+      tools = tools.filter((t) => t.mcpServer === "pm");
+    }
 
     // Apply disallowTools filtering when agentSource and projectId are present and valid
     if (agentSource && projectId && AGENT_SOURCE_PATTERN.test(agentSource)) {

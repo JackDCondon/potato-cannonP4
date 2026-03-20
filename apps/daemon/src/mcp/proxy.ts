@@ -27,11 +27,22 @@ const BRAINSTORM_ID = process.env.POTATO_BRAINSTORM_ID || '';
 const WORKFLOW_ID = process.env.POTATO_WORKFLOW_ID || '';
 const AGENT_MODEL = process.env.POTATO_AGENT_MODEL || '';
 const AGENT_SOURCE = process.env.POTATO_AGENT_SOURCE ?? '';
+const MCP_SCOPE = process.env.POTATO_MCP_SCOPE === 'pm' ? 'pm' : 'ticket';
 
-export function buildToolsUrl(daemonUrl: string, agentSource: string, projectId: string): string {
+export function getMcpServerName(): string {
+  return `potato-${MCP_SCOPE}`;
+}
+
+export function buildToolsUrl(
+  daemonUrl: string,
+  agentSource: string,
+  projectId: string,
+  mcpScope: 'ticket' | 'pm',
+): string {
   const url = new URL(`${daemonUrl}/mcp/tools`);
   if (agentSource) url.searchParams.set('agentSource', agentSource);
   if (projectId) url.searchParams.set('projectId', projectId);
+  url.searchParams.set('mcpServer', mcpScope);
   return url.toString();
 }
 
@@ -76,7 +87,7 @@ async function getDaemonUrl(): Promise<string> {
 
 async function fetchTools(daemonUrl: string, agentSource?: string, projectId?: string): Promise<unknown[]> {
   try {
-    const url = buildToolsUrl(daemonUrl, agentSource ?? '', projectId ?? '');
+    const url = buildToolsUrl(daemonUrl, agentSource ?? '', projectId ?? '', MCP_SCOPE);
     const response = await fetch(url);
     const data = await response.json();
     return data.tools || [];
@@ -102,7 +113,7 @@ async function callTool(
 
 // Create MCP server
 const server = new Server(
-  { name: 'potato-cannon', version: '4.0.0' },
+  { name: getMcpServerName(), version: '4.0.0' },
   { capabilities: { tools: {} } }
 );
 

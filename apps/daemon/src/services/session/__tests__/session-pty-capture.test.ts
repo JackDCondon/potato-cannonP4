@@ -32,7 +32,7 @@ describe("PTY text capture integration", () => {
         content: [{
           type: "tool_use",
           id: "toolu_123",
-          name: "mcp__potato-cannon__chat_ask",
+          name: "mcp__potato-ticket__chat_ask",
           input: { question: "Does that make sense?" },
         }],
       },

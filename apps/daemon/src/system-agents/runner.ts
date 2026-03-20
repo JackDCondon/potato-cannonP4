@@ -41,13 +41,14 @@ export async function runSystemAgent<TInput>(
 
   const mcpConfig = {
     mcpServers: {
-      "potato-cannon": {
+      "potato-ticket": {
         command: "node",
         args: [mcpProxyPath],
         env: {
           POTATO_PROJECT_ID: projectId,
           POTATO_TICKET_ID: ticketId,
           POTATO_BRAINSTORM_ID: brainstormId,
+          POTATO_MCP_SCOPE: "ticket",
         },
       },
     },

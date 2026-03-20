@@ -8,6 +8,8 @@ export interface ToolDefinition {
   };
   /** Scope tag for filtering. 'session' = session-proxy only. Default (undefined) = both. */
   scope?: 'session' | 'external' | 'both';
+  /** MCP server tag. 'pm' tools are only exposed through the PM server. */
+  mcpServer?: 'pm';
 }
 
 export interface McpContext {
