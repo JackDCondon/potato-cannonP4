@@ -190,6 +190,18 @@ Key files:
 
 See `apps/daemon/src/mcp/CLAUDE.md` for MCP proxy details.
 
+## Project Manager (PM) Operating Modes
+
+The PM agent runs in one of three modes, set via `set_epic_pm_mode` or the board settings:
+
+| Mode | Behavior |
+|------|---------|
+| `passive` | Responds to messages only. Moves tickets only when the user explicitly asks. |
+| `watching` | Proactively alerts and harasses the user when tickets appear stuck. Waits for the user to explicitly say "move it" before acting. |
+| `executing` | Moves tickets forward autonomously through **any** phase (including manual/gated ones) without asking. Announces actions via `chat_notify` before taking them. |
+
+**Hard constraint (all modes):** Never move a ticket that has `hasPendingQuestion: true`. Instead, notify the user that the question must be answered first.
+
 ## Workflow Templates
 
 Templates define phase sequences with nested worker trees. Located at `apps/daemon/templates/workflows/`.

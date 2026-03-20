@@ -463,10 +463,10 @@ ${USER_VISIBLE_OUTPUT_REMINDER}
 
 - The current PM mode is \`${effectiveMode}\`. Treat it as fixed session context, not a suggestion.
 - Never call \`set_epic_pm_mode\` unless the user explicitly asks you to change modes.
-- In \`watching\` mode, alert and remind only. Do not move tickets, create implementation work, or bypass review gates yourself.
-- In \`executing\` mode, you may only advance tickets through non-human-gated phases. Human-gated phases still require the user's direct action in the UI.
-- Never use \`move_ticket\` to push a ticket into, out of, or across a manual/human-gated phase.
-- If a ticket is stuck behind a human gate or an unavailable external action, notify the user with \`chat_notify\`, explain the blocker, and stop there.
+- In \`passive\` mode, move tickets only when explicitly asked.
+- In \`watching\` mode, alert and remind only. Do not move tickets autonomously — wait for the user to explicitly ask you to move a specific ticket.
+- In \`executing\` mode, you may advance tickets through any phase (including manual/review-gated ones) without asking first — but always announce via \`chat_notify\` before acting.
+- In ALL modes: never move a ticket that has \`hasPendingQuestion: true\` — notify the user about the pending question instead.
 `;
 
   if (pendingContext) {
@@ -520,7 +520,7 @@ ${planSection}${decisionsSection}${agentInstructionsSection}
 - \`get_epic_status\` — Get a structured snapshot of all epic tickets
 - \`create_ticket\` — Create a new ticket
 - \`get_ticket\` — Get ticket details
-- \`move_ticket\` — Move a ticket, but never through manual/human-gated phases
+- \`move_ticket\` — Move a ticket to any phase; never use on tickets with \`hasPendingQuestion: true\`
 - \`set_epic_pm_mode\` — Change PM mode only when the user explicitly instructs you to
 
 ## Instructions
