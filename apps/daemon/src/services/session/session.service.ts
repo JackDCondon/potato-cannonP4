@@ -1192,6 +1192,8 @@ export class SessionService {
     // resumed sessions a new transient ID, but --resume only works with the
     // original session ID. The stored session already has the correct one.
     let claudeSessionIdCaptured = !!claudeResumeSessionId;
+    let capturedInputTokens: number | null = null;
+    let capturedOutputTokens: number | null = null;
 
     const ptyTextExtractor = new PtyTextExtractor();
 
@@ -1251,6 +1253,8 @@ export class SessionService {
           if (event.type === "result") {
             const tokens = extractTokensFromResultEvent(event);
             if (tokens) {
+              capturedInputTokens = tokens.inputTokens;
+              capturedOutputTokens = tokens.outputTokens;
               updateSessionTokens(sessionId, tokens.inputTokens, tokens.outputTokens);
             }
           }
@@ -1287,7 +1291,10 @@ export class SessionService {
 
       // Log to ticket daemon.log
       if (ticketId) {
-        logToDaemon(projectId, ticketId, `Session ${sessionId} exited`, {
+        const tokenSuffix = capturedInputTokens != null && capturedOutputTokens != null
+          ? ` · ${((capturedInputTokens + capturedOutputTokens) / 1000).toFixed(1)}k tokens`
+          : '';
+        logToDaemon(projectId, ticketId, `Session ${sessionId} exited${tokenSuffix}`, {
           agentType,
           exitCode,
           phase,
