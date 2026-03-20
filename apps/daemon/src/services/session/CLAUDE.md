@@ -192,6 +192,51 @@ Worktrees live at: `{projectPath}/.potato/worktrees/{ticketId}/`
 3. Set `requiresWorktree: true` if phase modifies code
 4. Configure `transitions.next` for automatic phase progression
 
+## Ralph Resume Mechanism
+
+When a ralphLoop retries, the doer agent can optionally resume its previous Claude session rather than starting a fresh one. This avoids re-reading context and reduces token consumption.
+
+### Configuration
+
+Set `resumeOnRalphRetry: true` on the doer `AgentWorker` in `workflow.json`:
+
+```json
+{
+  "id": "implementer",
+  "type": "agent",
+  "source": "agents/builder.md",
+  "resumeOnRalphRetry": true
+}
+```
+
+This flag is only meaningful when the agent is the first worker (the doer) inside a `ralphLoop`.
+
+### State Tracking
+
+`RalphLoopState` stores `lastDoerClaudeSessionId` — the Claude session ID captured after the doer agent completes its iteration:
+
+```typescript
+interface RalphLoopState {
+  id: string;
+  type: "ralphLoop";
+  iteration: number;
+  workerIndex: number;
+  activeWorker: WorkerState | null;
+  lastDoerClaudeSessionId?: string;  // captured after doer finishes
+}
+```
+
+This value is written by `captureDoerSessionIdIfNeeded()` in `ralph-loop.ts` immediately after the doer agent exits successfully.
+
+### Execution Flow
+
+1. When a ralphLoop starts a new iteration (iteration 2+), it checks `resumeOnRalphRetry` on the doer config
+2. If true and `lastDoerClaudeSessionId` is set, the ID is passed as `resumeClaudeSessionId` through `executeNextWorker` → `spawnAgentWorker`
+3. Inside `spawnAgentWorker`, when `resumeClaudeSessionId` is present:
+   - The continuity compatibility check is bypassed (session is resumed regardless of model/config changes)
+   - The "Previous Attempts" injection is suppressed (the resumed session already has that context)
+   - Claude Code is invoked with `--resume <claudeSessionId>` instead of starting fresh
+
 ## Ralph Loop Feedback
 
 Ralph loops now capture feedback from reviewers and inject it into subsequent iterations.

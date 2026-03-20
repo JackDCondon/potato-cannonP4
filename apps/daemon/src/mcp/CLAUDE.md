@@ -35,6 +35,23 @@ After (working):
 | `/mcp/tools` | GET    | List available tools |
 | `/mcp/call`  | POST   | Execute a tool       |
 
+### Tool Filtering at ListTools
+
+`GET /mcp/tools` accepts two optional query parameters:
+
+- `?agentSource=` — the agent's source path (e.g., `agents/builder.md`) used to resolve the `disallowTools` config
+- `?projectId=` — the project ID used to locate per-project workflow overrides
+
+When both are provided, the daemon filters the tool list using a three-tier cascade:
+
+| Priority | Source | Description |
+| -------- | ------ | ----------- |
+| 1 (highest) | Workflow-local copy | Agent config in `project-data/{projectId}/template/workflow.json` |
+| 2 | Project-local copy | Agent config in the project's workflow copy |
+| 3 (lowest) | Global template | Agent config in `templates/{templateName}/workflow.json` |
+
+The first matching `disallowTools` array found is used to remove those tools from the ListTools response. If neither query param is provided, the full tool list is returned unfiltered.
+
 ### /mcp/call Request
 
 ```json

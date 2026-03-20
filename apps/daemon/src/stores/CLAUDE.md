@@ -28,7 +28,7 @@ The database uses WAL (Write-Ahead Logging) mode for better concurrency. Multipl
 
 Migrations use SQLite's `user_version` pragma. Each migration checks the version and applies changes if needed.
 
-**Current schema version:** 21
+**Current schema version:** 24
 
 **Adding a new migration:**
 
@@ -68,6 +68,9 @@ if (version < 6) {
 | V19 | Add `project_workflows.template_version` and backfill from workflow-local/project/catalog versions |
 | V20 | Add `projects.provider_override` for per-project AI provider routing override |
 | V21 | Add `brainstorm_id` FK on tickets and `plan_summary` on brainstorms; backfill from `created_ticket_id` |
+| V22 | Add `pm_enabled` column to brainstorms and create `board_settings` table with `workflow_id` FK and `pm_config` JSON storage |
+| V23 | Add `color` and `icon` columns to brainstorms for epic customization |
+| V24 | Add `input_tokens` and `output_tokens` INTEGER columns to sessions for persisting token counts from Claude stream result events |
 
 ## Tables
 
@@ -272,11 +275,19 @@ Unified session tracking for tickets and brainstorms.
 
 **Table:** `sessions`
 
+Token usage columns (nullable, populated from the Claude stream `result` event when the session ends):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `input_tokens` | INTEGER | Token input count for this session |
+| `output_tokens` | INTEGER | Token output count for this session |
+
 ```typescript
 createSession(input: CreateSessionInput): Session
 getSession(sessionId: string): Session | null
 endSession(sessionId: string, exitCode?: number): boolean
 updateClaudeSessionId(sessionId: string, claudeSessionId: string): boolean
+updateSessionTokens(sessionId: string, inputTokens: number, outputTokens: number): boolean
 getSessionsByTicket(ticketId: string): Session[]
 getSessionsByBrainstorm(brainstormId: string): Session[]
 getActiveSessionForTicket(ticketId: string): Session | null
@@ -289,6 +300,8 @@ createSessionStore(db: Database.Database): SessionStore
 ```
 
 **Session links:** Each session links to either a ticket OR a brainstorm (not both), plus optionally a conversation.
+
+**Token tracking:** `updateSessionTokens()` writes `input_tokens` and `output_tokens` to the session row. It is called by the session service when a Claude stream emits a `result` event containing usage data. Both values remain `NULL` if the session ends without emitting a result event (e.g., crash or force-kill).
 
 ### brainstorm.store.ts
 
