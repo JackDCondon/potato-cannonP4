@@ -1,5 +1,6 @@
 // src/providers/telegram/telegram.provider.ts
 
+import type Database from "better-sqlite3";
 import type {
   ChatProvider,
   ChatContext,
@@ -8,9 +9,12 @@ import type {
   ProviderThreadInfo,
   ResponseCallback,
 } from "../chat-provider.types.js";
+import {
+  getContextKey as sharedGetContextKey,
+  parseContextKey as sharedParseContextKey,
+} from "../chat-provider.types.js";
 import { TelegramApi, type TelegramConfig } from "./telegram.api.js";
 import { TelegramPoller } from "./telegram.poller.js";
-import { scanAllChatThreads } from "../../stores/chat-threads.store.js";
 import { createProviderChannelStore, type ProviderChannelStore } from "../../stores/provider-channel.store.js";
 import { getDatabase } from "../../stores/db.js";
 
@@ -34,44 +38,77 @@ export class TelegramProvider implements ChatProvider {
   private poller: TelegramPoller | null = null;
   private responseCallback: ResponseCallback | null = null;
   private threadCache: Map<string, ProviderThreadInfo> = new Map();
+  private reverseThreadCache: Map<string, string> = new Map();
   private providerChannelStore: ProviderChannelStore | null = null;
+  private readonly database?: Database.Database;
+
+  constructor(database?: Database.Database) {
+    this.database = database;
+  }
 
   async initialize(config: TelegramConfig): Promise<void> {
     this.config = config;
     this.api = new TelegramApi(config);
 
-    // Load thread cache from all existing chat-threads.json files
+    // Load thread cache from persisted provider channel rows
     await this.loadThreadCache();
     await this.validateSetup();
   }
 
   /**
-   * Scan all tickets and brainstorms to rebuild the in-memory thread cache.
+   * Rebuild the in-memory thread cache from provider_channels rows.
    * This ensures incoming messages can be routed to the correct context after daemon restart.
    */
   async loadThreadCache(): Promise<void> {
-    const allThreads = await scanAllChatThreads();
+    const store = this.getProviderChannelStore();
+    const db = this.getDatabaseOrNull();
+    if (!store || !db) {
+      return;
+    }
+
+    const channels = store.listChannels().filter((channel) => channel.providerId === this.id);
     let count = 0;
     let skipped = 0;
 
-    for (const [key, { threads }] of allThreads) {
-      const telegramThread = threads.find((t) => t.providerId === this.id);
-      if (telegramThread && this.isThreadCompatibleWithConfig(telegramThread)) {
-        this.threadCache.set(key, telegramThread);
+    for (const channel of channels) {
+      const context = channel.ticketId
+        ? this.getTicketContext(db, channel.ticketId)
+        : channel.brainstormId
+        ? this.getBrainstormContext(db, channel.brainstormId)
+        : null;
+
+      if (!context) {
+        skipped++;
+        continue;
+      }
+
+      const thread: ProviderThreadInfo = {
+        providerId: this.id,
+        threadId: channel.channelId,
+        metadata: channel.metadata,
+      };
+
+      if (this.isThreadCompatibleWithConfig(thread)) {
+        const cacheKey = sharedGetContextKey(context);
+        this.threadCache.set(cacheKey, thread);
+        const reverseKey = this.getReverseThreadKey(thread.metadata as TelegramThreadMetadata);
+        if (reverseKey) {
+          this.reverseThreadCache.set(reverseKey, cacheKey);
+        }
         count++;
-      } else if (telegramThread) {
+      } else {
         skipped++;
       }
     }
 
     if (count > 0) {
       console.log(
-        `[TelegramProvider] Loaded ${count} thread(s) from chat-threads files`,
+        `[TelegramProvider] Loaded ${count} thread(s) from provider_channels`,
       );
     }
     if (skipped > 0) {
       console.log(
-        `[TelegramProvider] Skipped ${skipped} incompatible legacy thread route(s)`,
+        `[TelegramProvider] Skipped ${skipped} incompatible provider channel route(s)`,
       );
     }
   }
@@ -100,7 +137,7 @@ export class TelegramProvider implements ChatProvider {
     context: ChatContext,
     title: string,
   ): Promise<ProviderThreadInfo> {
-    const cacheKey = this.getContextKey(context);
+    const cacheKey = sharedGetContextKey(context);
 
     if (this.config.forumGroupId) {
       const topicName =
@@ -120,6 +157,10 @@ export class TelegramProvider implements ChatProvider {
       };
 
       this.threadCache.set(cacheKey, thread);
+      const reverseKey = this.getReverseThreadKey(thread.metadata as TelegramThreadMetadata);
+      if (reverseKey) {
+        this.reverseThreadCache.set(reverseKey, cacheKey);
+      }
       this.persistRoute(context, thread);
 
       // Send welcome message
@@ -144,16 +185,26 @@ export class TelegramProvider implements ChatProvider {
     };
 
     this.threadCache.set(cacheKey, thread);
+    const reverseKey = this.getReverseThreadKey(thread.metadata as TelegramThreadMetadata);
+    if (reverseKey) {
+      this.reverseThreadCache.set(reverseKey, cacheKey);
+    }
     this.persistRoute(context, thread);
     return thread;
   }
 
   async getThread(context: ChatContext): Promise<ProviderThreadInfo | null> {
-    const cacheKey = this.getContextKey(context);
+    const cacheKey = sharedGetContextKey(context);
     const cached = this.threadCache.get(cacheKey);
     if (cached) {
       if (!this.isThreadCompatibleWithConfig(cached)) {
+        const reverseKey = this.getReverseThreadKey(
+          cached.metadata as TelegramThreadMetadata,
+        );
         this.threadCache.delete(cacheKey);
+        if (reverseKey) {
+          this.reverseThreadCache.delete(reverseKey);
+        }
       } else {
       return cached;
       }
@@ -183,16 +234,53 @@ export class TelegramProvider implements ChatProvider {
       return null;
     }
     this.threadCache.set(cacheKey, thread);
+    const reverseKey = this.getReverseThreadKey(thread.metadata as TelegramThreadMetadata);
+    if (reverseKey) {
+      this.reverseThreadCache.set(reverseKey, cacheKey);
+    }
     return thread;
   }
 
   async deleteThread(thread: ProviderThreadInfo): Promise<void> {
     const meta = thread.metadata as TelegramThreadMetadata;
-    if (!meta.chatId || !meta.messageThreadId) {
+    if (!meta.chatId) {
       return;
     }
+
+    const reverseKey = this.getReverseThreadKey(meta);
+    const cacheKey = reverseKey ? this.reverseThreadCache.get(reverseKey) : null;
+    if (cacheKey) {
+      const cachedThread = this.threadCache.get(cacheKey);
+      if (cachedThread === thread) {
+        this.threadCache.delete(cacheKey);
+      }
+      if (reverseKey) {
+        this.reverseThreadCache.delete(reverseKey);
+      }
+    } else {
+      for (const [key, cachedThread] of this.threadCache.entries()) {
+        if (cachedThread === thread) {
+          this.threadCache.delete(key);
+          break;
+        }
+      }
+      if (reverseKey) {
+        this.reverseThreadCache.delete(reverseKey);
+      }
+    }
+
+    const store = this.getProviderChannelStore();
+    const channel = store
+      ? store.findChannelByProviderRoute(this.id, meta.chatId, meta.messageThreadId)
+      : null;
+    if (store && channel) {
+      store.deleteChannel(channel.id);
+    }
+
     try {
-      await this.api.deleteForumTopic(meta.chatId, meta.messageThreadId);
+      if (meta.messageThreadId) {
+        await this.api.deleteForumTopic(meta.chatId, meta.messageThreadId);
+      }
     } catch (error) {
       console.warn(
         `[TelegramProvider] Failed to delete topic ${meta.messageThreadId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -320,16 +408,10 @@ export class TelegramProvider implements ChatProvider {
     chatId: string,
     messageThreadId?: number,
   ): ChatContext | null {
-    for (const [key, thread] of this.threadCache.entries()) {
-      const meta = thread.metadata as unknown as TelegramThreadMetadata;
-      if (meta.chatId === chatId) {
-        if (messageThreadId && meta.messageThreadId === messageThreadId) {
-          return this.parseContextKey(key);
-        }
-        if (!messageThreadId && !meta.messageThreadId) {
-          return this.parseContextKey(key);
-        }
-      }
+    const reverseKey = messageThreadId ? `${chatId}:${messageThreadId}` : chatId;
+    const contextKey = this.reverseThreadCache.get(reverseKey);
+    if (contextKey) {
+      return sharedParseContextKey(contextKey);
     }
 
     const store = this.getProviderChannelStore();
@@ -340,22 +422,34 @@ export class TelegramProvider implements ChatProvider {
         messageThreadId,
       );
       if (channel?.ticketId) {
-        const row = getDatabase()
+        const db = this.getDatabaseOrNull();
+        if (!db) {
+          return null;
+        }
+        const row = db
           .prepare("SELECT project_id FROM tickets WHERE id = ?")
           .get(channel.ticketId) as { project_id: string } | undefined;
         if (row?.project_id) {
-          return { projectId: row.project_id, ticketId: channel.ticketId };
+          const context = { projectId: row.project_id, ticketId: channel.ticketId };
+          this.reverseThreadCache.set(reverseKey, sharedGetContextKey(context));
+          return context;
         }
       }
       if (channel?.brainstormId) {
-        const row = getDatabase()
+        const db = this.getDatabaseOrNull();
+        if (!db) {
+          return null;
+        }
+        const row = db
           .prepare("SELECT project_id FROM brainstorms WHERE id = ?")
           .get(channel.brainstormId) as { project_id: string } | undefined;
         if (row?.project_id) {
-          return {
+          const context = {
             projectId: row.project_id,
             brainstormId: channel.brainstormId,
           };
+          this.reverseThreadCache.set(reverseKey, sharedGetContextKey(context));
+          return context;
         }
       }
     }
@@ -367,11 +461,55 @@ export class TelegramProvider implements ChatProvider {
       return this.providerChannelStore;
     }
     try {
-      this.providerChannelStore = createProviderChannelStore(getDatabase());
+      const db = this.getDatabaseOrNull();
+      if (!db) {
+        return null;
+      }
+      this.providerChannelStore = createProviderChannelStore(db);
       return this.providerChannelStore;
     } catch {
       return null;
     }
+  }
+
+  private getDatabaseOrNull(): Database.Database | null {
+    if (this.database) {
+      return this.database;
+    }
+
+    try {
+      return getDatabase();
+    } catch {
+      return null;
+    }
+  }
+
+  private getTicketContext(
+    db: Database.Database,
+    ticketId: string,
+  ): ChatContext | null {
+    const row = db
+      .prepare("SELECT project_id FROM tickets WHERE id = ?")
+      .get(ticketId) as { project_id: string } | undefined;
+    if (!row?.project_id) {
+      return null;
+    }
+
+    return { projectId: row.project_id, ticketId };
+  }
+
+  private getBrainstormContext(
+    db: Database.Database,
+    brainstormId: string,
+  ): ChatContext | null {
+    const row = db
+      .prepare("SELECT project_id FROM brainstorms WHERE id = ?")
+      .get(brainstormId) as { project_id: string } | undefined;
+    if (!row?.project_id) {
+      return null;
+    }
+
+    return { projectId: row.project_id, brainstormId };
   }
 
   private persistRoute(context: ChatContext, thread: ProviderThreadInfo): void {
@@ -429,10 +567,6 @@ export class TelegramProvider implements ChatProvider {
     }
   }
 
-  private getContextKey(context: ChatContext): string {
-    return `${context.projectId}:${context.ticketId || context.brainstormId}`;
-  }
-
   private isThreadCompatibleWithConfig(thread: ProviderThreadInfo): boolean {
     const meta = thread.metadata as TelegramThreadMetadata | undefined;
     if (!meta?.chatId) {
@@ -449,14 +583,20 @@ export class TelegramProvider implements ChatProvider {
     return meta.chatId === this.config.userId && !meta.messageThreadId;
   }
 
-  private parseContextKey(key: string): ChatContext | null {
-    const [projectId, id] = key.split(":");
-    if (!projectId || !id) return null;
-
-    if (id.startsWith("brain_")) {
-      return { projectId, brainstormId: id };
+  private getReverseThreadKey(meta: TelegramThreadMetadata): string | null {
+    if (!meta.chatId) {
+      return null;
     }
-    return { projectId, ticketId: id };
+    return meta.messageThreadId
+      ? `${meta.chatId}:${meta.messageThreadId}`
+      : meta.chatId;
+  }
+
+  _findContextByThreadForTest(
+    chatId: string,
+    messageThreadId?: number,
+  ): ChatContext | null {
+    return this.findContextByThread(chatId, messageThreadId);
   }
 
   // Test helpers

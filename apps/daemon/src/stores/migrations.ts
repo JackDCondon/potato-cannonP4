@@ -3,7 +3,7 @@ import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 27;
+const CURRENT_SCHEMA_VERSION = 28;
 
 /**
  * Run database migrations.
@@ -118,6 +118,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 27) {
     migrateV27(db);
+  }
+
+  if (version < 28) {
+    migrateV28(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1153,6 +1157,16 @@ function migrateV27(db: Database.Database): void {
     db.exec("ALTER TABLE brainstorms ADD COLUMN pm_config TEXT");
     console.log("[migrateV27] Added pm_config column to brainstorms table");
   }
+}
+
+/**
+ * V28: Drop legacy chat queue and delivery telemetry tables.
+ */
+function migrateV28(db: Database.Database): void {
+  db.exec(`
+    DROP TABLE IF EXISTS chat_delivery_events;
+    DROP TABLE IF EXISTS chat_queue_items;
+  `);
 }
 
 function normalizeTemplateVersion(version: string | null | undefined): string | null {

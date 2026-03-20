@@ -98,8 +98,12 @@ export async function readQuestion(
   const questionPath = getQuestionPath(projectId, contextId);
   try {
     return JSON.parse(await fs.readFile(questionPath, "utf-8"));
-  } catch {
-    return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    console.error(`[chat.store] Corrupted pending-question.json at ${questionPath}:`, err);
+    throw err;
   }
 }
 
@@ -132,8 +136,12 @@ export async function readResponse(
   const responsePath = getResponsePath(projectId, contextId);
   try {
     return JSON.parse(await fs.readFile(responsePath, "utf-8"));
-  } catch {
-    return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    console.error(`[chat.store] Corrupted pending-response.json at ${responsePath}:`, err);
+    throw err;
   }
 }
 

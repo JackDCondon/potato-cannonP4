@@ -5,7 +5,6 @@ import type { SessionService } from "./session/index.js";
 
 export interface TicketDeletionLifecycleReport {
   sessionStopped: boolean;
-  queueCancelled: number;
   routesRemoved: number;
   threadDeletesAttempted: number;
   threadDeleteErrors: string[];
@@ -39,7 +38,6 @@ export async function deleteTicketWithLifecycle(
 
   const report: TicketDeletionLifecycleReport = {
     sessionStopped,
-    queueCancelled: cleanup.queueCancelled,
     routesRemoved: cleanup.routesRemoved,
     threadDeletesAttempted: cleanup.threadDeletesAttempted,
     threadDeleteErrors,

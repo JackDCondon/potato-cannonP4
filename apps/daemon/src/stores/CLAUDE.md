@@ -558,17 +558,20 @@ clearAll(): void
 
 **TTL:** Sessions expire after 30 minutes of inactivity. Cleanup runs every 5 minutes.
 
-### chat-threads.store.ts
+### provider-channel.store.ts
 
-File-based provider thread mapping. Stores `chat-threads.json` in ticket/brainstorm directories.
+Durable provider routing lives in the SQLite `provider_channels` table. Chat providers load these rows at startup to rebuild their in-memory thread/channel caches.
 
 ```typescript
-loadThreads(projectId: string, entityId: string, entityType: 'ticket' | 'brainstorm'): Promise<ChatThreads>
-saveThreads(projectId: string, entityId: string, entityType: 'ticket' | 'brainstorm', threads: ChatThreads): Promise<void>
-getProviderThread(projectId: string, entityId: string, entityType: 'ticket' | 'brainstorm', providerId: string): Promise<string | null>
-setProviderThread(projectId: string, entityId: string, entityType: 'ticket' | 'brainstorm', providerId: string, threadId: string): Promise<void>
-getAllThreads(): Promise<{ projectId: string; entityId: string; entityType: string; threads: ChatThreads }[]>
-scanAllChatThreads(): Promise<ChatThreadMapping[]>
+createChannel(input: CreateChannelInput): ProviderChannel
+getChannel(id: string): ProviderChannel | null
+getChannelForTicket(ticketId: string, providerId: string): ProviderChannel | null
+getChannelForBrainstorm(brainstormId: string, providerId: string): ProviderChannel | null
+listChannels(options?: { ticketId?: string; brainstormId?: string }): ProviderChannel[]
+findChannelByProviderRoute(providerId: string, channelId: string, threadId?: string | number): ProviderChannel | null
+deleteChannel(id: string): boolean
+deleteChannelsForTicket(ticketId: string): number
+deleteChannelsForBrainstorm(brainstormId: string): number
 ```
 
 ### ticket-log.store.ts

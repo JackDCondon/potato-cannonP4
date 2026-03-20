@@ -105,7 +105,7 @@ function rebuildWorkflowsAsLegacyV18(db: Database.Database): void {
   }
 }
 
-describe('V13 migration — project_workflows table + workflow_id on tickets', () => {
+describe('V13 migration Ã¢â‚¬â€ project_workflows table + workflow_id on tickets', () => {
   let db: Database.Database;
 
   before(() => {
@@ -195,7 +195,7 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
 
   it('schema version is 27', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -365,23 +365,24 @@ describe('V18 migration - strict workflow identity', () => {
   });
 });
 
-describe('V17 migration - chat queue and telemetry schema support', () => {
-  it('creates chat queue and telemetry tables', () => {
+describe('V17 migration history - provider route indexes survive queue cleanup', () => {
+  it('keeps provider channel route indexes after legacy queue tables are dropped', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
-    const queueCols = db.pragma('table_info(chat_queue_items)') as Array<{ name: string }>;
-    const queueColNames = new Set(queueCols.map((col) => col.name));
-    assert.ok(queueColNames.has('id'));
-    assert.ok(queueColNames.has('question_id'));
-    assert.ok(queueColNames.has('payload_json'));
-    assert.ok(queueColNames.has('status'));
+    const indexes = db.pragma('index_list(provider_channels)') as Array<{ name: string }>;
+    const indexNames = new Set(indexes.map((index) => index.name));
+    assert.ok(indexNames.has('idx_provider_channels_route_thread_id'));
+    assert.ok(indexNames.has('idx_provider_channels_route_slack_thread'));
 
-    const eventsCols = db.pragma('table_info(chat_delivery_events)') as Array<{ name: string }>;
-    const eventColNames = new Set(eventsCols.map((col) => col.name));
-    assert.ok(eventColNames.has('queue_item_id'));
-    assert.ok(eventColNames.has('provider_id'));
-    assert.ok(eventColNames.has('event_type'));
+    const queueTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_queue_items'")
+      .get();
+    const eventTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_delivery_events'")
+      .get();
+    assert.equal(queueTable, undefined);
+    assert.equal(eventTable, undefined);
   });
 });
 
@@ -476,7 +477,7 @@ describe('V16 migration - execution generation schema support', () => {
   });
 });
 
-describe('V13 backfill — runBackfillV13', () => {
+describe('V13 backfill Ã¢â‚¬â€ runBackfillV13', () => {
   it('backfills default workflow for a project with template_name and backfills ticket workflow_id', () => {
     const db = new Database(':memory:');
     runMigrations(db);
@@ -543,7 +544,7 @@ describe('V13 backfill — runBackfillV13', () => {
     assert.equal(workflow.is_default, 1, 'should be default');
   });
 
-  it('is idempotent — running twice does not create duplicate workflows', () => {
+  it('is idempotent Ã¢â‚¬â€ running twice does not create duplicate workflows', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
@@ -591,7 +592,7 @@ describe('V13 backfill — runBackfillV13', () => {
       .get() as { workflow_id: string };
     assert.equal(ticket.workflow_id, 'wf-existing', 'should not overwrite existing workflow_id');
 
-    // Exactly one project_workflows row must exist — no duplicate is_default=1 rows
+    // Exactly one project_workflows row must exist Ã¢â‚¬â€ no duplicate is_default=1 rows
     const workflows = db
       .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf4'")
       .all() as unknown[];
@@ -630,7 +631,7 @@ describe('V13 backfill — runBackfillV13', () => {
       .get() as { workflow_id: string };
     assert.equal(ticket.workflow_id, 'wf-named', 'ticket should be linked to the pre-existing is_default=1 workflow');
 
-    // Exactly one project_workflows row must exist — no new 'Default' row should have been inserted
+    // Exactly one project_workflows row must exist Ã¢â‚¬â€ no new 'Default' row should have been inserted
     const workflows = db
       .prepare("SELECT * FROM project_workflows WHERE project_id = 'proj-bf5'")
       .all() as unknown[];
@@ -739,7 +740,7 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     db.exec(
       "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v21-ma','proj-v21-multi','2026-03-18','2026-03-18'), ('conv-v21-mb','proj-v21-multi','2026-03-18','2026-03-18')"
     );
-    // Two brainstorms both pointing to the same ticket — the unsafe case LIMIT 1 guards against
+    // Two brainstorms both pointing to the same ticket Ã¢â‚¬â€ the unsafe case LIMIT 1 guards against
     db.exec(
       "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-a','proj-v21-multi','Brainstorm A','active','2026-03-18','2026-03-18','conv-v21-ma','t-v21-multi')"
     );
@@ -760,21 +761,21 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     );
   });
 
-  it('is idempotent — running V21 migration twice does not error', () => {
+  it('is idempotent Ã¢â‚¬â€ running V21 migration twice does not error', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 
   it('schema version is 27', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 });
 
@@ -859,14 +860,14 @@ describe('V23 migration - epic color and icon customization', () => {
     assert.equal(row.icon, null, 'icon should default to NULL');
   });
 
-  it('is idempotent — running V23 migration twice does not error', () => {
+  it('is idempotent Ã¢â‚¬â€ running V23 migration twice does not error', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 });
 
@@ -881,17 +882,17 @@ describe('V24 migration - token usage columns', () => {
     assert.ok(names.has('output_tokens'), 'sessions table should have output_tokens column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 
-  it('is idempotent — running V24 migration twice does not error', () => {
+  it('is idempotent Ã¢â‚¬â€ running V24 migration twice does not error', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 });
 
@@ -908,17 +909,17 @@ describe('V25 migration - ticket pause state columns', () => {
     assert.ok(names.has('pause_retry_count'), 'tickets table should have pause_retry_count column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 
-  it('is idempotent — running V25 migration twice does not error', () => {
+  it('is idempotent Ã¢â‚¬â€ running V25 migration twice does not error', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 });
 
@@ -934,7 +935,7 @@ describe('V26 migration - per-project p4 connection settings', () => {
     assert.ok(names.has('p4_user'), 'projects table should have p4_user column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 
   it('is idempotent when run repeatedly after V26', () => {
@@ -944,7 +945,37 @@ describe('V26 migration - per-project p4 connection settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V26 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
+  });
+});
+
+describe('V28 migration - chat queue cleanup', () => {
+  it('drops chat_queue_items table', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const result = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_queue_items'")
+      .get();
+    assert.equal(result, undefined, 'chat_queue_items table should be removed by V28 migration');
+  });
+
+  it('drops chat_delivery_events table', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const result = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_delivery_events'")
+      .get();
+    assert.equal(result, undefined, 'chat_delivery_events table should be removed by V28 migration');
+  });
+
+  it('bumps the schema version to 28', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 28);
   });
 });
 
@@ -1011,13 +1042,13 @@ describe('V22 migration - PM fields and board settings', () => {
     assert.equal(row.pm_enabled, 0);
   });
 
-  it('is idempotent — running V22 migration twice does not error', () => {
+  it('is idempotent Ã¢â‚¬â€ running V22 migration twice does not error', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 27);
+    assert.equal(version, 28);
   });
 });
