@@ -33,8 +33,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     status: 'completed',
     startedAt: '2026-01-01T00:00:00.000Z',
     endedAt: '2026-01-01T00:05:00.000Z',
-    inputTokens: null,
-    outputTokens: null,
     ...overrides,
   }
 }
@@ -53,8 +51,8 @@ describe('SessionsTab token display', () => {
     expect(container.textContent).toContain('9.6k tokens')
   })
 
-  it('does not show tokens text when inputTokens and outputTokens are null', () => {
-    const session = makeSession({ inputTokens: null, outputTokens: null })
+  it('does not show tokens text when inputTokens and outputTokens are absent', () => {
+    const session = makeSession()
     vi.mocked(useSessions).mockReturnValue({ data: [session], isLoading: false } as any)
 
     const { container } = render(<SessionsTab ticketId="ticket-1" />)

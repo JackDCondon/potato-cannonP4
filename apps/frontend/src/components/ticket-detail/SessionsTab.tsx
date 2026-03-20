@@ -122,7 +122,7 @@ function SessionCard({
         </span>
         <span>{timeAgo(session.startedAt)}</span>
         {session.inputTokens != null && session.outputTokens != null && (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-text-muted">
             {((session.inputTokens + session.outputTokens) / 1000).toFixed(1)}k tokens
           </span>
         )}
