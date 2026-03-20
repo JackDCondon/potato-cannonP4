@@ -14,7 +14,10 @@ import {
   getPendingQuestionsByProject,
   getPendingQuestionsByProjectFiltered,
   writeQuestion,
+  readQuestion,
+  readResponse,
 } from "../chat.store.js";
+import { TASKS_DIR } from "../../config/paths.js";
 
 // Override BRAINSTORMS_DIR for testing
 const TEST_DIR = path.join(os.tmpdir(), `potato-chat-test-${Date.now()}`);
@@ -187,5 +190,34 @@ describe("getPendingQuestionsByProject", () => {
     assert.ok(!tickets.includes(ticketId1));
     assert.ok(tickets.includes(ticketId2));
     assert.strictEqual(tickets.length, 1);
+  });
+});
+
+describe("chat.store JSON error handling", () => {
+  const projectId = "test-proj";
+  const contextId = "TICK-corrupt";
+  const contextDir = path.join(TASKS_DIR, projectId, contextId);
+
+  afterEach(async () => {
+    await fs.rm(contextDir, { recursive: true, force: true });
+  });
+
+  it("readQuestion throws on corrupted JSON, not null", async () => {
+    await fs.mkdir(contextDir, { recursive: true });
+    await fs.writeFile(path.join(contextDir, "pending-question.json"), "NOT JSON", "utf-8");
+
+    await assert.rejects(readQuestion(projectId, contextId));
+  });
+
+  it("readQuestion returns null when file does not exist", async () => {
+    await fs.rm(contextDir, { recursive: true, force: true });
+    assert.strictEqual(await readQuestion("no-project", "no-ticket"), null);
+  });
+
+  it("readResponse throws on corrupted JSON, not null", async () => {
+    await fs.mkdir(contextDir, { recursive: true });
+    await fs.writeFile(path.join(contextDir, "pending-response.json"), "NOT JSON", "utf-8");
+
+    await assert.rejects(readResponse(projectId, contextId));
   });
 });

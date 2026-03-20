@@ -20,6 +20,8 @@ After (working):
                                  Telegram + Files + Web UI
 ```
 
+The shared daemon `ChatService` now sends outbound questions and notifications directly to each active provider in sequence. Provider thread routing is backed by the SQLite `provider_channels` table, so restarted providers rebuild their caches from durable database state rather than from legacy filesystem thread maps.
+
 ## How It Works
 
 ### proxy.ts (~100 lines)

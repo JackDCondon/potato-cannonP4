@@ -3,7 +3,7 @@ import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 26;
+const CURRENT_SCHEMA_VERSION = 27;
 
 /**
  * Run database migrations.
@@ -114,6 +114,13 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 26) {
     migrateV26(db);
+  }
+
+  if (version < 27) {
+    db.exec(`
+      DROP TABLE IF EXISTS chat_delivery_events;
+      DROP TABLE IF EXISTS chat_queue_items;
+    `);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);

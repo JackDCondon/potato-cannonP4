@@ -10,7 +10,6 @@ import type { SlackApi } from "./slack.api.js";
 import type { SlackSocket, SlackMessageEvent } from "./slack.socket.js";
 import type { SlackConfig } from "../../types/config.types.js";
 import { toSlackMrkdwn } from "./mrkdwn.js";
-import { scanAllChatThreads } from "../../stores/chat-threads.store.js";
 import { createProviderChannelStore, type ProviderChannelStore } from "../../stores/provider-channel.store.js";
 import { getDatabase } from "../../stores/db.js";
 
@@ -36,9 +35,6 @@ export class SlackProvider implements ChatProvider {
   private threadCache: Map<string, ProviderThreadInfo> = new Map();
   private channelId: string | null = null;
   private providerChannelStore: ProviderChannelStore | null = null;
-
-  // Overridable for testing
-  private scanThreadsFn: typeof scanAllChatThreads = scanAllChatThreads;
 
   /**
    * Create API client, create Socket (but don't connect), resolve channel, load thread cache.
@@ -223,25 +219,69 @@ export class SlackProvider implements ChatProvider {
   }
 
   /**
-   * Scan all chat-threads.json files to rebuild the thread cache on restart.
+   * Rebuild the thread cache from provider_channels rows on restart.
    */
   private async loadThreadCache(): Promise<void> {
-    const allThreads = await this.scanThreadsFn();
+    const store = this.getProviderChannelStore();
+    if (!store) {
+      return;
+    }
+
+    const db = getDatabase();
+    const channels = store
+      .listChannels()
+      .filter((channel) => channel.providerId === this.id);
     let count = 0;
 
-    for (const [key, { threads }] of allThreads) {
-      const slackThread = threads.find((t) => t.providerId === this.id);
-      if (slackThread) {
-        this.threadCache.set(key, slackThread);
-        count++;
+    for (const channel of channels) {
+      const context = channel.ticketId
+        ? this.getTicketContext(db, channel.ticketId)
+        : channel.brainstormId
+        ? this.getBrainstormContext(db, channel.brainstormId)
+        : null;
+      if (!context) {
+        continue;
       }
+
+      this.threadCache.set(this.getContextKey(context), {
+        providerId: this.id,
+        threadId: channel.channelId,
+        metadata: channel.metadata,
+      });
+      count++;
     }
 
     if (count > 0) {
       console.log(
-        `[SlackProvider] Loaded ${count} thread(s) from chat-threads files`,
+        `[SlackProvider] Loaded ${count} thread(s) from provider_channels`,
       );
     }
+  }
+
+  private getTicketContext(
+    db: ReturnType<typeof getDatabase>,
+    ticketId: string,
+  ): ChatContext | null {
+    const row = db
+      .prepare("SELECT project_id FROM tickets WHERE id = ?")
+      .get(ticketId) as { project_id: string } | undefined;
+    if (!row?.project_id) {
+      return null;
+    }
+    return { projectId: row.project_id, ticketId };
+  }
+
+  private getBrainstormContext(
+    db: ReturnType<typeof getDatabase>,
+    brainstormId: string,
+  ): ChatContext | null {
+    const row = db
+      .prepare("SELECT project_id FROM brainstorms WHERE id = ?")
+      .get(brainstormId) as { project_id: string } | undefined;
+    if (!row?.project_id) {
+      return null;
+    }
+    return { projectId: row.project_id, brainstormId };
   }
 
   private findContextByThread(
@@ -337,11 +377,9 @@ export class SlackProvider implements ChatProvider {
   _injectForTest(
     api: SlackApi,
     socket: SlackSocket,
-    scanFn: typeof scanAllChatThreads,
   ): void {
     this.api = api;
     this.socket = socket;
-    this.scanThreadsFn = scanFn;
   }
 
   /** @internal Set channelId for testing. */

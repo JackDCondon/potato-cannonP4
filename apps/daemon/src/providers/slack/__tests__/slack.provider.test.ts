@@ -24,9 +24,6 @@ function createMockSocket() {
   };
 }
 
-// Mock scanAllChatThreads at module level — returns empty map by default
-const mockScanAllChatThreads = mock.fn(async () => new Map());
-
 describe("SlackProvider", () => {
   let provider: SlackProvider;
   let mockApi: ReturnType<typeof createMockApi>;
@@ -37,7 +34,7 @@ describe("SlackProvider", () => {
     mockSocket = createMockSocket();
     provider = new SlackProvider();
     // Inject mocks via the test helper method
-    provider._injectForTest(mockApi as any, mockSocket as any, mockScanAllChatThreads as any);
+    provider._injectForTest(mockApi as any, mockSocket as any);
   });
 
   describe("capabilities", () => {

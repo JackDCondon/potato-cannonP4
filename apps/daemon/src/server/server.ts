@@ -766,21 +766,6 @@ export async function main(): Promise<void> {
         // Ignore
       }
 
-      try {
-        const cleanup = await chatService.pruneTicketQueueAfterSessionEnd(
-          projectId,
-          ticketId,
-        );
-        if (cleanup.cancelled > 0) {
-          console.log(
-            `[chat-lifecycle] pruned ${cleanup.cancelled} stale queue item(s) for ${ticketId} after session end`,
-          );
-        }
-      } catch (error) {
-        console.warn(
-          `[chat-lifecycle] failed session-end queue prune for ${ticketId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
     },
   );
 
@@ -796,9 +781,9 @@ export async function main(): Promise<void> {
           data.projectId,
           data.ticketId,
         );
-        if (cleanup.queueCancelled > 0 || cleanup.routesRemoved > 0) {
+        if (cleanup.routesRemoved > 0) {
           console.log(
-            `[chat-lifecycle] cleaned ticket ${data.ticketId} on phase ${data.to}: cancelled=${cleanup.queueCancelled}, routes=${cleanup.routesRemoved}`,
+            `[chat-lifecycle] cleaned ticket ${data.ticketId} on phase ${data.to}: routes=${cleanup.routesRemoved}`,
           );
         }
       } catch (error) {
@@ -1277,18 +1262,6 @@ export async function main(): Promise<void> {
     if (staleSessions > 0) {
       console.log(`[startup] Cleared ${staleSessions} stale session(s) from previous run`);
     }
-
-    const queuePrune = await chatService.pruneIrrelevantTicketQueue({
-      preservePendingInteraction: true,
-    });
-    if (queuePrune.cancelled > 0) {
-      console.log(
-        `[startup] Pruned ${queuePrune.cancelled} stale chat queue item(s) out of ${queuePrune.checked} checked`,
-      );
-    }
-
-    // Resume queued chat dispatch from durable queue state.
-    await chatService.recoverQueuedChat();
 
     // Recover pending responses first so ticket-input reconciliation happens before worker recovery.
     await recoverPendingResponses();

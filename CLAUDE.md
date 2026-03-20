@@ -76,6 +76,8 @@ User (Web UI / Telegram)
 Claude Code (PTY process)
 ```
 
+Chat delivery is now direct: `chat_ask` / `chat_notify` persist the pending question state, then the daemon's shared `ChatService` sends to each active provider sequentially. Provider thread routing is stored in the SQLite `provider_channels` table and warmed into provider caches at startup.
+
 ### Worker Execution Model
 
 Workflow phases define a `workers` array. Workers form a tree:

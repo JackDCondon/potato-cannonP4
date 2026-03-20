@@ -44,6 +44,8 @@ Phase: Build
 5. Loop workers check conditions (verdict, remaining tasks) and either continue or complete
 6. Phase completes when all top-level workers are done
 
+Chat questions raised during a session are persisted to the pending question files and then sent directly to active providers by the shared daemon `ChatService`. Provider thread/channel routing is recovered from the SQLite `provider_channels` table at daemon startup rather than from filesystem thread maps.
+
 ## Key Files
 
 | File | Purpose |

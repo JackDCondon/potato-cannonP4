@@ -26,10 +26,11 @@ let eventBusEmitCalls: Array<{ event: string; data: unknown }> = [];
 let addMessageCalls: Array<{ conversationId: string; input: unknown }> = [];
 let messageIdCounter = 0;
 let readQuestionResult: unknown = null;
-let enqueueQuestionCalls: Array<{ context: unknown; questionId: string; message: unknown }> = [];
 let mockTicketConversationId: string | null = null;
 let mockBrainstormConversationId: string | null = null;
 let mockTicketGeneration: number | null = null;
+let resolveQuestionCalls = 0;
+let pendingConversationMessageResult: unknown = null;
 
 // Mock the external dependencies before importing ChatService
 mock.module("../../stores/chat.store.js", {
@@ -72,7 +73,7 @@ mock.module("../../stores/conversation.store.js", {
       };
     },
     answerQuestion: () => true,
-    getPendingQuestion: () => null,
+    getPendingQuestion: () => pendingConversationMessageResult,
   },
 });
 
@@ -119,30 +120,6 @@ mock.module("../../stores/ticket-log.store.js", {
   },
 });
 
-mock.module("../../stores/chat-threads.store.js", {
-  namedExports: {
-    getProviderThread: async () => null,
-    setProviderThread: async () => {},
-    getAllThreads: async () => [],
-  },
-});
-
-mock.module("../chat/chat-orchestrator.js", {
-  namedExports: {
-    ChatOrchestrator: class {
-      async enqueueQuestion(context: unknown, questionId: string, message: unknown) {
-        enqueueQuestionCalls.push({ context, questionId, message });
-      }
-
-      async enqueueNotification(): Promise<void> {}
-
-      async resolveQuestion(): Promise<{ accepted: boolean; stale: boolean }> {
-        return { accepted: true, stale: false };
-      }
-    },
-  },
-});
-
 // Import ChatService after mocks are in place
 const { ChatService } = await import("../chat.service.js");
 
@@ -157,10 +134,11 @@ describe("ChatService.askAsync", () => {
     addMessageCalls = [];
     messageIdCounter = 0;
     readQuestionResult = null;
-    enqueueQuestionCalls = [];
     mockTicketConversationId = null;
     mockBrainstormConversationId = null;
     mockTicketGeneration = null;
+    resolveQuestionCalls = 0;
+    pendingConversationMessageResult = null;
 
     service = new ChatService();
   });
@@ -210,7 +188,6 @@ describe("ChatService.askAsync", () => {
     };
     assert.strictEqual(writtenQuestion.question, question);
     assert.deepStrictEqual(writtenQuestion.options, options);
-    assert.strictEqual(enqueueQuestionCalls.length, 1);
   });
 
   it("should emit brainstorm:message event", async () => {
@@ -234,16 +211,47 @@ describe("ChatService.askAsync", () => {
     assert.strictEqual(eventData.message.text, question);
   });
 
-  it("should store options for number mapping", async () => {
+  it("askAsync sends directly to provider without queueing", async () => {
+    const sendCalls: string[] = [];
+    const mockProvider = {
+      id: "mock",
+      name: "Mock",
+      capabilities: { threads: false, buttons: false, formatting: "plain" },
+      initialize: async () => {},
+      shutdown: async () => {},
+      createThread: async () => ({ providerId: "mock", threadId: "t1" }),
+      getThread: async () => ({
+        providerId: "mock",
+        threadId: "t1",
+        metadata: {},
+      }),
+      send: async (_thread: unknown, msg: { text: string }) => {
+        sendCalls.push(msg.text);
+      },
+      notifyAnswered: async () => {},
+    };
+    service.registerProvider(mockProvider as any);
+
+    await service.askAsync(
+      { projectId: "p", ticketId: "TICK-1" },
+      "Are you ready?",
+    );
+
+    assert.strictEqual(sendCalls.length, 1);
+    assert.ok(sendCalls[0].includes("Are you ready?"));
+  });
+
+  it("should persist options on the pending question payload", async () => {
     const options = ["Option A", "Option B", "Option C"];
     const context = { projectId: "test", brainstormId: "brain_options" };
 
     await service.askAsync(context, "Pick one", options);
 
-    // Verify the options are stored in pendingOptions map
-    const contextKey = (service as any).getContextKey(context);
-    const storedOptions = (service as any).pendingOptions.get(contextKey);
-    assert.deepStrictEqual(storedOptions, options);
+    assert.strictEqual(writeQuestionCalls.length, 1);
+    const writtenQuestion = writeQuestionCalls[0].question as {
+      options: string[] | null;
+    };
+    assert.deepStrictEqual(writtenQuestion.options, options);
   });
 
   it("should accept phase parameter", async () => {
@@ -277,6 +285,10 @@ describe("ChatService.askAsync", () => {
 
     assert.strictEqual(result.status, "pending");
     assert.ok(result.questionId.startsWith("q_"));
+  });
+
+  it("chatService does not expose synchronous ask()", () => {
+    assert.strictEqual(typeof (service as any).ask, "undefined");
   });
 
   it("should not add message when no conversationId", async () => {
@@ -331,6 +343,36 @@ describe("ChatService.askAsync", () => {
     assert.strictEqual(eventData.ticketId, "POT-999");
     assert.strictEqual(eventData.message.type, "question");
     assert.strictEqual(eventData.message.text, "Ticket suspend question");
+  });
+
+  it("notify sends directly to provider without queueing", async () => {
+    const sendCalls: string[] = [];
+    const mockProvider = {
+      id: "mock",
+      name: "Mock",
+      capabilities: { threads: false, buttons: false, formatting: "plain" },
+      initialize: async () => {},
+      shutdown: async () => {},
+      createThread: async () => ({ providerId: "mock", threadId: "t1" }),
+      getThread: async () => ({
+        providerId: "mock",
+        threadId: "t1",
+        metadata: {},
+      }),
+      send: async (_thread: unknown, msg: { text: string }) => {
+        sendCalls.push(msg.text);
+      },
+      notifyAnswered: async () => {},
+    };
+    service.registerProvider(mockProvider as any);
+
+    await service.notify(
+      { projectId: "p", ticketId: "TICK-1" },
+      "Build complete",
+    );
+
+    assert.strictEqual(sendCalls.length, 1);
+    assert.ok(sendCalls[0].includes("Build complete"));
   });
 
   it("should handle null options", async () => {
@@ -392,6 +434,68 @@ describe("ChatService.askAsync", () => {
 
     assert.strictEqual(handled, false);
     assert.strictEqual(writeResponseCalls.length, 0);
+  });
+
+  it("handleResponse does not require orchestrator", async () => {
+    readQuestionResult = {
+      questionId: "q-3",
+      options: null,
+      ticketGeneration: 5,
+    };
+
+    const handled = await service.handleResponse(
+      "web",
+      { projectId: "p", ticketId: "TICK-1" },
+      "Yes",
+    );
+
+    assert.strictEqual(handled, true);
+    assert.strictEqual(resolveQuestionCalls, 0);
+    assert.strictEqual(writeResponseCalls.length, 1);
+    const written = writeResponseCalls[0].response as { answer: string };
+    assert.strictEqual(written.answer, "Yes");
+  });
+
+  it("reconcileWebAnswer writes response file directly", async () => {
+    mockTicketConversationId = "conv-2";
+    readQuestionResult = {
+      questionId: "q-2",
+      options: ["A", "B"],
+      ticketGeneration: 6,
+    };
+    pendingConversationMessageResult = {
+      id: "msg-pending",
+      metadata: { phase: "Build", executionGeneration: 6 },
+    };
+    const result = await service.reconcileWebAnswer(
+      { projectId: "p", ticketId: "TICK-2" },
+      "q-2",
+      "A",
+    );
+
+    assert.deepStrictEqual(result, {
+      accepted: true,
+      stale: false,
+      found: true,
+    });
+    assert.strictEqual(resolveQuestionCalls, 0);
+    assert.strictEqual(writeResponseCalls.length, 1);
+    assert.deepStrictEqual(writeResponseCalls[0], {
+      projectId: "p",
+      contextId: "TICK-2",
+      response: {
+        answer: "A",
+        questionId: "q-2",
+        ticketGeneration: 6,
+      },
+    });
+    assert.strictEqual(addMessageCalls.length, 1);
+    const input = addMessageCalls[0].input as {
+      type: string;
+      text: string;
+    };
+    assert.strictEqual(input.type, "user");
+    assert.strictEqual(input.text, "A");
   });
 
   it("writes ticket message provenance metadata for askAsync question messages", async () => {

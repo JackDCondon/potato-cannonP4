@@ -8,7 +8,6 @@ export * from "./db.js";
 export * from "./conversation.store.js";
 export * from "./session.store.js";
 export * from "./provider-channel.store.js";
-export * from "./chat-queue.store.js";
 export * from "./ralph-feedback.store.js";
 export * from "./artifact.store.js";
 export * from "./template.store.js";

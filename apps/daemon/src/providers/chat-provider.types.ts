@@ -25,7 +25,7 @@ export interface OutboundMessage {
 }
 
 /**
- * Provider-specific thread information stored in chat-threads.json.
+ * Provider-specific thread/channel information cached by providers.
  */
 export interface ProviderThreadInfo {
   providerId: string;
@@ -65,11 +65,38 @@ export interface ChatProvider {
 }
 
 /**
- * Structure of chat-threads.json stored per ticket/brainstorm.
+ * Shared helpers for turning a chat context into a stable lookup key.
  */
-export interface ChatThreadsFile {
-  threads: ProviderThreadInfo[];
-  createdAt: string;
+export function getContextKey(context: ChatContext): string {
+  const contextId = context.ticketId ?? context.brainstormId ?? "";
+  return `${encodeURIComponent(context.projectId)}:${encodeURIComponent(contextId)}`;
+}
+
+export function parseContextKey(key: string): ChatContext | null {
+  const separatorIndex = key.indexOf(":");
+  if (separatorIndex === -1) {
+    return null;
+  }
+
+  let projectId: string;
+  let contextId: string;
+
+  try {
+    projectId = decodeURIComponent(key.slice(0, separatorIndex));
+    contextId = decodeURIComponent(key.slice(separatorIndex + 1));
+  } catch {
+    return null;
+  }
+
+  if (!projectId || !contextId) {
+    return null;
+  }
+
+  if (contextId.startsWith("brain_")) {
+    return { projectId, brainstormId: contextId };
+  }
+
+  return { projectId, ticketId: contextId };
 }
 
 /**
