@@ -29,7 +29,15 @@ export function registerBrainstormRoutes(
   app.get('/api/brainstorms/:project', async (req: Request, res: Response) => {
     try {
       const projectId = decodeURIComponent(req.params.project);
-      const brainstorms = await listBrainstorms(projectId);
+      const workflowId =
+        typeof req.query.workflowId === 'string' ? req.query.workflowId : null;
+
+      if (!workflowId) {
+        res.status(400).json({ error: 'workflowId query parameter is required' });
+        return;
+      }
+
+      const brainstorms = await listBrainstorms(projectId, workflowId);
       const brainstormIds = brainstorms.map((b) => b.id);
       const ticketCountsMap = brainstormGetTicketCountsBatch(brainstormIds);
 
@@ -110,7 +118,16 @@ export function registerBrainstormRoutes(
         return;
       }
 
-      const { name, initialMessage, workflowId } = req.body as { name?: string; initialMessage?: string; workflowId?: string };
+      const { name, initialMessage, workflowId } = req.body as {
+        name?: string;
+        initialMessage?: string;
+        workflowId?: string;
+      };
+
+      if (!workflowId) {
+        res.status(400).json({ error: 'workflowId is required' });
+        return;
+      }
 
       // Create brainstorm with default name immediately
       const brainstorm = await createBrainstorm(projectId, { name, workflowId });

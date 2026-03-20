@@ -11,8 +11,8 @@ import type { PmConfig } from "@potato-cannon/shared";
 import type { Project } from "../../types/config.types.js";
 import { getDatabase } from "../../stores/db.js";
 import { getTicket } from "../../stores/ticket.store.js";
-import { getBoardPmConfig } from "../../stores/board-settings.store.js";
 import { detectAlerts, type PmAlert } from "./pm-alerts.js";
+import { resolveEffectivePmConfig } from "./pm-config.js";
 
 // =============================================================================
 // Types
@@ -22,6 +22,7 @@ interface EpicBrainstormRow {
   id: string;
   project_id: string;
   workflow_id: string | null;
+  pm_config: string | null;
 }
 
 // =============================================================================
@@ -102,9 +103,10 @@ export class PmPoller {
         const project = projects.get(epic.project_id);
         if (!project) continue;
 
-        const config = epic.workflow_id
-          ? getBoardPmConfig(epic.workflow_id)
-          : null;
+        const config = resolveEffectivePmConfig({
+          workflowId: epic.workflow_id,
+          pmConfig: parsePmConfig(epic.pm_config),
+        });
         if (!config || config.mode === "passive") continue;
 
         const alerts = detectAlerts(epic.id, epic.project_id, config);
@@ -222,7 +224,7 @@ export class PmPoller {
     const db = getDatabase();
     return db
       .prepare(
-        `SELECT id, project_id, workflow_id
+        `SELECT id, project_id, workflow_id, pm_config
          FROM brainstorms
          WHERE status = 'epic' AND pm_enabled = 1`,
       )
@@ -238,8 +240,11 @@ export class PmPoller {
     let minInterval = DEFAULT_POLL_INTERVAL_MS;
 
     for (const epic of epics) {
-      if (!epic.workflow_id) continue;
-      const config = getBoardPmConfig(epic.workflow_id);
+      const config = resolveEffectivePmConfig({
+        workflowId: epic.workflow_id,
+        pmConfig: parsePmConfig(epic.pm_config),
+      });
+      if (!config) continue;
       if (config.mode === "passive") continue;
       const intervalMs = config.polling.intervalMinutes * 60 * 1000;
       if (intervalMs < minInterval) {
@@ -249,5 +254,15 @@ export class PmPoller {
 
     // Clamp to a minimum of 1 minute to avoid busy-looping
     return Math.max(minInterval, 60_000);
+  }
+}
+
+function parsePmConfig(serialized: string | null): PmConfig | null {
+  if (!serialized) return null;
+
+  try {
+    return JSON.parse(serialized) as PmConfig;
+  } catch {
+    return null;
   }
 }

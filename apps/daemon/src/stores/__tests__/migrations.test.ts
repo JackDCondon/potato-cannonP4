@@ -105,6 +105,83 @@ function rebuildWorkflowsAsLegacyV18(db: Database.Database): void {
   }
 }
 
+function rebuildBrainstormsAsLegacyV29(db: Database.Database): void {
+  const foreignKeysEnabled = db.pragma('foreign_keys', { simple: true }) as number;
+  if (foreignKeysEnabled === 1) {
+    db.pragma('foreign_keys = OFF');
+  }
+
+  try {
+    db.exec('BEGIN');
+    db.exec(`
+      CREATE TABLE brainstorms_legacy_v29 (
+        id                TEXT PRIMARY KEY,
+        project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name              TEXT NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'active',
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        conversation_id   TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+        created_ticket_id TEXT,
+        workflow_id       TEXT REFERENCES project_workflows(id) ON DELETE SET NULL,
+        plan_summary      TEXT,
+        pm_enabled        INTEGER NOT NULL DEFAULT 0,
+        pm_config         TEXT,
+        color             TEXT,
+        icon              TEXT
+      );
+    `);
+    db.exec(`
+      INSERT INTO brainstorms_legacy_v29 (
+        id,
+        project_id,
+        name,
+        status,
+        created_at,
+        updated_at,
+        conversation_id,
+        created_ticket_id,
+        workflow_id,
+        plan_summary,
+        pm_enabled,
+        pm_config,
+        color,
+        icon
+      )
+      SELECT
+        id,
+        project_id,
+        name,
+        status,
+        created_at,
+        updated_at,
+        conversation_id,
+        created_ticket_id,
+        workflow_id,
+        plan_summary,
+        pm_enabled,
+        pm_config,
+        color,
+        icon
+      FROM brainstorms;
+    `);
+    db.exec(`
+      DROP TABLE brainstorms;
+      ALTER TABLE brainstorms_legacy_v29 RENAME TO brainstorms;
+      CREATE INDEX IF NOT EXISTS idx_brainstorms_project ON brainstorms(project_id);
+      CREATE INDEX IF NOT EXISTS idx_brainstorms_status ON brainstorms(project_id, status);
+    `);
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    if (foreignKeysEnabled === 1) {
+      db.pragma('foreign_keys = ON');
+    }
+  }
+}
+
 describe('V13 migration Ã¢â‚¬â€ project_workflows table + workflow_id on tickets', () => {
   let db: Database.Database;
 
@@ -193,9 +270,9 @@ describe('V13 migration Ã¢â‚¬â€ project_workflows table + workflow_id
     assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
   });
 
-  it('schema version is 27', () => {
+  it('schema version is 30', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -212,7 +289,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -708,7 +785,7 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
       "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v21','proj-v21','2026-03-18','2026-03-18')"
     );
     db.exec(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21','proj-v21','Brainstorm V21','active','2026-03-18','2026-03-18','conv-v21','t-v21')"
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id, workflow_id) VALUES ('bs-v21','proj-v21','Brainstorm V21','active','2026-03-18','2026-03-18','conv-v21','t-v21','wf-v21')"
     );
 
     // Simulate running migration from v20 to pick up V21 backfill
@@ -742,10 +819,10 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     );
     // Two brainstorms both pointing to the same ticket Ã¢â‚¬â€ the unsafe case LIMIT 1 guards against
     db.exec(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-a','proj-v21-multi','Brainstorm A','active','2026-03-18','2026-03-18','conv-v21-ma','t-v21-multi')"
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id, workflow_id) VALUES ('bs-v21-a','proj-v21-multi','Brainstorm A','active','2026-03-18','2026-03-18','conv-v21-ma','t-v21-multi','wf-v21-multi')"
     );
     db.exec(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id) VALUES ('bs-v21-b','proj-v21-multi','Brainstorm B','active','2026-03-18','2026-03-18','conv-v21-mb','t-v21-multi')"
+      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, created_ticket_id, workflow_id) VALUES ('bs-v21-b','proj-v21-multi','Brainstorm B','active','2026-03-18','2026-03-18','conv-v21-mb','t-v21-multi','wf-v21-multi')"
     );
 
     db.pragma('user_version = 20');
@@ -768,14 +845,14 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 
-  it('schema version is 27', () => {
+  it('schema version is 30', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -814,6 +891,9 @@ describe('V23 migration - epic color and icon customization', () => {
     db.exec(
       "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v23','pv23','V23 Project','/v23','2026-03-19')"
     );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v23','proj-v23','Default','product-development',1,'2026-03-19','2026-03-19')"
+    );
 
     db.exec(
       "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v23','proj-v23','2026-03-19','2026-03-19')"
@@ -822,8 +902,8 @@ describe('V23 migration - epic color and icon customization', () => {
     const brainstormId = 'brain-v23-color-icon';
     const now = new Date().toISOString();
     db.prepare(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, color, icon) VALUES (?, ?, ?, 'epic', ?, ?, ?, ?, ?)"
-    ).run(brainstormId, 'proj-v23', 'Epic with Color & Icon', now, now, 'conv-v23', '#818cf8', 'star');
+      "INSERT INTO brainstorms (id, project_id, workflow_id, name, status, created_at, updated_at, conversation_id, color, icon) VALUES (?, ?, ?, 'Epic with Color & Icon', 'epic', ?, ?, ?, ?, ?)"
+    ).run(brainstormId, 'proj-v23', 'wf-v23', now, now, 'conv-v23', '#818cf8', 'star');
 
     const row = db
       .prepare('SELECT id, color, icon FROM brainstorms WHERE id = ?')
@@ -841,6 +921,9 @@ describe('V23 migration - epic color and icon customization', () => {
     db.exec(
       "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-v23-null','pv23n','V23 Null Project','/v23n','2026-03-19')"
     );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-v23-null','proj-v23-null','Default','product-development',1,'2026-03-19','2026-03-19')"
+    );
 
     db.exec(
       "INSERT INTO conversations (id, project_id, created_at, updated_at) VALUES ('conv-v23-null','proj-v23-null','2026-03-19','2026-03-19')"
@@ -849,8 +932,8 @@ describe('V23 migration - epic color and icon customization', () => {
     const brainstormId = 'brain-v23-null';
     const now = new Date().toISOString();
     db.prepare(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id) VALUES (?, ?, ?, 'active', ?, ?, ?)"
-    ).run(brainstormId, 'proj-v23-null', 'Brainstorm Without Colors', now, now, 'conv-v23-null');
+      "INSERT INTO brainstorms (id, project_id, workflow_id, name, status, created_at, updated_at, conversation_id) VALUES (?, ?, ?, 'Brainstorm Without Colors', 'active', ?, ?, ?)"
+    ).run(brainstormId, 'proj-v23-null', 'wf-v23-null', now, now, 'conv-v23-null');
 
     const row = db
       .prepare('SELECT color, icon FROM brainstorms WHERE id = ?')
@@ -867,7 +950,7 @@ describe('V23 migration - epic color and icon customization', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -882,7 +965,7 @@ describe('V24 migration - token usage columns', () => {
     assert.ok(names.has('output_tokens'), 'sessions table should have output_tokens column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 
   it('is idempotent Ã¢â‚¬â€ running V24 migration twice does not error', () => {
@@ -892,7 +975,7 @@ describe('V24 migration - token usage columns', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -909,7 +992,7 @@ describe('V25 migration - ticket pause state columns', () => {
     assert.ok(names.has('pause_retry_count'), 'tickets table should have pause_retry_count column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 
   it('is idempotent Ã¢â‚¬â€ running V25 migration twice does not error', () => {
@@ -919,7 +1002,7 @@ describe('V25 migration - ticket pause state columns', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -935,7 +1018,7 @@ describe('V26 migration - per-project p4 connection settings', () => {
     assert.ok(names.has('p4_user'), 'projects table should have p4_user column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 
   it('is idempotent when run repeatedly after V26', () => {
@@ -945,7 +1028,7 @@ describe('V26 migration - per-project p4 connection settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V26 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -975,7 +1058,7 @@ describe('V28 migration - chat queue cleanup', () => {
     runMigrations(db);
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -1029,13 +1112,16 @@ describe('V22 migration - PM fields and board settings', () => {
     db.exec(
       "INSERT INTO projects (id, slug, display_name, path, registered_at) VALUES ('proj-pm','pm-test','PM Test','/pm-test','2026-03-19')"
     );
+    db.exec(
+      "INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at) VALUES ('wf-pm','proj-pm','Default','product-development',1,'2026-03-19','2026-03-19')"
+    );
 
     // Insert a brainstorm without pm_enabled
     const brainstormId = 'brain_pm_test';
     const now = new Date().toISOString();
     db.prepare(
-      "INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)"
-    ).run(brainstormId, 'proj-pm', 'Test Brainstorm', now, now);
+      "INSERT INTO brainstorms (id, project_id, workflow_id, name, status, created_at, updated_at) VALUES (?, ?, ?, 'Test Brainstorm', 'active', ?, ?)"
+    ).run(brainstormId, 'proj-pm', 'wf-pm', now, now);
 
     const row = db
       .prepare('SELECT pm_enabled FROM brainstorms WHERE id = ?')
@@ -1050,7 +1136,7 @@ describe('V22 migration - PM fields and board settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
   });
 });
 
@@ -1064,11 +1150,149 @@ describe('V29 migration - board chat notification policy column', () => {
     assert.ok(names.has('chat_notification_policy'), 'board_settings should have chat_notification_policy column');
   });
 
-  it('bumps the schema version to 29', () => {
+  it('bumps the schema version to 30', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 29);
+    assert.equal(version, 30);
+  });
+});
+
+describe('V30 migration - brainstorm workflow ownership normalization', () => {
+  it('backfills brainstorm.workflow_id from unanimously linked tickets', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    rebuildBrainstormsAsLegacyV29(db);
+
+    db.exec(`
+      INSERT INTO projects (id, slug, display_name, path, registered_at)
+      VALUES ('proj-v30-backfill', 'pv30-backfill', 'V30 Backfill', '/v30/backfill', '2026-03-20');
+
+      INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
+      VALUES ('wf-v30-backfill', 'proj-v30-backfill', 'Default', 'product-development', 1, '2026-03-20', '2026-03-20');
+
+      INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v30-backfill', 3);
+      INSERT INTO conversations (id, project_id, created_at, updated_at)
+      VALUES ('conv-v30-backfill', 'proj-v30-backfill', '2026-03-20', '2026-03-20');
+
+      INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, workflow_id)
+      VALUES ('bs-v30-backfill', 'proj-v30-backfill', 'Backfill Me', 'active', '2026-03-20', '2026-03-20', 'conv-v30-backfill', NULL);
+
+      INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id, brainstorm_id)
+      VALUES
+        ('t-v30-a', 'proj-v30-backfill', 'Ticket A', 'Backlog', '2026-03-20', '2026-03-20', 'wf-v30-backfill', 'bs-v30-backfill'),
+        ('t-v30-b', 'proj-v30-backfill', 'Ticket B', 'Backlog', '2026-03-20', '2026-03-20', 'wf-v30-backfill', 'bs-v30-backfill');
+    `);
+
+    db.pragma('user_version = 29');
+    runMigrations(db);
+
+    const brainstorm = db.prepare(`
+      SELECT workflow_id
+      FROM brainstorms
+      WHERE id = 'bs-v30-backfill'
+    `).get() as { workflow_id: string };
+    assert.equal(brainstorm.workflow_id, 'wf-v30-backfill');
+
+    const linkedTickets = db.prepare(`
+      SELECT id, brainstorm_id
+      FROM tickets
+      WHERE project_id = 'proj-v30-backfill'
+      ORDER BY id
+    `).all() as Array<{ id: string; brainstorm_id: string | null }>;
+    assert.deepEqual(linkedTickets, [
+      { id: 't-v30-a', brainstorm_id: 'bs-v30-backfill' },
+      { id: 't-v30-b', brainstorm_id: 'bs-v30-backfill' },
+    ]);
+  });
+
+  it('detaches tickets and deletes brainstorms when ownership is ambiguous', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    rebuildBrainstormsAsLegacyV29(db);
+
+    db.exec(`
+      INSERT INTO projects (id, slug, display_name, path, registered_at)
+      VALUES ('proj-v30-ambiguous', 'pv30-ambiguous', 'V30 Ambiguous', '/v30/ambiguous', '2026-03-20');
+
+      INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
+      VALUES
+        ('wf-v30-left', 'proj-v30-ambiguous', 'Left', 'product-development', 1, '2026-03-20', '2026-03-20'),
+        ('wf-v30-right', 'proj-v30-ambiguous', 'Right', 'product-development', 0, '2026-03-20', '2026-03-20');
+
+      INSERT INTO ticket_counters (project_id, next_number) VALUES ('proj-v30-ambiguous', 3);
+      INSERT INTO conversations (id, project_id, created_at, updated_at)
+      VALUES ('conv-v30-ambiguous', 'proj-v30-ambiguous', '2026-03-20', '2026-03-20');
+
+      INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, workflow_id)
+      VALUES ('bs-v30-ambiguous', 'proj-v30-ambiguous', 'Ambiguous', 'active', '2026-03-20', '2026-03-20', 'conv-v30-ambiguous', NULL);
+
+      INSERT INTO tickets (id, project_id, title, phase, created_at, updated_at, workflow_id, brainstorm_id)
+      VALUES
+        ('t-v30-left', 'proj-v30-ambiguous', 'Left Ticket', 'Backlog', '2026-03-20', '2026-03-20', 'wf-v30-left', 'bs-v30-ambiguous'),
+        ('t-v30-right', 'proj-v30-ambiguous', 'Right Ticket', 'Backlog', '2026-03-20', '2026-03-20', 'wf-v30-right', 'bs-v30-ambiguous');
+    `);
+
+    db.pragma('user_version = 29');
+    runMigrations(db);
+
+    const brainstorm = db.prepare(`
+      SELECT id
+      FROM brainstorms
+      WHERE id = 'bs-v30-ambiguous'
+    `).get();
+    assert.equal(brainstorm, undefined);
+
+    const tickets = db.prepare(`
+      SELECT id, brainstorm_id
+      FROM tickets
+      WHERE project_id = 'proj-v30-ambiguous'
+      ORDER BY id
+    `).all() as Array<{ id: string; brainstorm_id: string | null }>;
+    assert.deepEqual(tickets, [
+      { id: 't-v30-left', brainstorm_id: null },
+      { id: 't-v30-right', brainstorm_id: null },
+    ]);
+  });
+
+  it('enforces brainstorm workflow ownership as NOT NULL with ON DELETE RESTRICT', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    rebuildBrainstormsAsLegacyV29(db);
+
+    db.exec(`
+      INSERT INTO projects (id, slug, display_name, path, registered_at)
+      VALUES ('proj-v30-schema', 'pv30-schema', 'V30 Schema', '/v30/schema', '2026-03-20');
+
+      INSERT INTO project_workflows (id, project_id, name, template_name, is_default, created_at, updated_at)
+      VALUES ('wf-v30-schema', 'proj-v30-schema', 'Default', 'product-development', 1, '2026-03-20', '2026-03-20');
+
+      INSERT INTO conversations (id, project_id, created_at, updated_at)
+      VALUES ('conv-v30-schema', 'proj-v30-schema', '2026-03-20', '2026-03-20');
+
+      INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, workflow_id)
+      VALUES ('bs-v30-schema', 'proj-v30-schema', 'Schema Epic', 'epic', '2026-03-20', '2026-03-20', 'conv-v30-schema', 'wf-v30-schema');
+    `);
+
+    db.pragma('user_version = 29');
+    runMigrations(db);
+
+    const workflowCol = (db.pragma('table_info(brainstorms)') as Array<{ name: string; notnull: number }>)
+      .find((column) => column.name === 'workflow_id');
+    assert.ok(workflowCol, 'brainstorms.workflow_id should exist');
+    assert.equal(workflowCol.notnull, 1, 'brainstorms.workflow_id should be NOT NULL');
+
+    const workflowFk = (db.pragma('foreign_key_list(brainstorms)') as Array<{
+      from: string;
+      table: string;
+      on_delete: string;
+    }>).find((fk) => fk.from === 'workflow_id' && fk.table === 'project_workflows');
+    assert.ok(workflowFk, 'brainstorms.workflow_id should reference project_workflows');
+    assert.equal(workflowFk.on_delete.toUpperCase(), 'RESTRICT');
+
+    assert.throws(() => {
+      db.exec("DELETE FROM project_workflows WHERE id = 'wf-v30-schema'");
+    });
   });
 });

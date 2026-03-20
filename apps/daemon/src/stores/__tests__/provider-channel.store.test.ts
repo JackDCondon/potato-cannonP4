@@ -9,6 +9,7 @@ import { runMigrations } from "../migrations.js";
 import { createProjectStore } from "../project.store.js";
 import { createTicketStore, TicketStore } from "../ticket.store.js";
 import { createBrainstormStore, BrainstormStore } from "../brainstorm.store.js";
+import { createProjectWorkflowStore } from "../project-workflow.store.js";
 import {
   createProviderChannelStore,
   ProviderChannelStore,
@@ -23,6 +24,7 @@ describe("ProviderChannelStore", () => {
   let projectId: string;
   let ticketId: string;
   let brainstormId: string;
+  let workflowId: string;
 
   before(() => {
     testDbPath = path.join(
@@ -39,6 +41,9 @@ describe("ProviderChannelStore", () => {
       path: "/test/project",
     });
     projectId = project.id;
+    workflowId = createProjectWorkflowStore(db)
+      .listWorkflows(projectId)
+      .find((workflow) => workflow.isDefault)!.id;
 
     ticketStore = createTicketStore(db);
     brainstormStore = createBrainstormStore(db);
@@ -72,7 +77,10 @@ describe("ProviderChannelStore", () => {
     const ticket = ticketStore.createTicket(projectId, { title: "Test Ticket" });
     ticketId = ticket.id;
 
-    const brainstorm = brainstormStore.createBrainstorm(projectId, { name: "Test Brainstorm" });
+    const brainstorm = brainstormStore.createBrainstorm(projectId, {
+      name: "Test Brainstorm",
+      workflowId,
+    });
     brainstormId = brainstorm.id;
   });
 

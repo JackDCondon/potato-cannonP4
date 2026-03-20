@@ -18,7 +18,7 @@ import { cn, timeAgo, formatToolActivity } from '@/lib/utils'
 import { getWaitingIndicatorLabel, isAwaitingUserInput } from '@/lib/waiting-indicator'
 import { Linkify } from '@/components/ui/linkify'
 import { useSessionOutput, useBrainstormMessage, useSessionEnded } from '@/hooks/useSSE'
-import { useBrainstorms } from '@/hooks/queries'
+import { useBrainstorm } from '@/hooks/queries'
 import type { BrainstormMessage } from '@potato-cannon/shared'
 
 interface BrainstormChatProps {
@@ -48,8 +48,8 @@ export function BrainstormChat({
   const [currentActivity, setCurrentActivity] = useState<string | null>(null)
 
   // Get brainstorm details for active ticket count (used in delete warning)
-  const brainstormsQuery = useBrainstorms(projectId)
-  const brainstorm = brainstormsQuery.data?.find((b) => b.id === brainstormId)
+  const brainstormQuery = useBrainstorm(projectId, brainstormId)
+  const brainstorm = brainstormQuery.data
   const activeTicketCount = brainstorm?.activeTicketCount ?? 0
   const hasActiveTickets = activeTicketCount > 0
   const messagesEndRef = useRef<HTMLDivElement>(null)

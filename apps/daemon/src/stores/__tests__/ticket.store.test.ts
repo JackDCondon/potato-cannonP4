@@ -9,6 +9,7 @@ import { runMigrations } from "../migrations.js";
 import { createProjectStore } from "../project.store.js";
 import { createTicketStore, TicketStore } from "../ticket.store.js";
 import { createBrainstormStore } from "../brainstorm.store.js";
+import { createProjectWorkflowStore } from "../project-workflow.store.js";
 
 // Ticket ID regex pattern (e.g., "TES-1", "POT-42")
 const TICKET_ID_REGEX = /^[A-Z]{1,3}-\d+$/;
@@ -18,6 +19,8 @@ describe("TicketStore", () => {
   let ticketStore: TicketStore;
   let testDbPath: string;
   let projectId: string;
+  let defaultWorkflowId: string;
+  let alternateWorkflowId: string;
 
   before(() => {
     // Create a temp database for integration tests
@@ -33,6 +36,22 @@ describe("TicketStore", () => {
       path: "/test/project",
     });
     projectId = project.id;
+
+    const workflowStore = createProjectWorkflowStore(db);
+    const alternateWorkflow = workflowStore.createWorkflow({
+      projectId,
+      name: "Alternate Workflow",
+      templateName: "product-development",
+    });
+    const workflows = db
+      .prepare(
+        "SELECT id, is_default FROM project_workflows WHERE project_id = ?"
+      )
+      .all(projectId) as Array<{ id: string; is_default: number }>;
+    const defaultWorkflow = workflows.find((workflow) => workflow.is_default === 1);
+    assert.ok(defaultWorkflow, "expected project default workflow to exist");
+    defaultWorkflowId = defaultWorkflow.id;
+    alternateWorkflowId = alternateWorkflow.id;
 
     ticketStore = createTicketStore(db);
   });
@@ -413,9 +432,14 @@ describe("TicketStore", () => {
   });
 
   describe("brainstormId support", () => {
-    it("should persist brainstormId when provided", () => {
+    const createOwnedBrainstorm = (workflowId?: string) => {
+      assert.ok(workflowId, "expected workflowId for brainstorm fixture");
       const brainstormStore = createBrainstormStore(db);
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      return brainstormStore.createBrainstorm(projectId, { workflowId });
+    };
+
+    it("should persist brainstormId when provided", () => {
+      const brainstorm = createOwnedBrainstorm(defaultWorkflowId);
 
       const ticket = ticketStore.createTicket(projectId, {
         title: "With Brainstorm",
@@ -423,10 +447,16 @@ describe("TicketStore", () => {
       });
 
       assert.strictEqual(ticket.brainstormId, brainstorm.id);
+      assert.strictEqual(
+        ticket.workflowId,
+        brainstorm.workflowId,
+        "ticket workflow should be inherited from the brainstorm",
+      );
 
       // Re-fetch to verify persistence
       const fetched = ticketStore.getTicket(projectId, ticket.id);
       assert.strictEqual(fetched?.brainstormId, brainstorm.id);
+      assert.strictEqual(fetched?.workflowId, brainstorm.workflowId);
     });
 
     it("should leave brainstormId undefined when not provided", () => {
@@ -436,12 +466,46 @@ describe("TicketStore", () => {
 
       assert.strictEqual(ticket.brainstormId, undefined);
     });
+
+    it("should inherit the brainstorm workflow over the project default", () => {
+      const brainstorm = createOwnedBrainstorm(alternateWorkflowId);
+
+      const ticket = ticketStore.createTicket(projectId, {
+        title: "Attached To Alternate Workflow",
+        brainstormId: brainstorm.id,
+      });
+
+      assert.strictEqual(ticket.workflowId, alternateWorkflowId);
+      assert.strictEqual(ticket.brainstormId, brainstorm.id);
+    });
+
+    it("should reject a workflow mismatch between ticket and brainstorm", () => {
+      const brainstorm = createOwnedBrainstorm(alternateWorkflowId);
+
+      assert.throws(
+        () => {
+          ticketStore.createTicket(projectId, {
+            title: "Mismatched Workflow",
+            workflowId: defaultWorkflowId,
+            brainstormId: brainstorm.id,
+          });
+        },
+        /same workflow/i,
+      );
+    });
   });
 
   describe("getTicketsByBrainstormId", () => {
-    it("should return tickets sharing the same brainstormId", () => {
+    const createOwnedBrainstorm = (workflowId?: string) => {
+      assert.ok(workflowId, "expected workflowId for brainstorm fixture");
       const brainstormStore = createBrainstormStore(db);
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      return brainstormStore.createBrainstorm(projectId, {
+        workflowId,
+      });
+    };
+
+    it("should return tickets sharing the same brainstormId", () => {
+      const brainstorm = createOwnedBrainstorm(defaultWorkflowId);
 
       ticketStore.createTicket(projectId, { title: "A", brainstormId: brainstorm.id });
       ticketStore.createTicket(projectId, { title: "B", brainstormId: brainstorm.id });
@@ -454,8 +518,7 @@ describe("TicketStore", () => {
     });
 
     it("should exclude archived tickets", () => {
-      const brainstormStore = createBrainstormStore(db);
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = createOwnedBrainstorm(defaultWorkflowId);
 
       const ticket = ticketStore.createTicket(projectId, { title: "Archived", brainstormId: brainstorm.id });
       ticketStore.createTicket(projectId, { title: "Active", brainstormId: brainstorm.id });

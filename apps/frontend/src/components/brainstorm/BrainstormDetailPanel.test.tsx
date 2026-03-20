@@ -21,6 +21,7 @@ const createMockAppState = (): {
   brainstormSheetOpen: boolean
   brainstormSheetBrainstormId: string | null
   brainstormSheetProjectId: string | null
+  brainstormSheetWorkflowId: string | null
   brainstormSheetBrainstormName: string | null
   brainstormSheetIsCreating: boolean
   currentProjectId: string | null
@@ -30,6 +31,7 @@ const createMockAppState = (): {
   brainstormSheetOpen: false,
   brainstormSheetBrainstormId: null,
   brainstormSheetProjectId: null,
+  brainstormSheetWorkflowId: null,
   brainstormSheetBrainstormName: null,
   brainstormSheetIsCreating: false,
   currentProjectId: null,
@@ -43,12 +45,12 @@ vi.mock('@/stores/appStore', () => ({
   useAppStore: (selector: any) => selector(mockAppState),
 }))
 
-// Mock useBrainstorms
-let mockBrainstormsData: any[] = []
+// Mock useBrainstorm
+let mockBrainstormData: any | null = null
 
 vi.mock('@/hooks/queries', () => ({
-  useBrainstorms: () => ({
-    data: mockBrainstormsData,
+  useBrainstorm: () => ({
+    data: mockBrainstormData,
     isLoading: false,
   }),
 }))
@@ -86,6 +88,7 @@ const baseBrainstorm = {
   status: 'active' as const,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  workflowId: 'wf-1',
   hasActiveSession: false,
   pmEnabled: false,
 }
@@ -131,7 +134,7 @@ describe('BrainstormDetailPanel', () => {
       chatNotificationPolicy: null,
     })
     mockAppState = createMockAppState()
-    mockBrainstormsData = []
+    mockBrainstormData = null
   })
 
   it('does not render when panel is closed', () => {
@@ -147,7 +150,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [baseBrainstorm]
+    mockBrainstormData = baseBrainstorm
 
     render(<BrainstormDetailPanel />)
 
@@ -160,7 +163,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [epicBrainstorm]
+    mockBrainstormData = epicBrainstorm
 
     render(<BrainstormDetailPanel />)
 
@@ -184,7 +187,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [passiveEpicBrainstorm]
+    mockBrainstormData = passiveEpicBrainstorm
 
     render(<BrainstormDetailPanel />)
 
@@ -193,7 +196,7 @@ describe('BrainstormDetailPanel', () => {
     })
   })
 
-  it('prefers saved board PM mode over stale brainstorm PM mode in the header badge', async () => {
+  it('prefers the brainstorm PM override over board defaults in the header badge', async () => {
     mockGetBoardSettings.mockResolvedValue({
       pmConfig: {
         ...epicBrainstorm.pmConfig,
@@ -207,16 +210,12 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [epicBrainstorm]
+    mockBrainstormData = epicBrainstorm
 
     render(<BrainstormDetailPanel />)
 
     await waitFor(() => {
-      expect(mockGetBoardSettings).toHaveBeenCalledWith('proj-1', 'wf-1')
-    })
-
-    await waitFor(() => {
-      expect(screen.getByText('executing')).toBeDefined()
+      expect(screen.getByText('watching')).toBeDefined()
     })
   })
 
@@ -226,7 +225,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [baseBrainstorm]
+    mockBrainstormData = baseBrainstorm
 
     render(<BrainstormDetailPanel />)
 
@@ -240,7 +239,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [epicBrainstorm]
+    mockBrainstormData = epicBrainstorm
 
     render(<BrainstormDetailPanel />)
 
@@ -254,7 +253,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [baseBrainstorm]
+    mockBrainstormData = baseBrainstorm
 
     render(<BrainstormDetailPanel />)
 
@@ -267,7 +266,7 @@ describe('BrainstormDetailPanel', () => {
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [baseBrainstorm]
+    mockBrainstormData = baseBrainstorm
 
     const { container } = render(<BrainstormDetailPanel />)
 

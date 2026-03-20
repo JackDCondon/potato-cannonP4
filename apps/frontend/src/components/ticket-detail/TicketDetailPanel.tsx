@@ -11,7 +11,7 @@ import {
   useTemplate,
   useWorkflows,
   useTicketSessions,
-  useBrainstorms,
+  useBrainstorm,
 } from '@/hooks/queries'
 import { useResizable } from '@/hooks/use-resizable'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -90,13 +90,8 @@ export function TicketDetailPanel() {
   const { data: ticket, isLoading } = useTicket(currentProjectId, ticketSheetTicketId)
   const { data: ticketSessions } = useTicketSessions(currentProjectId ?? undefined, ticketSheetTicketId ?? undefined)
   const { data: projectPhases } = useProjectPhases(currentProjectId)
-  const { data: brainstorms } = useBrainstorms(currentProjectId)
+  const { data: linkedBrainstorm } = useBrainstorm(currentProjectId, ticket?.brainstormId ?? null)
   const updateTicket = useUpdateTicket()
-
-  const linkedBrainstorm = useMemo(() => {
-    if (!ticket?.brainstormId || !brainstorms) return null
-    return brainstorms.find((b) => b.id === ticket.brainstormId) ?? null
-  }, [ticket?.brainstormId, brainstorms])
 
   const currentWorkflow = useMemo(
     () => workflows?.find((workflow) => workflow.id === ticket?.workflowId),

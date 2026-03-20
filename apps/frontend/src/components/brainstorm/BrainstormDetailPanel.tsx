@@ -7,7 +7,6 @@ import { useAppStore } from '@/stores/appStore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { useBrainstorms } from '@/hooks/queries'
 import { useResizable } from '@/hooks/use-resizable'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { getEpicColor } from '@/lib/epic-icons'
@@ -15,6 +14,7 @@ import { BrainstormChat } from './BrainstormChat'
 import { BrainstormNewForm } from './BrainstormNewForm'
 import { BrainstormArtifactsTab } from './BrainstormArtifactsTab'
 import { EpicSettingsTab } from './EpicSettingsTab'
+import { useBrainstorm } from '@/hooks/queries'
 
 export function BrainstormDetailPanel() {
   const brainstormSheetOpen = useAppStore((s) => s.brainstormSheetOpen)
@@ -35,8 +35,11 @@ export function BrainstormDetailPanel() {
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
 
   // Fetch full brainstorm data to get status and pmEnabled
-  const brainstormsQuery = useBrainstorms(brainstormSheetProjectId)
-  const brainstorm = brainstormsQuery.data?.find((b) => b.id === brainstormSheetBrainstormId)
+  const brainstormQuery = useBrainstorm(
+    brainstormSheetProjectId,
+    brainstormSheetIsCreating ? null : brainstormSheetBrainstormId,
+  )
+  const brainstorm = brainstormQuery.data
 
   const isEpic = brainstorm?.status === 'epic'
   const isEpicPm = isEpic && brainstorm?.pmEnabled
@@ -68,6 +71,11 @@ export function BrainstormDetailPanel() {
   useEffect(() => {
     if (!brainstormSheetProjectId || !brainstorm?.workflowId || !isEpicPm) {
       setResolvedPmMode(null)
+      return
+    }
+
+    if (brainstorm.pmConfig?.mode) {
+      setResolvedPmMode(brainstorm.pmConfig.mode)
       return
     }
 
@@ -162,11 +170,17 @@ export function BrainstormDetailPanel() {
   }, [isOpen, closeBrainstormSheet])
 
   const handleCreateBrainstorm = useCallback(async (message: string) => {
-    if (!brainstormSheetProjectId) return
+    if (!brainstormSheetProjectId || !brainstormSheetWorkflowId) {
+      setCreateError('Brainstorms must be created from a specific board')
+      return
+    }
     setIsSubmitting(true)
     setCreateError(null)
     try {
-      const response = await api.createBrainstorm(brainstormSheetProjectId, { initialMessage: message, workflowId: brainstormSheetWorkflowId ?? undefined })
+      const response = await api.createBrainstorm(brainstormSheetProjectId, {
+        initialMessage: message,
+        workflowId: brainstormSheetWorkflowId,
+      })
       const { id, name } = response.brainstorm
 
       // Track the initial message so chat can show thinking indicator immediately

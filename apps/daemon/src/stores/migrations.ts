@@ -3,7 +3,7 @@ import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 29;
+const CURRENT_SCHEMA_VERSION = 30;
 
 /**
  * Run database migrations.
@@ -126,6 +126,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 29) {
     migrateV29(db);
+  }
+
+  if (version < 30) {
+    migrateV30(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1185,6 +1189,180 @@ function migrateV29(db: Database.Database): void {
 
   if (!boardSettingsCols.has("chat_notification_policy")) {
     db.exec("ALTER TABLE board_settings ADD COLUMN chat_notification_policy TEXT");
+  }
+}
+
+function rebuildBrainstormsWithWorkflowOwnership(db: Database.Database): void {
+  const foreignKeysEnabled = db.pragma("foreign_keys", { simple: true }) as number;
+  if (foreignKeysEnabled === 1) {
+    db.pragma("foreign_keys = OFF");
+  }
+
+  try {
+    db.exec("BEGIN");
+    db.exec(`
+      CREATE TABLE brainstorms_v30 (
+        id                TEXT PRIMARY KEY,
+        project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        workflow_id       TEXT NOT NULL REFERENCES project_workflows(id) ON DELETE RESTRICT,
+        name              TEXT NOT NULL,
+        status            TEXT NOT NULL DEFAULT 'active',
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        conversation_id   TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+        created_ticket_id TEXT,
+        plan_summary      TEXT,
+        pm_enabled        INTEGER NOT NULL DEFAULT 0,
+        pm_config         TEXT,
+        color             TEXT,
+        icon              TEXT
+      );
+    `);
+
+    db.exec(`
+      INSERT INTO brainstorms_v30 (
+        id,
+        project_id,
+        workflow_id,
+        name,
+        status,
+        created_at,
+        updated_at,
+        conversation_id,
+        created_ticket_id,
+        plan_summary,
+        pm_enabled,
+        pm_config,
+        color,
+        icon
+      )
+      SELECT
+        id,
+        project_id,
+        workflow_id,
+        name,
+        status,
+        created_at,
+        updated_at,
+        conversation_id,
+        created_ticket_id,
+        plan_summary,
+        pm_enabled,
+        pm_config,
+        color,
+        icon
+      FROM brainstorms;
+    `);
+
+    db.exec(`
+      DROP TABLE brainstorms;
+      ALTER TABLE brainstorms_v30 RENAME TO brainstorms;
+      CREATE INDEX IF NOT EXISTS idx_brainstorms_project ON brainstorms(project_id);
+      CREATE INDEX IF NOT EXISTS idx_brainstorms_status ON brainstorms(project_id, status);
+      CREATE INDEX IF NOT EXISTS idx_brainstorms_workflow ON brainstorms(project_id, workflow_id);
+    `);
+
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    if (foreignKeysEnabled === 1) {
+      db.pragma("foreign_keys = ON");
+    }
+  }
+}
+
+/**
+ * V30: Normalize brainstorm ownership to be workflow-scoped.
+ * - Backfill brainstorm.workflow_id from unanimously-linked ticket workflows
+ * - Detach tickets that point to cross-workflow or workflow-less brainstorms
+ * - Delete brainstorms whose workflow ownership cannot be resolved
+ * - Rebuild brainstorms table with workflow_id NOT NULL and ON DELETE RESTRICT
+ */
+function migrateV30(db: Database.Database): void {
+  const brainstormCols = new Set(
+    (db.prepare("PRAGMA table_info(brainstorms)").all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  );
+
+  if (!brainstormCols.has("workflow_id")) {
+    throw new Error("V30 requires brainstorms.workflow_id to exist before normalization");
+  }
+
+  db.exec(`
+    UPDATE brainstorms
+    SET workflow_id = (
+      SELECT MIN(t.workflow_id)
+      FROM tickets t
+      WHERE t.brainstorm_id = brainstorms.id
+    )
+    WHERE workflow_id IS NULL
+      AND (
+        SELECT COUNT(DISTINCT t.workflow_id)
+        FROM tickets t
+        WHERE t.brainstorm_id = brainstorms.id
+      ) = 1;
+  `);
+
+  db.exec(`
+    UPDATE tickets
+    SET brainstorm_id = NULL
+    WHERE brainstorm_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM brainstorms b
+        WHERE b.id = tickets.brainstorm_id
+          AND (
+            b.workflow_id IS NULL
+            OR b.project_id != tickets.project_id
+            OR b.workflow_id != tickets.workflow_id
+            OR NOT EXISTS (
+              SELECT 1
+              FROM project_workflows pw
+              WHERE pw.id = b.workflow_id
+                AND pw.project_id = b.project_id
+            )
+          )
+      );
+  `);
+
+  db.exec(`
+    DELETE FROM brainstorms
+    WHERE workflow_id IS NULL
+       OR NOT EXISTS (
+         SELECT 1
+         FROM project_workflows pw
+         WHERE pw.id = brainstorms.workflow_id
+           AND pw.project_id = brainstorms.project_id
+       );
+  `);
+
+  const workflowCol = (
+    db.prepare("PRAGMA table_info(brainstorms)").all() as Array<{
+      name: string;
+      notnull: number;
+    }>
+  ).find((column) => column.name === "workflow_id");
+  const workflowFk = (
+    db.prepare("PRAGMA foreign_key_list(brainstorms)").all() as Array<{
+      from: string;
+      on_delete: string;
+      table: string;
+    }>
+  ).find((fk) => fk.from === "workflow_id" && fk.table === "project_workflows");
+
+  const needsRebuild =
+    workflowCol?.notnull !== 1 ||
+    workflowFk?.on_delete?.toUpperCase() !== "RESTRICT";
+
+  if (needsRebuild) {
+    rebuildBrainstormsWithWorkflowOwnership(db);
+  } else {
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_brainstorms_workflow ON brainstorms(project_id, workflow_id)"
+    );
   }
 }
 

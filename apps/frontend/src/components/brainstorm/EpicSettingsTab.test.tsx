@@ -57,7 +57,7 @@ function makeBrainstorm(overrides: Partial<Brainstorm> = {}): Brainstorm {
     updatedAt: '2026-01-01T00:00:00.000Z',
     color: '#3b82f6',
     icon: 'rocket',
-    workflowId: null,
+    workflowId: 'wf-1',
     ...overrides,
   }
 }
@@ -212,7 +212,7 @@ describe('EpicSettingsTab', () => {
     })
   })
 
-  it('hydrates PM config from saved board settings for the epic workflow', async () => {
+  it('preserves the epic PM override over board defaults', async () => {
     mockGetBoardSettings.mockResolvedValue({
       pmConfig: {
         ...DEFAULT_PM_CONFIG,
@@ -236,7 +236,7 @@ describe('EpicSettingsTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('executing')
+      expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('passive')
     })
   })
 
@@ -276,12 +276,22 @@ describe('EpicSettingsTab', () => {
     })
   })
 
-  it('does not render PM Mode section when brainstorm has no workflowId', () => {
-    const brainstorm = makeBrainstorm({ workflowId: null })
+  it('loads board defaults for normalized epics before applying local overrides', async () => {
+    const brainstorm = makeBrainstorm({
+      workflowId: 'wf-99',
+      pmConfig: {
+        ...DEFAULT_PM_CONFIG,
+        mode: 'watching',
+      },
+    })
     const onUpdated = vi.fn()
     render(<EpicSettingsTab projectId="proj-1" brainstorm={brainstorm} onBrainstormUpdated={onUpdated} />)
 
-    expect(screen.queryByTestId('settings-section-pm-mode')).toBeNull()
-    expect(screen.queryByTestId('pm-mode-selector')).toBeNull()
+    await waitFor(() => {
+      expect(mockGetBoardSettings).toHaveBeenCalledWith('proj-1', 'wf-99')
+    })
+
+    expect(screen.getByTestId('settings-section-pm-mode')).toBeTruthy()
+    expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('watching')
   })
 })

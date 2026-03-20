@@ -79,9 +79,9 @@ import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt, buildPmPrompt } from "./prompts.js";
 import { shouldUsePmSkill } from "../pm/pm-transition.js";
-import { getBoardPmConfig } from "../../stores/board-settings.store.js";
 import { PtyTextExtractor } from "./pty-text-extractor.js";
 import { getPtyCaptureDedup, clearPtyCaptureDedup } from "./pty-capture-dedup.js";
+import { resolveEffectivePmConfig } from "../pm/pm-config.js";
 import { buildResumePrompt } from "./resume-prompt.js";
 import { tryLoadAgentDefinition } from "./agent-loader.js";
 import { resolveConcreteModelForWorker } from "./model-tier-resolver.js";
@@ -1637,8 +1637,8 @@ export class SessionService {
     const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
 
     // Resolve PM mode from board config so the PM agent knows how autonomous to be
-    const pmMode = usePm && brainstorm.workflowId
-      ? getBoardPmConfig(brainstorm.workflowId).mode
+    const pmMode = usePm
+      ? resolveEffectivePmConfig(brainstorm)?.mode
       : undefined;
 
     // The effective user message: unsolicited Telegram/Slack message takes priority,

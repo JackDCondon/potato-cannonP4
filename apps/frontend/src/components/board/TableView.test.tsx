@@ -87,7 +87,7 @@ describe('TableView - Pending Badge', () => {
   })
 
   it('should show amber ? badge for pending tickets', () => {
-    render(<TableView projectId="proj-1" />)
+    render(<TableView projectId="proj-1" workflowId="wf-1" />)
 
     const badges = screen.getAllByLabelText('Waiting for human input')
     expect(badges.length).toBe(1)
@@ -96,7 +96,7 @@ describe('TableView - Pending Badge', () => {
 
   it('should not show amber ? badge for non-pending tickets', () => {
     // POT-2 is not pending per our mock
-    render(<TableView projectId="proj-1" />)
+    render(<TableView projectId="proj-1" workflowId="wf-1" />)
 
     // Only one badge should exist (for POT-1)
     const badges = screen.getAllByLabelText('Waiting for human input')

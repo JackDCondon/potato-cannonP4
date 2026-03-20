@@ -15,7 +15,7 @@ export type { Brainstorm };
 
 export interface CreateBrainstormInput {
   name?: string;
-  workflowId?: string;
+  workflowId: string;
 }
 
 export interface UpdateBrainstormInput {
@@ -24,6 +24,7 @@ export interface UpdateBrainstormInput {
   createdTicketId?: string;
   planSummary?: string;
   pmEnabled?: boolean;
+  pmConfig?: PmConfig | null;
   color?: string | null;
   icon?: string | null;
 }
@@ -41,7 +42,7 @@ interface BrainstormRow {
   updated_at: string;
   conversation_id: string | null;
   created_ticket_id: string | null;
-  workflow_id: string | null;
+  workflow_id: string;
   plan_summary: string | null;
   pm_enabled: number;
   pm_config: string | null;
@@ -116,8 +117,20 @@ export class BrainstormStore {
 
   createBrainstorm(
     projectId: string,
-    input: CreateBrainstormInput = {}
+    input: CreateBrainstormInput
   ): Brainstorm {
+    const ownedWorkflow = this.db
+      .prepare(
+        "SELECT id FROM project_workflows WHERE id = ? AND project_id = ? LIMIT 1"
+      )
+      .get(input.workflowId, projectId) as { id: string } | undefined;
+
+    if (!ownedWorkflow) {
+      throw new Error(
+        `Workflow ${input.workflowId} does not belong to project ${projectId}`
+      );
+    }
+
     const id = generateBrainstormId();
     const now = new Date().toISOString();
     const name = input.name || generateBrainstormName();
@@ -130,7 +143,7 @@ export class BrainstormStore {
         `INSERT INTO brainstorms (id, project_id, name, status, created_at, updated_at, conversation_id, workflow_id)
          VALUES (?, ?, ?, 'active', ?, ?, ?, ?)`
       )
-      .run(id, projectId, name, now, now, conversation.id, input.workflowId ?? null);
+      .run(id, projectId, name, now, now, conversation.id, ownedWorkflow.id);
 
     return this.getBrainstorm(id)!;
   }
@@ -154,12 +167,14 @@ export class BrainstormStore {
     return row ? rowToBrainstorm(row) : null;
   }
 
-  listBrainstorms(projectId: string): Brainstorm[] {
+  listBrainstorms(projectId: string, workflowId: string): Brainstorm[] {
     const rows = this.db
       .prepare(
-        "SELECT * FROM brainstorms WHERE project_id = ? ORDER BY updated_at DESC"
+        `SELECT * FROM brainstorms
+         WHERE project_id = ? AND workflow_id = ?
+         ORDER BY updated_at DESC`
       )
-      .all(projectId) as BrainstormRow[];
+      .all(projectId, workflowId) as BrainstormRow[];
 
     return rows.map(rowToBrainstorm);
   }
@@ -198,6 +213,11 @@ export class BrainstormStore {
     if (updates.pmEnabled !== undefined) {
       fields.push("pm_enabled = ?");
       values.push(updates.pmEnabled ? 1 : 0);
+    }
+
+    if (updates.pmConfig !== undefined) {
+      fields.push("pm_config = ?");
+      values.push(updates.pmConfig ? JSON.stringify(updates.pmConfig) : null);
     }
 
     if (updates.color !== undefined) {
@@ -285,8 +305,11 @@ export function createBrainstormStore(db: Database.Database): BrainstormStore {
 }
 
 // Singleton convenience functions (async for API compatibility)
-export async function listBrainstorms(projectId: string): Promise<Brainstorm[]> {
-  return new BrainstormStore(getDatabase()).listBrainstorms(projectId);
+export async function listBrainstorms(
+  projectId: string,
+  workflowId: string
+): Promise<Brainstorm[]> {
+  return new BrainstormStore(getDatabase()).listBrainstorms(projectId, workflowId);
 }
 
 export async function getBrainstorm(
@@ -303,7 +326,7 @@ export async function getBrainstorm(
 
 export async function createBrainstorm(
   projectId: string,
-  options: CreateBrainstormInput = {}
+  options: CreateBrainstormInput
 ): Promise<Brainstorm> {
   return new BrainstormStore(getDatabase()).createBrainstorm(projectId, options);
 }

@@ -74,7 +74,7 @@ interface AppState {
   brainstormSheetBrainstormName: string | null
   brainstormSheetIsCreating: boolean
   openBrainstormSheet: (projectId: string, brainstormId: string, brainstormName: string) => void
-  openNewBrainstormSheet: (projectId: string, workflowId?: string) => void
+  openNewBrainstormSheet: (projectId: string, workflowId: string) => void
   closeBrainstormSheet: () => void
 
   addProjectModalOpen: boolean
@@ -251,7 +251,7 @@ export const useAppStore = create<AppState>()(
       openNewBrainstormSheet: (projectId, workflowId) => set({
         brainstormSheetOpen: true,
         brainstormSheetProjectId: projectId,
-        brainstormSheetWorkflowId: workflowId ?? null,
+        brainstormSheetWorkflowId: workflowId,
         brainstormSheetBrainstormId: null,
         brainstormSheetBrainstormName: null,
         brainstormSheetIsCreating: true,

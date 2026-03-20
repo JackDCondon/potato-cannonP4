@@ -20,6 +20,7 @@ function makeBrainstorm(overrides: Partial<Brainstorm> = {}): Brainstorm {
     status: 'epic',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    workflowId: 'wf-1',
     ticketCount: 5,
     activeTicketCount: 2,
     color: '#3b82f6',
