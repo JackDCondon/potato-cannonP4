@@ -79,6 +79,7 @@ import { createVCSProvider } from "./vcs/factory.js";
 import type { McpServerConfig } from "./vcs/types.js";
 import { buildBrainstormPrompt, buildAgentPrompt, buildPmPrompt } from "./prompts.js";
 import { shouldUsePmSkill } from "../pm/pm-transition.js";
+import { getBoardPmConfig } from "../../stores/board-settings.store.js";
 import { PtyTextExtractor } from "./pty-text-extractor.js";
 import { getPtyCaptureDedup, clearPtyCaptureDedup } from "./pty-capture-dedup.js";
 import { buildResumePrompt } from "./resume-prompt.js";
@@ -1542,6 +1543,7 @@ export class SessionService {
 
     // Check for pending response from previous session
     let pendingContext: { question: string; response: string } | undefined;
+    let unsolicitedUserMessage: string | undefined;
     const pendingResponse = await readResponse(projectId, brainstormId);
     const pendingQuestion = await readQuestion(projectId, brainstormId);
 
@@ -1556,6 +1558,14 @@ export class SessionService {
       // Clear the files so the new session doesn't also pick them up via waitForResponse
       await clearResponse(projectId, brainstormId);
       await clearQuestion(projectId, brainstormId);
+    } else if (pendingResponse && !pendingQuestion) {
+      // User sent an unsolicited message (no pending question from PM).
+      // Deliver it directly as the session's initial message so the PM can respond.
+      console.log(
+        `[spawnForBrainstorm] Found unsolicited user message — injecting as initial context`,
+      );
+      unsolicitedUserMessage = pendingResponse.answer;
+      await clearResponse(projectId, brainstormId);
     }
 
     // Determine whether this brainstorm should use the PM skill
@@ -1564,12 +1574,21 @@ export class SessionService {
     // Load agent from template — PM skill takes priority when transition has occurred
     const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
 
+    // Resolve PM mode from board config so the PM agent knows how autonomous to be
+    const pmMode = usePm && brainstorm.workflowId
+      ? getBoardPmConfig(brainstorm.workflowId).mode
+      : undefined;
+
+    // The effective user message: unsolicited Telegram/Slack message takes priority,
+    // then the explicit initialMessage (e.g. pm-poller alert), then defaults.
+    const effectiveUserMessage = unsolicitedUserMessage ?? initialMessage;
+
     // Only build full prompt for first session; resumed sessions use --resume
     const prompt = existingClaudeSessionId
-      ? pendingContext?.response || (usePm ? "Continue as Project Manager." : "Continue the brainstorm.")
+      ? pendingContext?.response || effectiveUserMessage || (usePm ? "Continue as Project Manager." : "Continue the brainstorm.")
       : usePm
-        ? await buildPmPrompt(projectId, brainstormId, brainstorm, { pendingContext })
-        : buildBrainstormPrompt(projectId, brainstormId, brainstorm, { pendingContext, initialMessage });
+        ? await buildPmPrompt(projectId, brainstormId, brainstorm, { pendingContext, userMessage: unsolicitedUserMessage, pmMode })
+        : buildBrainstormPrompt(projectId, brainstormId, brainstorm, { pendingContext, initialMessage: effectiveUserMessage });
 
     const meta: SessionMeta = {
       projectId,
@@ -1638,7 +1657,14 @@ export class SessionService {
       JSON.stringify(mcpConfig),
     ];
 
-    const disallowed = ["Skill(superpowers:*)", "AskUserQuestion"];
+    const disallowed = [
+      "Skill(superpowers:*)",
+      "AskUserQuestion",
+      // PM/brainstorm agents must not call ralph_loop_dock — it's for reviewer agents
+      // inside ticket ralph loops only. Calling it from a brainstorm context is a no-op
+      // but signals the model is confused about which tools to use.
+      ...(usePm ? ["mcp__potato-cannon__ralph_loop_dock"] : []),
+    ];
     if (disallowed.length > 0) {
       args.push("--disallowedTools", disallowed.join(","));
     }

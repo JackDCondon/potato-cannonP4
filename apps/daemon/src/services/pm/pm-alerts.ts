@@ -106,9 +106,12 @@ export function detectAlerts(
       const placeholders = ticketIds.map(() => "?").join(",");
       const rows = db
         .prepare(
-          `SELECT ticket_id, phase_id, ralph_loop_id
-           FROM ralph_feedback
-           WHERE ticket_id IN (${placeholders}) AND status = 'max_attempts'`,
+          `SELECT rf.ticket_id, rf.phase_id, rf.ralph_loop_id
+           FROM ralph_feedback rf
+           JOIN tickets t ON t.id = rf.ticket_id
+           WHERE rf.ticket_id IN (${placeholders})
+             AND rf.status = 'max_attempts'
+             AND t.phase NOT IN ('Done', 'Blocked', 'Ideas')`,
         )
         .all(...ticketIds) as Array<{
         ticket_id: string;

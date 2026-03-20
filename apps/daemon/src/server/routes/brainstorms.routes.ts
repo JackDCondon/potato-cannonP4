@@ -211,20 +211,31 @@ export function registerBrainstormRoutes(
         );
       }
 
-      // Save user message to conversation store (askAsync doesn't wait, so we save here)
+      // Save user message to conversation store if reconcileWebAnswer didn't already handle it.
+      // reconcileWebAnswer answers the pending question AND saves the user message when an IPC
+      // question with a matching questionId exists. Only fall back to saving here when there
+      // is no IPC question (e.g. initial message) or the conversation question is still pending.
       const brainstorm = await getBrainstorm(projectId, brainstormId);
       if (brainstorm?.conversationId) {
-        // Mark pending question as answered
         const pendingQuestion = getPendingQuestion(brainstorm.conversationId);
         if (pendingQuestion) {
+          // reconcileWebAnswer didn't run (no IPC question) or didn't find a matching question.
+          // Answer and save the user message here.
           answerQuestion(pendingQuestion.id);
+          addMessage(brainstorm.conversationId, {
+            type: 'user',
+            text: message,
+          });
+        } else if (!pendingIpcQuestion?.questionId) {
+          // No IPC question existed so reconcileWebAnswer was never called.
+          // Save the user message directly (handles initial/free-form message scenarios).
+          addMessage(brainstorm.conversationId, {
+            type: 'user',
+            text: message,
+          });
         }
-
-        // Save user's response
-        addMessage(brainstorm.conversationId, {
-          type: 'user',
-          text: message,
-        });
+        // If pendingQuestion is null AND pendingIpcQuestion existed, reconcileWebAnswer already
+        // answered the conversation question and saved the user message — nothing more to do.
 
         // Note: No SSE emit here - frontend already shows message optimistically
         // SSE is only needed for cross-client updates (e.g., Telegram via handleResponse)

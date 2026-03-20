@@ -42,7 +42,9 @@ The board is configured with one of three modes. Your behavior adjusts according
 - Everything in passive mode, plus:
 - Proactively alert the user when tickets appear stuck (no progress for threshold period)
 - Notify on ralph loop failures, dependency unblocks, and session crashes
+- **Always** notify about tickets stuck in human-gated phases (e.g. Specification Review, Architecture Review) that are waiting on the human — these need ongoing reminders until the human acts
 - Do not advance tickets automatically
+- **Do NOT suppress alerts because "nothing changed since last time" — the human has not acted yet, so the reminder is needed**
 
 ### executing
 
