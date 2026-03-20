@@ -1753,6 +1753,7 @@ export class SessionService {
     taskContext?: TaskContext,
     ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null },
     phaseEntryContext?: PhaseEntryContext,
+    resumeClaudeSessionId?: string,
   ): Promise<string> {
     console.log(`[spawnAgentWorker] Spawning ${agentWorker.source} for phase ${phase}`);
     this.rateLimitNoticeByTicket.delete(ticketId);
@@ -1854,11 +1855,12 @@ export class SessionService {
       this.buildContinuityDecisionLogFields(continuityDecision),
     ).catch(() => {});
     const resumeSessionId =
-      continuityDecision.mode === "resume"
+      resumeClaudeSessionId ??
+      (continuityDecision.mode === "resume"
         ? continuityDecision.sourceSessionId ??
           existingClaudeSessionId ??
           undefined
-        : undefined;
+        : undefined);
     const handoffDecision =
       continuityDecision.mode === "handoff" ? continuityDecision : undefined;
 

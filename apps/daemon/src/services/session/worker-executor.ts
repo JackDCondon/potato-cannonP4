@@ -72,6 +72,7 @@ export interface ExecutorCallbacks {
     taskContext?: TaskContext,
     ralphContext?: { phaseId: string; ralphLoopId: string; taskId: string | null },
     phaseEntryContext?: PhaseEntryContext,
+    resumeClaudeSessionId?: string,
   ) => Promise<string>;
   onPhaseComplete: (
     projectId: string,
@@ -172,6 +173,25 @@ function findTaskLoopInState(workerState: WorkerState | null): TaskLoopState | n
   if (workerState.type === "ralphLoop") {
     const ralphState = workerState as RalphLoopState;
     return findTaskLoopInState(ralphState.activeWorker);
+  }
+
+  return null;
+}
+
+/**
+ * Find ralph loop state by walking down the state tree.
+ * Used to get the parent ralph state when spawning an agent inside a ralph loop.
+ */
+function findRalphLoopInState(workerState: WorkerState | null): RalphLoopState | null {
+  if (!workerState) return null;
+
+  if (workerState.type === "ralphLoop") {
+    return workerState as RalphLoopState;
+  }
+
+  if (workerState.type === "taskLoop") {
+    const taskState = workerState as TaskLoopState;
+    return findRalphLoopInState(taskState.activeWorker);
   }
 
   return null;
@@ -451,6 +471,16 @@ async function executeNextWorker(
         }
       : undefined;
 
+    // When spawning a doer agent on a ralph loop retry (iteration 2+), pass the stored
+    // Claude session ID so the session can be resumed instead of starting fresh.
+    const parentRalphState = findRalphLoopInState(state.activeWorker);
+    const resumeClaudeSessionId =
+      parentRalphState?.lastDoerClaudeSessionId &&
+      worker.resumeOnRalphRetry &&
+      parentRalphState.iteration > 1
+        ? parentRalphState.lastDoerClaudeSessionId
+        : undefined;
+
     return callbacks.spawnAgent(
       projectId,
       ticketId,
@@ -460,6 +490,7 @@ async function executeNextWorker(
       taskContext,
       ralphContext,
       phaseEntryContext,
+      resumeClaudeSessionId,
     );
   }
 
