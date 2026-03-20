@@ -688,6 +688,7 @@ export async function main(): Promise<void> {
   console.log(`Loaded ${projects.size} registered project(s)`);
 
   sessionService = new SessionService(eventBus as EventEmitter);
+  sessionService.initRetryScheduler();
   const handleTicketThreadCommand = createTicketThreadCommandHandler({
     getTicket,
     isTerminalPhase: (phase) => isTerminalPhase(phase as any),

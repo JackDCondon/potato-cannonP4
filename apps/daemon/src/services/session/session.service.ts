@@ -93,6 +93,8 @@ import { formatTaskContext } from "./loops/task-loop.js";
 import { getPendingVerdict } from "../../server/routes/ralph.routes.js";
 import { createSpawnPendingWorkerState } from "./worker-state.js";
 import { consumeSpawnPendingContinuitySnapshot } from "./worker-state.js";
+import { matchRetryableError } from "./retryable-errors.js";
+import { createRetryScheduler, type RetryScheduler } from "./retry-scheduler.js";
 import {
   decideContinuityMode,
   type ResumeEligibilityInput,
@@ -368,6 +370,8 @@ export function formatBlockedReasonWithRateLimit(
   return normalized;
 }
 
+let retryScheduler: RetryScheduler | null = null;
+
 export class SessionService {
   private sessions: Map<string, ActiveSession> = new Map();
   private remoteControlState: Map<string, RemoteControlState> = new Map();
@@ -377,6 +381,15 @@ export class SessionService {
 
   constructor(eventEmitter: EventEmitter) {
     this.eventEmitter = eventEmitter;
+  }
+
+  initRetryScheduler(): void {
+    retryScheduler = createRetryScheduler(
+      async (projectId: string, ticketId: string) => {
+        console.log(`[RetryScheduler] Auto-resuming ticket ${ticketId}`);
+        await this.resumePausedTicket(projectId, ticketId);
+      },
+    );
   }
 
   private buildContinuityCompatibilityKey(input: {
@@ -2171,6 +2184,131 @@ export class SessionService {
   }
 
   /**
+   * Handle a paused ticket due to retryable error (rate limit, credits exhausted, etc).
+   * Schedule auto-retry if retryAt is available, or require manual resume otherwise.
+   */
+  private async handleTicketPaused(
+    projectId: string,
+    ticketId: string,
+    reason: string,
+    retryAt: string | null,
+    currentRetryCount: number,
+  ): Promise<void> {
+    console.log(
+      `[handleTicketPaused] Pausing ticket ${ticketId} (retry ${currentRetryCount + 1}/3)${retryAt ? `, retryAt: ${retryAt}` : ", manual resume required"}`,
+    );
+
+    const ticket = await updateTicket(projectId, ticketId, {
+      paused: true,
+      pauseReason: reason,
+      pauseRetryAt: retryAt,
+      pauseRetryCount: currentRetryCount + 1,
+    });
+
+    await logToDaemon(projectId, ticketId, `Ticket paused: ${reason}`);
+
+    // Write warning to conversation so it appears in Activity feed
+    try {
+      const pausedTicket = getTicket(projectId, ticketId);
+      if (pausedTicket?.conversationId) {
+        addMessage(pausedTicket.conversationId, {
+          type: "notification",
+          text: `⏸ Paused: ${reason}`,
+        });
+        eventBus.emit("ticket:message", {
+          projectId,
+          ticketId,
+          message: { type: "notification", text: `⏸ Paused: ${reason}` },
+        });
+      }
+    } catch (err) {
+      console.error(
+        `[handleTicketPaused] Failed to write pause message: ${(err as Error).message}`,
+      );
+    }
+
+    // Emit SSE events
+    eventBus.emit("ticket:updated", { projectId, ticket });
+    eventBus.emit("ticket:paused", {
+      projectId,
+      ticketId,
+      reason,
+      retryAt,
+    });
+
+    // Schedule auto-retry if we have a retry time
+    if (retryAt && retryScheduler) {
+      retryScheduler.schedule(projectId, ticketId, retryAt);
+    } else {
+      console.log(
+        `[handleTicketPaused] No retry time parsed for ${ticketId}, manual resume required`,
+      );
+    }
+  }
+
+  /**
+   * Resume a paused ticket by re-starting the current phase.
+   * Called automatically by the retry scheduler when retryAt arrives,
+   * or manually by user action.
+   */
+  private async resumePausedTicket(
+    projectId: string,
+    ticketId: string,
+  ): Promise<void> {
+    console.log(`[resumePausedTicket] Resuming ticket ${ticketId}`);
+
+    const ticket = getTicket(projectId, ticketId);
+    if (!ticket) {
+      throw new Error(`Ticket ${ticketId} not found`);
+    }
+
+    const project = getProjectById(projectId);
+    if (!project) {
+      throw new Error(`Project ${projectId} not found`);
+    }
+
+    // Clear pause state
+    await updateTicket(projectId, ticketId, {
+      paused: false,
+      pauseReason: null,
+      pauseRetryAt: null,
+    });
+
+    // Write resume message to conversation
+    try {
+      if (ticket.conversationId) {
+        addMessage(ticket.conversationId, {
+          type: "notification",
+          text: "▶ Resumed: Retrying after pausing...",
+        });
+        eventBus.emit("ticket:message", {
+          projectId,
+          ticketId,
+          message: { type: "notification", text: "▶ Resumed: Retrying after pausing..." },
+        });
+      }
+    } catch (err) {
+      console.error(
+        `[resumePausedTicket] Failed to write resume message: ${(err as Error).message}`,
+      );
+    }
+
+    await logToDaemon(projectId, ticketId, `Ticket resumed after pause`);
+
+    // Emit SSE event
+    eventBus.emit("ticket:updated", { projectId, ticket });
+    eventBus.emit("ticket:paused", {
+      projectId,
+      ticketId,
+      reason: null,
+      retryAt: null,
+    });
+
+    // Restart the current phase
+    await startPhase(projectId, ticketId, ticket.phase, project.path, this.getExecutorCallbacks());
+  }
+
+  /**
    * Handle ticket blocked - move to Blocked phase
    */
   private async handleTicketBlocked(
@@ -2182,10 +2320,24 @@ export class SessionService {
     reason = formatBlockedReasonWithRateLimit(reason, detectedRateLimit);
     this.rateLimitNoticeByTicket.delete(ticketId);
 
+    // Check for retryable errors before blocking
+    const match = matchRetryableError(reason);
+    const currentTicket = getTicket(projectId, ticketId);
+    const retryCount = currentTicket?.pauseRetryCount ?? 0;
+
+    if (match.retryable && retryCount < 3) {
+      return this.handleTicketPaused(
+        projectId,
+        ticketId,
+        reason,
+        match.retryAt,
+        retryCount,
+      );
+    }
+
     console.log(`[handleTicketBlocked] Blocking ticket ${ticketId}: ${reason}`);
 
     // Get current phase before updating
-    const currentTicket = getTicket(projectId, ticketId);
     const previousPhase = currentTicket.phase;
 
     const ticket = await updateTicket(projectId, ticketId, { phase: "Blocked" });
