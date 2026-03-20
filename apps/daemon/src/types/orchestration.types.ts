@@ -27,6 +27,7 @@ export interface RalphLoopState extends BaseWorkerState {
   type: "ralphLoop";
   iteration: number;
   maxAttempts?: number;
+  iterationRejected?: boolean;
   workerIndex: number;
   activeWorker: WorkerState | null;
   lastDoerClaudeSessionId?: string;

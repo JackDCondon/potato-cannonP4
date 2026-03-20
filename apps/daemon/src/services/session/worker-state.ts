@@ -153,6 +153,7 @@ export function createRalphLoopState(workerId: string, maxAttempts?: number): Ra
     type: "ralphLoop",
     iteration: 1,
     maxAttempts,
+    iterationRejected: false,
     workerIndex: 0,
     activeWorker: null,
   };

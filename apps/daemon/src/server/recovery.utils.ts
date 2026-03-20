@@ -45,6 +45,38 @@ export function isStalePendingTicketInput(
   );
 }
 
+export function decidePendingTicketRecovery(args: {
+  hasPendingQuestion: boolean;
+  hasValidResumeIdentity: boolean;
+  isStaleLifecycleInput: boolean;
+}): {
+  action: "drop" | "resume" | "spawn";
+  clearPendingInteraction: boolean;
+  reason: string;
+} {
+  if (args.isStaleLifecycleInput) {
+    return {
+      action: "drop",
+      clearPendingInteraction: true,
+      reason: "stale_lifecycle_input",
+    };
+  }
+
+  if (args.hasPendingQuestion && args.hasValidResumeIdentity) {
+    return {
+      action: "resume",
+      clearPendingInteraction: false,
+      reason: "resume_pending_question",
+    };
+  }
+
+  return {
+    action: "spawn",
+    clearPendingInteraction: true,
+    reason: "blocking_question_fallback",
+  };
+}
+
 export function buildContinuityDecisionLogFields(args: {
   mode: "resume" | "handoff" | "fresh";
   reason: string;

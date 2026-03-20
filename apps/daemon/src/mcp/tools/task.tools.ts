@@ -6,8 +6,10 @@ import type {
   McpContext,
   McpToolResult,
 } from "../../types/mcp.types.js";
-import type { Task } from "../../types/task.types.js";
+import type { Task, TaskStatus } from "../../types/task.types.js";
 import type { BodyFrom } from "@potato-cannon/shared";
+import { getWorkerState } from "../../services/session/worker-state.js";
+import { evaluateTaskStatusUpdatePermission } from "../../services/session/task-state-reconciliation.js";
 
 /**
  * Extract a section from content using literal string markers.
@@ -460,6 +462,24 @@ export const taskHandlers: Record<
         `Invalid status: "${args.status}". Must be one of: ${VALID_TASK_STATUSES.join(", ")}`,
       );
     }
+    const targetTask = await getTask(ctx, ticketId, args.taskId) as Task;
+    const orchestrationState = getWorkerState(ctx.projectId, ticketId);
+    const phaseTasks = (await listTasksForTicket(ctx, ticketId)).filter(
+      (task) => task.phase === targetTask.phase,
+    );
+    const permission = evaluateTaskStatusUpdatePermission({
+      agentSource: ctx.agentSource,
+      taskId: targetTask.id,
+      nextStatus: args.status as TaskStatus,
+      orchestrationState:
+        orchestrationState && orchestrationState.kind === "active"
+          ? orchestrationState
+          : null,
+      phaseTasks,
+    });
+    if (!permission.allowed) {
+      throw new Error(permission.reason ?? "Task status update denied");
+    }
     // Session-active write guard
     if (!args.force) {
       const activeSession = await getActiveSession(ctx, ticketId);
@@ -475,7 +495,7 @@ export const taskHandlers: Record<
         };
       }
     }
-    const task = await updateTaskStatus(ctx, ticketId, args.taskId, args.status);
+    const task = await updateTaskStatus(ctx, ticketId, targetTask.id, args.status);
     return {
       content: [{ type: "text", text: JSON.stringify(task, null, 2) }],
     };

@@ -16,6 +16,7 @@ export interface McpContext {
   brainstormId?: string;    // optional — absent in headless/external mode
   workflowId?: string;      // optional — absent in headless/external mode
   agentModel?: string;
+  agentSource?: string;
   daemonUrl: string;
 }
 

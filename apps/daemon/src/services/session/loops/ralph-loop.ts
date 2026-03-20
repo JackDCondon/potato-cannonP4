@@ -65,6 +65,7 @@ export function handleAgentCompletion(
   verdict: { approved: boolean; feedback?: string }
 ): { nextState: RalphLoopState; result: RalphLoopResult } {
   const currentWorkerIndex = getCurrentWorkerIndex(worker, state);
+  const iterationRejected = Boolean(state.iterationRejected) || !verdict.approved;
 
   // Agent failed
   if (exitCode !== 0) {
@@ -79,6 +80,7 @@ export function handleAgentCompletion(
       nextState: {
         ...state,
         iteration: state.iteration + 1,
+        iterationRejected: false,
         workerIndex: 0,
         activeWorker: null,
       },
@@ -95,6 +97,7 @@ export function handleAgentCompletion(
     return {
       nextState: {
         ...state,
+        iterationRejected,
         workerIndex: nextWorkerIndex,
         activeWorker: null,
       },
@@ -103,7 +106,7 @@ export function handleAgentCompletion(
   }
 
   // All workers completed for this iteration - check verdict
-  if (verdict.approved) {
+  if (!iterationRejected) {
     return {
       nextState: state,
       result: { status: "approved" },
@@ -123,6 +126,7 @@ export function handleAgentCompletion(
     nextState: {
       ...state,
       iteration: state.iteration + 1,
+      iterationRejected: false,
       workerIndex: 0,
       activeWorker: null,
     },

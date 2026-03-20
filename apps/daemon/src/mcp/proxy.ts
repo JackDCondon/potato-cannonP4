@@ -35,6 +35,35 @@ export function buildToolsUrl(daemonUrl: string, agentSource: string, projectId:
   return url.toString();
 }
 
+export function buildCallToolPayload(
+  tool: string,
+  args: Record<string, unknown>
+): {
+  tool: string;
+  args: Record<string, unknown>;
+  context: {
+    projectId: string;
+    ticketId?: string;
+    brainstormId?: string;
+    workflowId?: string;
+    agentModel?: string;
+    agentSource?: string;
+  };
+} {
+  return {
+    tool,
+    args,
+    context: {
+      projectId: PROJECT_ID,
+      ticketId: TICKET_ID || undefined,
+      brainstormId: BRAINSTORM_ID || undefined,
+      workflowId: WORKFLOW_ID || undefined,
+      agentModel: AGENT_MODEL || undefined,
+      agentSource: AGENT_SOURCE || undefined,
+    },
+  };
+}
+
 async function getDaemonUrl(): Promise<string> {
   const daemonFile = path.join(os.homedir(), '.potato-cannon', 'daemon.json');
   try {
@@ -65,17 +94,7 @@ async function callTool(
   const response = await fetch(`${daemonUrl}/mcp/call`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tool,
-      args,
-      context: {
-        projectId: PROJECT_ID,
-        ticketId: TICKET_ID || undefined,
-        brainstormId: BRAINSTORM_ID || undefined,
-        workflowId: WORKFLOW_ID || undefined,
-        agentModel: AGENT_MODEL || undefined,
-      },
-    }),
+    body: JSON.stringify(buildCallToolPayload(tool, args)),
   });
 
   return response.json();

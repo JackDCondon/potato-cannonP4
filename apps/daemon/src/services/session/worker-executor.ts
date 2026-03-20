@@ -33,6 +33,7 @@ import {
   prepareForRecovery,
   hasMatchingExecutionGeneration,
 } from "./worker-state.js";
+import { reconcileTaskLoopState } from "./task-state-reconciliation.js";
 import {
   initRalphLoop,
   handleAgentCompletion as handleRalphLoopAgentCompletion,
@@ -484,6 +485,17 @@ export async function startPhase(
   ) {
     // Recovery - prepare state
     state = prepareForRecovery(state);
+    const reconciliation = reconcileTaskLoopState(
+      state,
+      listTasks(ticketId, { phase }),
+    );
+    if (!reconciliation.ok) {
+      const reason =
+        `Task-loop state is inconsistent for phase ${phase}: ${reconciliation.issues.join("; ")}`;
+      await logToDaemon(projectId, ticketId, reason);
+      await callbacks.onTicketBlocked(projectId, ticketId, reason);
+      return null;
+    }
     await saveWorkerState(projectId, ticketId, state);
   } else {
     // Fresh start
@@ -984,9 +996,10 @@ async function processNestedCompletion(
       // Look up the feedback record to add iteration
       const feedback = getRalphFeedbackForLoop(ticketId, phase, worker.id, taskId || undefined);
       if (feedback && reviewerAgent) {
+        const aggregatedApproved = !(ralphState.iterationRejected || !verdict.approved);
         addRalphIteration(feedback.id, {
           iteration: ralphState.iteration,
-          approved: verdict.approved,
+          approved: aggregatedApproved,
           feedback: verdict.feedback,
           reviewer: reviewerAgent.id,
         });

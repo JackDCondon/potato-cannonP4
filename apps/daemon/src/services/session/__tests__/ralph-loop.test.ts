@@ -4,6 +4,7 @@ import type { RalphLoopState } from "../../../types/orchestration.types.js";
 import type { AgentWorker, RalphLoopWorker } from "../../../types/template.types.js";
 import {
   captureDoerSessionIdIfNeeded,
+  handleAgentCompletion,
   getCurrentWorkerIndex,
 } from "../loops/ralph-loop.js";
 
@@ -105,5 +106,93 @@ describe("getCurrentWorkerIndex", () => {
     };
 
     assert.equal(getCurrentWorkerIndex(worker, ralphState), 0);
+  });
+});
+
+describe("handleAgentCompletion", () => {
+  const multiReviewerLoop: RalphLoopWorker = {
+    id: "qa-loop",
+    type: "ralphLoop",
+    maxAttempts: 3,
+    workers: [
+      {
+        id: "verify-spec",
+        type: "agent",
+        source: "agents/verify-spec.md",
+      },
+      {
+        id: "verify-quality",
+        type: "agent",
+        source: "agents/verify-quality.md",
+      },
+    ],
+  };
+
+  it("restarts the iteration when an earlier reviewer rejected even if the final reviewer approved", () => {
+    const afterFirstReviewer = handleAgentCompletion(
+      multiReviewerLoop,
+      {
+        id: "qa-loop",
+        type: "ralphLoop",
+        iteration: 1,
+        workerIndex: 0,
+        activeWorker: null,
+      },
+      0,
+      { approved: false, feedback: "spec failed" },
+    );
+
+    assert.deepStrictEqual(afterFirstReviewer.result, {
+      status: "continue",
+      nextWorkerIndex: 1,
+    });
+    assert.equal(afterFirstReviewer.nextState.workerIndex, 1);
+    assert.equal(afterFirstReviewer.nextState.iterationRejected, true);
+
+    const afterFinalReviewer = handleAgentCompletion(
+      multiReviewerLoop,
+      afterFirstReviewer.nextState,
+      0,
+      { approved: true, feedback: "quality passed" },
+    );
+
+    assert.deepStrictEqual(afterFinalReviewer.result, {
+      status: "continue",
+      nextWorkerIndex: 0,
+      nextIteration: 2,
+    });
+    assert.equal(afterFinalReviewer.nextState.iteration, 2);
+    assert.equal(afterFinalReviewer.nextState.workerIndex, 0);
+    assert.equal(afterFinalReviewer.nextState.iterationRejected, false);
+  });
+
+  it("still approves a single-reviewer loop on approval", () => {
+    const singleReviewerLoop: RalphLoopWorker = {
+      id: "single-review",
+      type: "ralphLoop",
+      maxAttempts: 2,
+      workers: [
+        {
+          id: "reviewer",
+          type: "agent",
+          source: "agents/reviewer.md",
+        },
+      ],
+    };
+
+    const result = handleAgentCompletion(
+      singleReviewerLoop,
+      {
+        id: "single-review",
+        type: "ralphLoop",
+        iteration: 1,
+        workerIndex: 0,
+        activeWorker: null,
+      },
+      0,
+      { approved: true, feedback: "looks good" },
+    );
+
+    assert.deepStrictEqual(result.result, { status: "approved" });
   });
 });

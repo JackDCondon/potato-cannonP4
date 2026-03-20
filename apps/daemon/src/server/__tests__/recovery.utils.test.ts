@@ -3,6 +3,7 @@ import assert from "node:assert";
 
 import {
   buildContinuityDecisionLogFields,
+  decidePendingTicketRecovery,
   isStalePendingTicketInput,
   safeReadPendingResponse,
 } from "../recovery.utils.js";
@@ -86,6 +87,36 @@ describe("buildContinuityDecisionLogFields", () => {
       continuity_scope: "none",
       continuity_source_session_id: "claude_123",
       continuity_resume_rejected: "false",
+    });
+  });
+});
+
+describe("decidePendingTicketRecovery", () => {
+  it("drops stale lifecycle-aware startup input regardless of flags", () => {
+    const decision = decidePendingTicketRecovery({
+      hasPendingQuestion: true,
+      hasValidResumeIdentity: false,
+      isStaleLifecycleInput: true,
+    });
+
+    assert.deepStrictEqual(decision, {
+      action: "drop",
+      clearPendingInteraction: true,
+      reason: "stale_lifecycle_input",
+    });
+  });
+
+  it("consumes one-shot fallback responses before spawning a fresh session", () => {
+    const decision = decidePendingTicketRecovery({
+      hasPendingQuestion: false,
+      hasValidResumeIdentity: false,
+      isStaleLifecycleInput: false,
+    });
+
+    assert.deepStrictEqual(decision, {
+      action: "spawn",
+      clearPendingInteraction: true,
+      reason: "blocking_question_fallback",
     });
   });
 });

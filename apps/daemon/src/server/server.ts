@@ -38,6 +38,7 @@ import { registerSystemRoutes } from "./routes/system.routes.js";
 import { createTicketThreadCommandHandler } from "./chat-thread-commands.js";
 import {
   buildContinuityDecisionLogFields,
+  decidePendingTicketRecovery,
   isStalePendingTicketInput,
   safeReadPendingResponse,
 } from "./recovery.utils.js";
@@ -357,22 +358,11 @@ async function recoverPendingResponses(): Promise<void> {
           continue;
         }
 
-        const workerState = await getWorkerState(item.projectId, item.contextId);
         const currentGeneration = ticket.executionGeneration ?? 0;
         const providedGeneration = item.response.ticketGeneration;
         const providedQuestionId = item.response.questionId;
         const expectedQuestionId = item.question?.questionId;
         const expectedGeneration = item.question?.ticketGeneration;
-        const resumeQuestionId =
-          typeof providedQuestionId === "string"
-            ? providedQuestionId
-            : expectedQuestionId;
-        const resumeGeneration =
-          typeof providedGeneration === "number"
-            ? providedGeneration
-            : expectedGeneration;
-
-        // Precedence 1: stale reject
         const isStalePendingResponse = isStalePendingTicketInput({
           providedGeneration,
           providedQuestionId,
@@ -381,34 +371,24 @@ async function recoverPendingResponses(): Promise<void> {
           currentGeneration,
           hasPendingQuestion: Boolean(item.question),
         });
+        const recoveryDecision = decidePendingTicketRecovery({
+          hasPendingQuestion: Boolean(item.question),
+          hasValidResumeIdentity:
+            typeof providedQuestionId === "string" &&
+            typeof providedGeneration === "number",
+          isStaleLifecycleInput:
+            Boolean(item.question) && isStalePendingResponse,
+        });
 
-        if (isStalePendingResponse && lifecycleHardeningFlags.strictStaleResume409) {
+        if (recoveryDecision.action === "drop") {
           await clearPendingInteraction(item.projectId, item.contextId);
           console.log(
             `[recovery] Dropped stale ticket input for ${item.contextId} (current=${currentGeneration}, provided=${providedGeneration ?? "none"})`,
           );
           continue;
         }
-        if (isStalePendingResponse) {
-          console.log(
-            `[recovery] Strict stale-resume enforcement disabled; allowing legacy recovery for ${item.contextId}`,
-          );
-          if (
-            typeof providedQuestionId !== "string" ||
-            typeof providedGeneration !== "number"
-          ) {
-            console.log(
-              `[recovery] Legacy ticket input for ${item.contextId}; inferring resume identity from pending question metadata`,
-            );
-          }
-        }
 
-        // Precedence 2: valid suspended resume
-        if (
-          item.question &&
-          typeof resumeQuestionId === "string" &&
-          typeof resumeGeneration === "number"
-        ) {
+        if (recoveryDecision.action === "resume") {
           // Suspended session — resume with --resume flag
           try {
             const newSessionId = await sessionService.resumeSuspendedTicket(
@@ -416,8 +396,8 @@ async function recoverPendingResponses(): Promise<void> {
               item.contextId,
               item.response.answer,
               {
-                questionId: resumeQuestionId,
-                ticketGeneration: resumeGeneration,
+                questionId: providedQuestionId as string,
+                ticketGeneration: providedGeneration as number,
               },
             );
             console.log(
@@ -439,6 +419,7 @@ async function recoverPendingResponses(): Promise<void> {
           }
         } else {
           // Standard recovery — no pending question means it was a blocking ask
+          await clearPendingInteraction(item.projectId, item.contextId);
           const sessionId = await sessionService.spawnForTicket(
             item.projectId,
             item.contextId,
@@ -453,7 +434,7 @@ async function recoverPendingResponses(): Promise<void> {
             `[recovery] continuity`,
             buildContinuityDecisionLogFields({
               mode: "fresh",
-              reason: "default_fallback",
+              reason: recoveryDecision.reason,
             }),
           );
         }
