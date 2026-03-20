@@ -1022,6 +1022,40 @@ export function registerTicketRoutes(
   );
 
   // Restart ticket to a specific phase
+  // Resume a paused ticket
+  app.post(
+    "/api/tickets/:project/:id/resume",
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = decodeURIComponent(req.params.project);
+        const ticketId = req.params.id;
+
+        const ticket = getTicket(projectId, ticketId);
+        if (!ticket) {
+          res.status(404).json({ error: "Ticket not found" });
+          return;
+        }
+
+        if (!ticket.paused) {
+          res.status(400).json({ error: "Ticket is not paused" });
+          return;
+        }
+
+        await sessionService.resumePausedTicket(projectId, ticketId);
+
+        const updatedTicket = getTicket(projectId, ticketId);
+        res.json({ ticket: updatedTicket });
+      } catch (error) {
+        const message = (error as Error).message;
+        if (message.includes("not found")) {
+          res.status(404).json({ error: message });
+        } else {
+          res.status(500).json({ error: message });
+        }
+      }
+    },
+  );
+
   app.post(
     "/api/tickets/:project/:id/restart",
     async (req: Request, res: Response) => {

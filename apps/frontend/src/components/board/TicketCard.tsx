@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Archive, Image, Clock, MessageCircleQuestion } from 'lucide-react'
+import { Archive, Image, Clock, MessageCircleQuestion, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, timeAgo } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
-import { useArchiveTicket } from '@/hooks/queries'
+import { useArchiveTicket, useResumeTicket } from '@/hooks/queries'
 import { ListItemCard } from '@/components/ui/list-item-card'
 import { IconButton } from '@/components/ui/icon-button'
 import { ArchiveConfirmDialog, shouldShowArchiveWarning } from '@/components/ticket-detail/ArchiveConfirmDialog'
 import { DependencyBadge } from '@/components/board/DependencyBadge'
 import { EpicBadge } from '@/components/board/EpicBadge'
+import { PausedBadge } from '@/components/board/PausedBadge'
 import type { Brainstorm, DependencyTier, Ticket } from '@potato-cannon/shared'
 
 const COMPLEXITY_BORDER_COLORS: Record<Ticket['complexity'], string> = {
@@ -36,6 +37,7 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
   const isArchiving = useAppStore((s) => s.isTicketArchiving(projectId, ticket.id))
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
   const archiveTicket = useArchiveTicket()
+  const resumeTicket = useResumeTicket()
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: ticket.id,
@@ -111,9 +113,24 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
           isArchiving && 'opacity-50 pointer-events-none cursor-not-allowed'
         )}
       >
-      {/* Archive button - only for Done phase */}
-      {ticket.phase === 'Done' && !ticket.archived && (
-        <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+      {/* Action buttons - top right */}
+      <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex gap-1">
+        {/* Resume button - only when paused */}
+        {ticket.paused && (
+          <IconButton
+            tooltip="Resume ticket"
+            onClick={(e) => {
+              e.stopPropagation()
+              resumeTicket.mutate({ projectId, ticketId: ticket.id })
+            }}
+            disabled={resumeTicket.isPending}
+          >
+            <Play className="h-4 w-4" />
+          </IconButton>
+        )}
+
+        {/* Archive button - only for Done phase */}
+        {ticket.phase === 'Done' && !ticket.archived && (
           <IconButton
             tooltip="Archive"
             onClick={handleArchiveClick}
@@ -121,8 +138,8 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
           >
             <Archive className="h-4 w-4" />
           </IconButton>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Pending question badge */}
       {isPending && (
@@ -149,6 +166,12 @@ export function TicketCard({ ticket, projectId, swimlaneColor, blockedFromPhaseB
           <DependencyBadge
             blockedBy={ticket.blockedBy ?? []}
             blockedFromPhaseByTier={blockedFromPhaseByTier}
+          />
+          <PausedBadge
+            paused={ticket.paused}
+            pauseReason={ticket.pauseReason}
+            pauseRetryAt={ticket.pauseRetryAt}
+            pauseRetryCount={ticket.pauseRetryCount}
           />
           {ticket.brainstormId && (
             <EpicBadge

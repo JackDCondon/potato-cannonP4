@@ -35,6 +35,10 @@ export interface Ticket {
   complexity: Complexity
   workflowId?: string
   brainstormId?: string
+  paused?: boolean
+  pauseReason?: string
+  pauseRetryAt?: string       // ISO 8601 timestamp
+  pauseRetryCount?: number
   blockedBy?: BlockedByEntry[]
 }
 

@@ -20,6 +20,7 @@ vi.mock('@dnd-kit/utilities', () => ({
 // Mock queries
 vi.mock('@/hooks/queries', () => ({
   useArchiveTicket: () => ({ mutate: vi.fn(), isPending: false }),
+  useResumeTicket: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 // Mock appStore

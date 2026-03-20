@@ -28,7 +28,7 @@ The database uses WAL (Write-Ahead Logging) mode for better concurrency. Multipl
 
 Migrations use SQLite's `user_version` pragma. Each migration checks the version and applies changes if needed.
 
-**Current schema version:** 24
+**Current schema version:** 25
 
 **Adding a new migration:**
 
@@ -71,6 +71,7 @@ if (version < 6) {
 | V22 | Add `pm_enabled` column to brainstorms and create `board_settings` table with `workflow_id` FK and `pm_config` JSON storage |
 | V23 | Add `color` and `icon` columns to brainstorms for epic customization |
 | V24 | Add `input_tokens` and `output_tokens` INTEGER columns to sessions for persisting token counts from Claude stream result events |
+| V25 | Add `paused`, `pause_reason`, `pause_retry_at`, `pause_retry_count` columns to tickets for pause/retry behavior |
 
 ## Tables
 

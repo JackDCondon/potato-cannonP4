@@ -292,6 +292,23 @@ export function useRestartTicket() {
   })
 }
 
+export function useResumeTicket() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      ticketId,
+    }: {
+      projectId: string
+      ticketId: string
+    }) => api.resumeTicket(projectId, ticketId),
+    onSuccess: (_, { projectId, ticketId }) => {
+      queryClient.invalidateQueries({ queryKey: ['tickets', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['ticket', projectId, ticketId] })
+    },
+  })
+}
+
 export function useSetTicketComplexity() {
   const queryClient = useQueryClient()
   return useMutation({

@@ -688,6 +688,7 @@ export async function main(): Promise<void> {
   console.log(`Loaded ${projects.size} registered project(s)`);
 
   sessionService = new SessionService(eventBus as EventEmitter);
+  sessionService.initRetryScheduler();
   const handleTicketThreadCommand = createTicketThreadCommandHandler({
     getTicket,
     isTerminalPhase: (phase) => isTerminalPhase(phase as any),
@@ -1294,6 +1295,9 @@ export async function main(): Promise<void> {
 
     // Recover interrupted sessions (mid-execution with worker-state.json)
     await recoverInterruptedSessions();
+
+    // Recover paused tickets — re-schedule retry timers
+    await sessionService!.recoverPausedTickets();
 
     // Start PM poller for epic health monitoring
     pmPoller = new PmPoller(sessionService!, getProjects);

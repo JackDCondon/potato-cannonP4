@@ -6,6 +6,7 @@ type EventName =
   | "ticket:updated"
   | "ticket:moved"
   | "ticket:deleted"
+  | "ticket:paused"
   | "session:started"
   | "session:output"
   | "session:ended"
@@ -54,6 +55,7 @@ const forwardEvents: EventName[] = [
   "ticket:updated",
   "ticket:moved",
   "ticket:deleted",
+  "ticket:paused",
   "session:started",
   "session:output",
   "session:ended",

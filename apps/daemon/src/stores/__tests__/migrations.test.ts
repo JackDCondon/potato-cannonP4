@@ -193,9 +193,9 @@ describe('V13 migration — project_workflows table + workflow_id on tickets', (
     assert.ok(colNames.has('provider_override'), 'projects table should have provider_override column');
   });
 
-  it('schema version is 24', () => {
+  it('schema version is 25', () => {
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 });
 
@@ -212,7 +212,7 @@ describe('V19 migration - workflow template version metadata', () => {
     const names = new Set(columns.map((column) => column.name));
     assert.ok(names.has('template_version'));
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 
   it('backfills template_version from workflow-local copy, then project version, then template catalog', () => {
@@ -767,14 +767,14 @@ describe('V21 migration - brainstorm-ticket linkage', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 
-  it('schema version is 24', () => {
+  it('schema version is 25', () => {
     const db = new Database(':memory:');
     runMigrations(db);
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 });
 
@@ -863,10 +863,10 @@ describe('V23 migration - epic color and icon customization', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
-    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V23 database should be safe');
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 });
 
@@ -881,17 +881,44 @@ describe('V24 migration - token usage columns', () => {
     assert.ok(names.has('output_tokens'), 'sessions table should have output_tokens column');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 
   it('is idempotent — running V24 migration twice does not error', () => {
     const db = new Database(':memory:');
     runMigrations(db);
 
-    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V24 database should be safe');
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
+  });
+});
+
+describe('V25 migration - ticket pause state columns', () => {
+  it('adds paused, pause_reason, pause_retry_at, pause_retry_count columns to tickets', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    const columns = db.pragma('table_info(tickets)') as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    assert.ok(names.has('paused'), 'tickets table should have paused column');
+    assert.ok(names.has('pause_reason'), 'tickets table should have pause_reason column');
+    assert.ok(names.has('pause_retry_at'), 'tickets table should have pause_retry_at column');
+    assert.ok(names.has('pause_retry_count'), 'tickets table should have pause_retry_count column');
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 25);
+  });
+
+  it('is idempotent — running V25 migration twice does not error', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+
+    assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V25 database should be safe');
+
+    const version = db.pragma('user_version', { simple: true }) as number;
+    assert.equal(version, 25);
   });
 });
 
@@ -956,6 +983,6 @@ describe('V22 migration - PM fields and board settings', () => {
     assert.doesNotThrow(() => runMigrations(db), 'running migrations again on V22 database should be safe');
 
     const version = db.pragma('user_version', { simple: true }) as number;
-    assert.equal(version, 24);
+    assert.equal(version, 25);
   });
 });

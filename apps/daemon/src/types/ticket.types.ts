@@ -34,6 +34,10 @@ export interface UpdateTicketInput {
   phase?: TicketPhase;
   sessionId?: string;
   complexity?: Complexity;
+  paused?: boolean;
+  pauseReason?: string | null;
+  pauseRetryAt?: string | null;
+  pauseRetryCount?: number;
 }
 
 export type ArtifactType =
