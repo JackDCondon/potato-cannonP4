@@ -3,7 +3,7 @@ import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
-const CURRENT_SCHEMA_VERSION = 26;
+const CURRENT_SCHEMA_VERSION = 27;
 
 /**
  * Run database migrations.
@@ -114,6 +114,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (version < 26) {
     migrateV26(db);
+  }
+
+  if (version < 27) {
+    migrateV27(db);
   }
 
   db.pragma(`user_version = ${CURRENT_SCHEMA_VERSION}`);
@@ -1132,6 +1136,22 @@ function migrateV26(db: Database.Database): void {
   }
   if (!projectCols.has("p4_user")) {
     db.exec(`ALTER TABLE projects ADD COLUMN p4_user TEXT`);
+  }
+}
+
+/**
+ * V27: Add pm_config JSON column to brainstorms for per-epic PM configuration.
+ */
+function migrateV27(db: Database.Database): void {
+  const brainstormCols = new Set(
+    (db.prepare("PRAGMA table_info(brainstorms)").all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  );
+
+  if (!brainstormCols.has("pm_config")) {
+    db.exec("ALTER TABLE brainstorms ADD COLUMN pm_config TEXT");
+    console.log("[migrateV27] Added pm_config column to brainstorms table");
   }
 }
 

@@ -6,6 +6,7 @@ interface UseResizableOptions {
   maxWidth: () => number
   defaultWidth: number
   snapWidth: () => number
+  storageKey?: string
   disabled?: boolean
 }
 
@@ -23,9 +24,28 @@ export function useResizable({
   maxWidth,
   defaultWidth,
   snapWidth,
+  storageKey,
   disabled = false,
 }: UseResizableOptions): UseResizableReturn {
-  const [width, setWidth] = useState(defaultWidth)
+  const getInitialWidth = () => {
+    if (storageKey) {
+      try {
+        const stored = localStorage.getItem(storageKey)
+        if (stored !== null) {
+          const parsed = Number(stored)
+          if (Number.isFinite(parsed)) {
+            return Math.min(Math.max(parsed, minWidth), maxWidth())
+          }
+        }
+      } catch {
+        // Fall back to the configured default if storage is unavailable.
+      }
+    }
+
+    return defaultWidth
+  }
+
+  const [width, setWidth] = useState(getInitialWidth)
   const [isDragging, setIsDragging] = useState(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
@@ -37,6 +57,19 @@ export function useResizable({
   optsRef.current = { minWidth, maxWidth, snapWidth, defaultWidth }
 
   const handlersRef = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null)
+  const setWidthAndPersist = useCallback(
+    (nextWidth: number) => {
+      setWidth(nextWidth)
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, String(nextWidth))
+        } catch {
+          // Ignore storage failures; resizing should still work.
+        }
+      }
+    },
+    [storageKey]
+  )
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -53,7 +86,7 @@ export function useResizable({
 
       const move = (ev: MouseEvent) => {
         const delta = startXRef.current - ev.clientX
-        setWidth(clamp(startWidthRef.current + delta))
+        setWidthAndPersist(clamp(startWidthRef.current + delta))
       }
 
       const up = () => {
@@ -77,9 +110,9 @@ export function useResizable({
       e.preventDefault()
       const snap = optsRef.current.snapWidth()
       const isNearSnap = Math.abs(widthRef.current - snap) < 20
-      setWidth(isNearSnap ? optsRef.current.defaultWidth : snap)
+      setWidthAndPersist(isNearSnap ? optsRef.current.defaultWidth : snap)
     },
-    [disabled]
+    [disabled, setWidthAndPersist]
   )
 
   // Cleanup on unmount (in case component unmounts mid-drag)

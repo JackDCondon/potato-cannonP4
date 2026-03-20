@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { BrainstormDetailPanel } from './BrainstormDetailPanel'
 
 // Mock useLocation from react-router
@@ -10,15 +10,9 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 // Mock tanstack query
-let mockBoardSettingsData: any = null
-
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
-  }),
-  useQuery: () => ({
-    data: mockBoardSettingsData,
-    isLoading: false,
   }),
 }))
 
@@ -59,6 +53,10 @@ vi.mock('@/hooks/queries', () => ({
   }),
 }))
 
+vi.mock('@/hooks/use-mobile', () => ({
+  useIsMobile: () => false,
+}))
+
 // Mock BrainstormChat, BrainstormNewForm, BrainstormArtifactsTab
 vi.mock('./BrainstormChat', () => ({
   BrainstormChat: () => <div data-testid="brainstorm-chat">BrainstormChat</div>,
@@ -87,14 +85,27 @@ const epicBrainstorm = {
   status: 'epic' as const,
   pmEnabled: true,
   workflowId: 'wf-1',
+  pmConfig: {
+    mode: 'watching' as const,
+    polling: {
+      intervalMinutes: 5,
+      stuckThresholdMinutes: 30,
+      alertCooldownMinutes: 15,
+    },
+    alerts: {
+      stuckTickets: true,
+      emptyPhases: true,
+      sessionErrors: true,
+    },
+  },
 }
 
 describe('BrainstormDetailPanel', () => {
   beforeEach(() => {
+    cleanup()
     vi.clearAllMocks()
     mockAppState = createMockAppState()
     mockBrainstormsData = []
-    mockBoardSettingsData = null
   })
 
   it('does not render when panel is closed', () => {
@@ -114,42 +125,85 @@ describe('BrainstormDetailPanel', () => {
 
     render(<BrainstormDetailPanel />)
 
-    // Should show the brainstorm name
     expect(screen.getByText('Test Brainstorm')).toBeDefined()
   })
 
-  it('shows PM mode badge for epic brainstorm with pmEnabled', () => {
+  it('shows the brainstorm title and epic badges for pm-enabled epic brainstorms', () => {
     mockAppState.brainstormSheetOpen = true
     mockAppState.brainstormSheetBrainstormId = 'bs-1'
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
     mockBrainstormsData = [epicBrainstorm]
-    mockBoardSettingsData = { pmConfig: { mode: 'watching' } }
 
     render(<BrainstormDetailPanel />)
 
-    // Should show "Epic — managed by PM" header label
-    expect(screen.getByText('Epic — managed by PM')).toBeDefined()
-    // Should show PM mode badge
+    expect(screen.getByText('Test Brainstorm')).toBeDefined()
+    expect(screen.queryByText(/managed by pm/i)).toBeNull()
+    expect(screen.getByText('Epic')).toBeDefined()
     expect(screen.getByText('watching')).toBeDefined()
   })
 
   it('shows passive as default PM mode when board settings not loaded', () => {
+    const passiveEpicBrainstorm = {
+      ...epicBrainstorm,
+      pmConfig: null,
+    }
+
     mockAppState.brainstormSheetOpen = true
     mockAppState.brainstormSheetBrainstormId = 'bs-1'
     mockAppState.brainstormSheetProjectId = 'proj-1'
     mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
     mockAppState.currentProjectId = 'proj-1'
-    mockBrainstormsData = [epicBrainstorm]
-    mockBoardSettingsData = null
+    mockBrainstormsData = [passiveEpicBrainstorm]
 
     render(<BrainstormDetailPanel />)
 
     expect(screen.getByText('passive')).toBeDefined()
   })
 
-  it('does not show Epic badge for regular brainstorm', () => {
+  it('shows Brainstorm badge when status is not epic', () => {
+    mockAppState.brainstormSheetOpen = true
+    mockAppState.brainstormSheetBrainstormId = 'bs-1'
+    mockAppState.brainstormSheetProjectId = 'proj-1'
+    mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
+    mockAppState.currentProjectId = 'proj-1'
+    mockBrainstormsData = [baseBrainstorm]
+
+    render(<BrainstormDetailPanel />)
+
+    expect(screen.getByText('Brainstorm')).toBeDefined()
+    expect(screen.queryByText('Epic')).toBeNull()
+  })
+
+  it('shows Epic badge but not Brainstorm badge when status is epic', () => {
+    mockAppState.brainstormSheetOpen = true
+    mockAppState.brainstormSheetBrainstormId = 'bs-1'
+    mockAppState.brainstormSheetProjectId = 'proj-1'
+    mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
+    mockAppState.currentProjectId = 'proj-1'
+    mockBrainstormsData = [epicBrainstorm]
+
+    render(<BrainstormDetailPanel />)
+
+    expect(screen.getByText('Epic')).toBeDefined()
+    expect(screen.queryByText('Brainstorm')).toBeNull()
+  })
+
+  it('renders a resize handle when panel is open', () => {
+    mockAppState.brainstormSheetOpen = true
+    mockAppState.brainstormSheetBrainstormId = 'bs-1'
+    mockAppState.brainstormSheetProjectId = 'proj-1'
+    mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
+    mockAppState.currentProjectId = 'proj-1'
+    mockBrainstormsData = [baseBrainstorm]
+
+    render(<BrainstormDetailPanel />)
+
+    expect(screen.getByRole('separator', { name: /resize brainstorm detail panel/i })).toBeDefined()
+  })
+
+  it('applies --panel-width CSS variable to panel element', () => {
     mockAppState.brainstormSheetOpen = true
     mockAppState.brainstormSheetBrainstormId = 'bs-1'
     mockAppState.brainstormSheetProjectId = 'proj-1'
@@ -159,8 +213,7 @@ describe('BrainstormDetailPanel', () => {
 
     const { container } = render(<BrainstormDetailPanel />)
 
-    // Find the badge element (they have data-slot="badge")
-    const badges = container.querySelectorAll('[data-slot="badge"]')
-    expect(badges.length).toBe(0)
+    const panel = container.querySelector('.brainstorm-detail-panel')
+    expect(panel?.getAttribute('style')).toContain('--panel-width')
   })
 })

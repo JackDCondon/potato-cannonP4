@@ -72,6 +72,7 @@ export function TicketDetailPanel() {
     maxWidth: () => Math.max(window.innerWidth - 300, 480),
     defaultWidth: 480,
     snapWidth: () => window.innerWidth / 2,
+    storageKey: 'potato-panel-width',
     disabled: isMobile,
   })
 

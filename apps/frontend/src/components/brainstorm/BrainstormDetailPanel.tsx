@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLocation } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { X, Lightbulb, Pencil, Check, Settings } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAppStore } from '@/stores/appStore'
@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useBrainstorms } from '@/hooks/queries'
+import { useResizable } from '@/hooks/use-resizable'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { getEpicColor } from '@/lib/epic-icons'
 import { BrainstormChat } from './BrainstormChat'
 import { BrainstormNewForm } from './BrainstormNewForm'
@@ -37,12 +39,7 @@ export function BrainstormDetailPanel() {
   const isEpic = brainstorm?.status === 'epic'
   const isEpicPm = isEpic && brainstorm?.pmEnabled
   const epicColor = isEpic ? getEpicColor(brainstorm?.color) : undefined
-  const pmSettingsQuery = useQuery({
-    queryKey: ['boardSettings', brainstormSheetProjectId, brainstorm?.workflowId],
-    queryFn: () => api.getBoardSettings(brainstormSheetProjectId!, brainstorm!.workflowId!),
-    enabled: !!isEpicPm && !!brainstormSheetProjectId && !!brainstorm?.workflowId,
-  })
-  const pmMode = pmSettingsQuery.data?.pmConfig?.mode
+  const pmMode = brainstorm?.pmConfig?.mode
 
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false)
@@ -56,6 +53,15 @@ export function BrainstormDetailPanel() {
   const isCorrectProject = currentProjectId === brainstormSheetProjectId
 
   const isOpen = brainstormSheetOpen && isOnBoardView && isCorrectProject
+  const isMobile = useIsMobile()
+  const { width, isDragging, handleProps } = useResizable({
+    minWidth: 480,
+    maxWidth: () => Math.max(window.innerWidth - 300, 480),
+    defaultWidth: 600,
+    snapWidth: () => window.innerWidth / 2,
+    storageKey: 'potato-panel-width',
+    disabled: isMobile,
+  })
 
   // Start editing the name
   const handleStartEditName = useCallback(() => {
@@ -163,8 +169,17 @@ export function BrainstormDetailPanel() {
     <div
       className="brainstorm-detail-panel"
       data-open={isOpen}
+      data-dragging={isDragging}
+      style={{ '--panel-width': `${width}px` } as React.CSSProperties}
     >
-      <div className="flex flex-col h-full w-[600px] max-w-[40vw]">
+      <div
+        className="brainstorm-detail-panel__resize-handle"
+        {...handleProps}
+        role="separator"
+        aria-label="Resize brainstorm detail panel"
+        aria-orientation="vertical"
+      />
+      <div className="flex flex-col h-full w-full max-w-full">
         {/* Header */}
         <div className="flex items-center justify-between p-4 pb-0">
           <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -202,15 +217,19 @@ export function BrainstormDetailPanel() {
               <div className="flex items-center gap-2 min-w-0 flex-1 group">
                 <div className="flex items-center gap-1 min-w-0 flex-1">
                   <h2 className="text-text-primary text-lg font-semibold truncate">
-                    {isEpicPm ? 'Epic \u2014 managed by PM' : (brainstormSheetBrainstormName || 'Brainstorm')}
+                    {brainstormSheetBrainstormName || 'Brainstorm'}
                   </h2>
-                  {isEpic && (
+                  {isEpic ? (
                     <Badge
                       variant="secondary"
                       className="shrink-0"
                       style={{ backgroundColor: epicColor, color: '#fff' }}
                     >
                       Epic
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="shrink-0">
+                      Brainstorm
                     </Badge>
                   )}
                   {isEpicPm && (

@@ -1,14 +1,10 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
-import { toast } from 'sonner'
-import { RotateCcw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useCallback, useEffect, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { SettingsSection } from './SettingsSection'
 import { PmModeSelector } from './PmModeSelector'
 import { PmAlertToggles } from './PmAlertToggles'
-import { api } from '@/api/client'
 import type { PmConfig, PmMode, PmAlertConfig, PmPollingConfig } from '@potato-cannon/shared'
-import { DEFAULT_PM_CONFIG } from '@potato-cannon/shared'
+import { loadBoardPmDefaults, saveBoardPmDefaults } from '@/lib/pm-storage'
 
 interface BoardSettingsPageProps {
   projectId: string
@@ -16,127 +12,81 @@ interface BoardSettingsPageProps {
 }
 
 export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPageProps) {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [config, setConfig] = useState<PmConfig>(loadBoardPmDefaults)
 
-  // Current form state
-  const [mode, setMode] = useState<PmMode>(DEFAULT_PM_CONFIG.mode)
-  const [polling, setPolling] = useState<PmPollingConfig>({ ...DEFAULT_PM_CONFIG.polling })
-  const [alerts, setAlerts] = useState<PmAlertConfig>({ ...DEFAULT_PM_CONFIG.alerts })
-
-  // Snapshot of last-saved state for dirty checking
-  const [savedSnapshot, setSavedSnapshot] = useState('')
-
-  const currentConfig = useMemo<PmConfig>(
-    () => ({ mode, polling, alerts }),
-    [mode, polling, alerts],
-  )
-
-  const currentSnapshot = useMemo(
-    () => JSON.stringify(currentConfig),
-    [currentConfig],
-  )
-
-  const hasChanges = currentSnapshot !== savedSnapshot
+  const mode = config.mode
+  const polling = config.polling
+  const alerts = config.alerts
   const isPassive = mode === 'passive'
 
-  // ---------- Helpers ----------
-
-  const applyConfig = useCallback((config: PmConfig) => {
-    setMode(config.mode)
-    setPolling({ ...config.polling })
-    setAlerts({ ...config.alerts })
-  }, [])
-
-  // ---------- Load ----------
-
   useEffect(() => {
-    let cancelled = false
+    setConfig(loadBoardPmDefaults())
+  }, [projectId, workflowId])
 
-    api.getBoardSettings(projectId, workflowId)
-      .then(({ pmConfig }) => {
-        if (cancelled) return
-        applyConfig(pmConfig)
-        setSavedSnapshot(JSON.stringify(pmConfig))
+  const updateConfig = useCallback(
+    (updater: (previous: PmConfig) => PmConfig, options?: { persist?: boolean }) => {
+      setConfig((previous) => {
+        const next = updater(previous)
+        if (options?.persist !== false) {
+          saveBoardPmDefaults(next)
+        }
+        return next
       })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : 'Failed to load board settings'
-        toast.error(message)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+    },
+    [],
+  )
 
-    return () => { cancelled = true }
-  }, [projectId, workflowId, applyConfig])
+  const handleModeChange = useCallback(
+    (nextMode: PmMode) => {
+      updateConfig((previous) => ({ ...previous, mode: nextMode }))
+    },
+    [updateConfig],
+  )
+
+  const handleAlertsChange = useCallback(
+    (nextAlerts: PmAlertConfig) => {
+      updateConfig((previous) => ({ ...previous, alerts: nextAlerts }))
+    },
+    [updateConfig],
+  )
 
   const handlePollingChange = useCallback(
     (field: keyof PmPollingConfig, raw: string) => {
       const parsed = parseInt(raw, 10)
       if (!Number.isNaN(parsed) && parsed >= 1) {
-        setPolling((prev) => ({ ...prev, [field]: parsed }))
+        updateConfig((previous) => ({
+          ...previous,
+          polling: { ...previous.polling, [field]: parsed },
+        }))
       } else if (raw === '') {
-        // Allow clearing the field for typing convenience; validation on save
-        setPolling((prev) => ({ ...prev, [field]: 0 }))
+        // Allow temporary empty input while typing; persist only valid values.
+        updateConfig(
+          (previous) => ({
+            ...previous,
+            polling: { ...previous.polling, [field]: 0 },
+          }),
+          { persist: false },
+        )
       }
     },
-    [],
+    [updateConfig],
   )
-
-  // ---------- Save ----------
-
-  const save = useCallback(async () => {
-    // Validate polling values
-    if (polling.intervalMinutes < 1 || polling.stuckThresholdMinutes < 1 || polling.alertCooldownMinutes < 1) {
-      toast.error('Polling values must be at least 1 minute')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const { pmConfig } = await api.updateBoardPmSettings(projectId, workflowId, currentConfig)
-      applyConfig(pmConfig)
-      setSavedSnapshot(JSON.stringify(pmConfig))
-      toast.success('Board settings saved')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save board settings'
-      toast.error(message)
-    } finally {
-      setSaving(false)
-    }
-  }, [projectId, workflowId, currentConfig, applyConfig, polling])
-
-  // ---------- Reset ----------
-
-  const resetToDefaults = useCallback(async () => {
-    setSaving(true)
-    try {
-      const { pmConfig } = await api.resetBoardPmSettings(projectId, workflowId)
-      applyConfig(pmConfig)
-      setSavedSnapshot(JSON.stringify(pmConfig))
-      toast.success('Board settings reset to defaults')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reset board settings'
-      toast.error(message)
-    } finally {
-      setSaving(false)
-    }
-  }, [projectId, workflowId, applyConfig])
-
-  // ---------- Render ----------
 
   return (
     <div className="@container h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto p-6 pb-12">
         <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            These defaults are applied when enabling PM on a new epic.
+          </p>
+
           <SettingsSection
             title="PM Mode"
             description="Choose how the Project Manager operates on this board."
           >
             <PmModeSelector
               value={mode}
-              onChange={setMode}
-              disabled={loading || saving}
+              onChange={handleModeChange}
             />
           </SettingsSection>
 
@@ -146,8 +96,8 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
           >
             <PmAlertToggles
               value={alerts}
-              onChange={setAlerts}
-              disabled={loading || saving || isPassive}
+              onChange={handleAlertsChange}
+              disabled={isPassive}
             />
             {isPassive && (
               <p className="mt-3 text-xs text-text-secondary">
@@ -171,7 +121,6 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
                   min={1}
                   value={polling.intervalMinutes || ''}
                   onChange={(e) => handlePollingChange('intervalMinutes', e.target.value)}
-                  disabled={loading || saving}
                 />
                 <p className="text-sm text-text-secondary">
                   How often the poller checks for issues.
@@ -188,7 +137,6 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
                   min={1}
                   value={polling.stuckThresholdMinutes || ''}
                   onChange={(e) => handlePollingChange('stuckThresholdMinutes', e.target.value)}
-                  disabled={loading || saving}
                 />
                 <p className="text-sm text-text-secondary">
                   How long a ticket must be idle before considered stuck.
@@ -205,7 +153,6 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
                   min={1}
                   value={polling.alertCooldownMinutes || ''}
                   onChange={(e) => handlePollingChange('alertCooldownMinutes', e.target.value)}
-                  disabled={loading || saving}
                 />
                 <p className="text-sm text-text-secondary">
                   Minimum quiet period between repeated alerts of the same type.
@@ -213,20 +160,6 @@ export function BoardSettingsPage({ projectId, workflowId }: BoardSettingsPagePr
               </div>
             </div>
           </SettingsSection>
-
-          <div className="flex items-center gap-3 pt-4">
-            <Button onClick={save} disabled={loading || saving || !hasChanges}>
-              {saving ? 'Saving...' : 'Save Board Settings'}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={resetToDefaults}
-              disabled={loading || saving}
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reset to Defaults
-            </Button>
-          </div>
         </div>
       </div>
     </div>

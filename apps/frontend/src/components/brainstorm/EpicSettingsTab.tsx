@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, RotateCcw } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { api } from '@/api/client'
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { Brainstorm } from '@potato-cannon/shared'
 import type { PmConfig, PmMode, PmAlertConfig, PmPollingConfig } from '@potato-cannon/shared'
-import { DEFAULT_PM_CONFIG } from '@potato-cannon/shared'
+import { loadBoardPmDefaults } from '@/lib/pm-storage'
 
 // ---------- Props ----------
 
@@ -142,13 +142,15 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
   // ---- PM config state ----
   const workflowId = brainstorm.workflowId
   const hasPmConfig = !!workflowId
-
-  const [loadingPm, setLoadingPm] = useState(hasPmConfig)
+  const initialPmConfig = useMemo(
+    () => brainstorm.pmConfig ?? loadBoardPmDefaults(),
+    [brainstorm.id, brainstorm.pmConfig],
+  )
   const [savingPm, setSavingPm] = useState(false)
-  const [mode, setMode] = useState<PmMode>(DEFAULT_PM_CONFIG.mode)
-  const [polling, setPolling] = useState<PmPollingConfig>({ ...DEFAULT_PM_CONFIG.polling })
-  const [alerts, setAlerts] = useState<PmAlertConfig>({ ...DEFAULT_PM_CONFIG.alerts })
-  const [savedSnapshot, setSavedSnapshot] = useState('')
+  const [mode, setMode] = useState<PmMode>(initialPmConfig.mode)
+  const [polling, setPolling] = useState<PmPollingConfig>({ ...initialPmConfig.polling })
+  const [alerts, setAlerts] = useState<PmAlertConfig>({ ...initialPmConfig.alerts })
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(initialPmConfig))
 
   const currentPmConfig = useMemo<PmConfig>(() => ({ mode, polling, alerts }), [mode, polling, alerts])
   const currentSnapshot = useMemo(() => JSON.stringify(currentPmConfig), [currentPmConfig])
@@ -161,30 +163,9 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
   }, [])
 
   useEffect(() => {
-    if (!hasPmConfig || !workflowId) {
-      setLoadingPm(false)
-      return
-    }
-
-    let cancelled = false
-    setLoadingPm(true)
-
-    api.getBoardSettings(projectId, workflowId)
-      .then(({ pmConfig }) => {
-        if (cancelled) return
-        applyPmConfig(pmConfig)
-        setSavedSnapshot(JSON.stringify(pmConfig))
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : 'Failed to load PM settings'
-        toast.error(message)
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingPm(false)
-      })
-
-    return () => { cancelled = true }
-  }, [projectId, workflowId, hasPmConfig, applyPmConfig])
+    applyPmConfig(initialPmConfig)
+    setSavedSnapshot(JSON.stringify(initialPmConfig))
+  }, [applyPmConfig, initialPmConfig])
 
   const handlePollingChange = useCallback(
     (field: keyof PmPollingConfig, raw: string) => {
@@ -218,24 +199,8 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
     }
   }, [projectId, workflowId, currentPmConfig, applyPmConfig, polling])
 
-  const resetPmConfig = useCallback(async () => {
-    if (!workflowId) return
-    setSavingPm(true)
-    try {
-      const { pmConfig } = await api.resetBoardPmSettings(projectId, workflowId)
-      applyPmConfig(pmConfig)
-      setSavedSnapshot(JSON.stringify(pmConfig))
-      toast.success('PM settings reset to defaults')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reset PM settings'
-      toast.error(message)
-    } finally {
-      setSavingPm(false)
-    }
-  }, [projectId, workflowId, applyPmConfig])
-
   const isPassive = mode === 'passive'
-  const pmDisabled = loadingPm || savingPm
+  const pmDisabled = savingPm
 
   return (
     <div className="@container h-full overflow-y-auto">
@@ -352,10 +317,6 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
               <div className="flex items-center gap-3 pt-4">
                 <Button onClick={savePmConfig} disabled={pmDisabled || !hasPmChanges}>
                   {savingPm ? 'Saving...' : 'Save PM Settings'}
-                </Button>
-                <Button variant="outline" onClick={resetPmConfig} disabled={pmDisabled}>
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset to Defaults
                 </Button>
               </div>
             </>

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { DEFAULT_PM_CONFIG } from '@potato-cannon/shared'
 import { EpicSettingsTab } from './EpicSettingsTab'
 import type { Brainstorm } from '@potato-cannon/shared'
 
@@ -15,16 +16,12 @@ vi.mock('sonner', () => ({
 
 // Mock api client
 const mockUpdateBrainstorm = vi.fn()
-const mockGetBoardSettings = vi.fn()
 const mockUpdateBoardPmSettings = vi.fn()
-const mockResetBoardPmSettings = vi.fn()
 
 vi.mock('@/api/client', () => ({
   api: {
     updateBrainstorm: (...args: unknown[]) => mockUpdateBrainstorm(...args),
-    getBoardSettings: (...args: unknown[]) => mockGetBoardSettings(...args),
     updateBoardPmSettings: (...args: unknown[]) => mockUpdateBoardPmSettings(...args),
-    resetBoardPmSettings: (...args: unknown[]) => mockResetBoardPmSettings(...args),
   },
 }))
 
@@ -70,13 +67,6 @@ describe('EpicSettingsTab', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetBoardSettings.mockResolvedValue({
-      pmConfig: {
-        mode: 'passive',
-        polling: { intervalMinutes: 5, stuckThresholdMinutes: 30, alertCooldownMinutes: 15 },
-        alerts: { stuckTickets: true, emptyPhases: true, sessionErrors: true },
-      },
-    })
   })
 
   it('renders color swatches from EPIC_BADGE_COLORS', () => {
@@ -193,7 +183,62 @@ describe('EpicSettingsTab', () => {
 
     expect(screen.getByTestId('pm-mode-selector')).toBeTruthy()
     expect(screen.getByText('Save PM Settings')).toBeTruthy()
-    expect(screen.getByText('Reset to Defaults')).toBeTruthy()
+    expect(screen.queryByText('Reset to Defaults')).toBeNull()
+  })
+
+  it('seeds PM config from localStorage defaults when pmConfig is missing', async () => {
+    localStorage.setItem(
+      'potato-board-pm-defaults',
+      JSON.stringify({
+        ...DEFAULT_PM_CONFIG,
+        mode: 'watching',
+        polling: { ...DEFAULT_PM_CONFIG.polling, intervalMinutes: 10 },
+      }),
+    )
+
+    const brainstorm = makeBrainstorm({ workflowId: 'wf-1', pmConfig: null })
+    const onUpdated = vi.fn()
+    render(<EpicSettingsTab projectId="proj-1" brainstorm={brainstorm} onBrainstormUpdated={onUpdated} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('watching')
+    })
+  })
+
+  it('resyncs PM config when switching to a different epic', async () => {
+    const firstBrainstorm = makeBrainstorm({
+      id: 'bs-1',
+      workflowId: 'wf-1',
+      pmConfig: {
+        ...DEFAULT_PM_CONFIG,
+        mode: 'watching',
+      },
+    })
+    const secondBrainstorm = makeBrainstorm({
+      id: 'bs-2',
+      workflowId: 'wf-2',
+      pmConfig: {
+        ...DEFAULT_PM_CONFIG,
+        mode: 'executing',
+      },
+    })
+
+    const onUpdated = vi.fn()
+    const { rerender } = render(
+      <EpicSettingsTab projectId="proj-1" brainstorm={firstBrainstorm} onBrainstormUpdated={onUpdated} />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('watching')
+    })
+
+    rerender(
+      <EpicSettingsTab projectId="proj-1" brainstorm={secondBrainstorm} onBrainstormUpdated={onUpdated} />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('executing')
+    })
   })
 
   it('does not render PM Mode section when brainstorm has no workflowId', () => {
