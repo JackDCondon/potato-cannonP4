@@ -21,6 +21,7 @@ import { getDatabase } from "../../stores/db.js";
 interface TelegramThreadMetadata {
   chatId: string;
   messageThreadId?: number;
+  lastQuestionMessageId?: number;
   [key: string]: unknown;
 }
 
@@ -313,11 +314,17 @@ export class TelegramProvider implements ChatProvider {
       };
     }
 
-    await this.api.sendMessage(
+    const sentMessage = await this.api.sendMessage(
       meta.chatId,
       `*Question:*\n\n${message.text}`,
       options,
     );
+
+    if (message.questionId && typeof sentMessage.message_id === "number") {
+      meta.lastQuestionMessageId = sentMessage.message_id;
+      thread.metadata = meta as Record<string, unknown>;
+      this.persistThreadMetadata(thread);
+    }
   }
 
   async notifyAnswered(
@@ -325,6 +332,16 @@ export class TelegramProvider implements ChatProvider {
     answer: string,
   ): Promise<void> {
     const meta = thread.metadata as unknown as TelegramThreadMetadata;
+
+    if (typeof meta.lastQuestionMessageId === "number") {
+      await this.api.editMessageReplyMarkup(
+        meta.chatId,
+        meta.lastQuestionMessageId,
+        meta.messageThreadId
+          ? { messageThreadId: meta.messageThreadId, replyMarkup: null }
+          : { replyMarkup: null },
+      );
+    }
 
     await this.api.sendMessage(
       meta.chatId,
@@ -535,6 +552,25 @@ export class TelegramProvider implements ChatProvider {
       channelId: (thread.metadata as TelegramThreadMetadata)?.chatId ?? thread.threadId,
       metadata: thread.metadata,
     });
+  }
+
+  private persistThreadMetadata(thread: ProviderThreadInfo): void {
+    const meta = thread.metadata as TelegramThreadMetadata | undefined;
+    if (!meta?.chatId) {
+      return;
+    }
+
+    const store = this.getProviderChannelStore();
+    const channel = store?.findChannelByProviderRoute(
+      this.id,
+      meta.chatId,
+      meta.messageThreadId,
+    );
+    if (!store || !channel?.id) {
+      return;
+    }
+
+    store.updateChannelMetadata(channel.id, thread.metadata ?? {});
   }
 
   private async validateSetup(): Promise<void> {

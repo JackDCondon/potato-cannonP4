@@ -40,11 +40,13 @@ describe("TelegramApi", () => {
     await api.getMe();
     await api.getChatMember("-100123", 42);
     await api.deleteForumTopic("-100123", 321);
+    await api.editMessageReplyMarkup("-100123", 321, { messageThreadId: 99 });
 
-    assert.equal(fetchCalls.length, 4);
+    assert.equal(fetchCalls.length, 5);
     assert.ok(fetchCalls[0].url.includes("/getChat"));
     assert.ok(fetchCalls[1].url.includes("/getMe"));
     assert.ok(fetchCalls[2].url.includes("/getChatMember"));
     assert.ok(fetchCalls[3].url.includes("/deleteForumTopic"));
+    assert.ok(fetchCalls[4].url.includes("/editMessageReplyMarkup"));
   });
 });

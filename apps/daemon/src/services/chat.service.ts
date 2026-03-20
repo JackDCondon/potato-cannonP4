@@ -272,18 +272,7 @@ export class ChatService {
       }
     }
 
-    // Notify other providers
-    const providers = this.getActiveProviders().filter(
-      (p) => p.id !== providerId,
-    );
-    await Promise.allSettled(
-      providers.map(async (p) => {
-        const thread = await p.getThread(context);
-        if (thread) {
-          await p.notifyAnswered(thread, mappedAnswer);
-        }
-      }),
-    );
+    await this.notifyProvidersAnswered(context, mappedAnswer, providerId);
 
     return true;
   }
@@ -327,6 +316,8 @@ export class ChatService {
         });
       }
     }
+
+    await this.notifyProvidersAnswered(context, mappedAnswer);
 
     return { accepted: true, stale: false, found: true };
   }
@@ -480,6 +471,25 @@ export class ChatService {
 
     await provider.send(thread, finalMessage);
     console.log(`[ChatService] Sent message via ${provider.id} for ${contextId}`);
+  }
+
+  private async notifyProvidersAnswered(
+    context: ChatContext,
+    answer: string,
+    excludedProviderId?: string,
+  ): Promise<void> {
+    const providers = this.getActiveProviders().filter(
+      (provider) => provider.id !== excludedProviderId,
+    );
+
+    await Promise.allSettled(
+      providers.map(async (provider) => {
+        const thread = await provider.getThread(context);
+        if (thread) {
+          await provider.notifyAnswered(thread, answer);
+        }
+      }),
+    );
   }
 
 }

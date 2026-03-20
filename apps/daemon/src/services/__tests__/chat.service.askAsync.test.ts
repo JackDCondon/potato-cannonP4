@@ -602,6 +602,46 @@ describe("ChatService.askAsync", () => {
     assert.strictEqual(input.text, "A");
   });
 
+  it("reconcileWebAnswer notifies active providers so remote prompts can be cleared", async () => {
+    mockTicketConversationId = "conv-3";
+    readQuestionResult = {
+      questionId: "q-3",
+      options: ["A", "B"],
+      ticketGeneration: 7,
+    };
+    pendingConversationMessageResult = {
+      id: "msg-pending",
+      metadata: { phase: "Build", executionGeneration: 7 },
+    };
+    const notifyCalls: string[] = [];
+    const mockProvider = {
+      id: "telegram",
+      name: "Telegram",
+      capabilities: { threads: true, buttons: true, formatting: "markdown" },
+      initialize: async () => {},
+      shutdown: async () => {},
+      createThread: async () => ({ providerId: "telegram", threadId: "t1" }),
+      getThread: async () => ({
+        providerId: "telegram",
+        threadId: "t1",
+        metadata: {},
+      }),
+      send: async () => {},
+      notifyAnswered: async (_thread: unknown, answer: string) => {
+        notifyCalls.push(answer);
+      },
+    };
+    service.registerProvider(mockProvider as any);
+
+    await service.reconcileWebAnswer(
+      { projectId: "p", ticketId: "TICK-3" },
+      "q-3",
+      "B",
+    );
+
+    assert.deepStrictEqual(notifyCalls, ["B"]);
+  });
+
   it("writes ticket message provenance metadata for askAsync question messages", async () => {
     mockTicketConversationId = "conv_ticket_1";
     mockTicketGeneration = 12;

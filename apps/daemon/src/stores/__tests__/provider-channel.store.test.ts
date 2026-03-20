@@ -471,6 +471,36 @@ describe("ProviderChannelStore", () => {
     });
   });
 
+  describe("updateChannelMetadata", () => {
+    it("should replace channel metadata", () => {
+      const created = channelStore.createChannel({
+        ticketId,
+        providerId: "telegram",
+        channelId: "chat123",
+        metadata: { messageThreadId: 111 },
+      });
+
+      const updated = channelStore.updateChannelMetadata(created.id, {
+        messageThreadId: 111,
+        lastQuestionMessageId: 999,
+      });
+
+      assert.equal(updated, true);
+      assert.deepStrictEqual(channelStore.getChannel(created.id)?.metadata, {
+        messageThreadId: 111,
+        lastQuestionMessageId: 999,
+      });
+    });
+
+    it("should return false for non-existent channel", () => {
+      const updated = channelStore.updateChannelMetadata("missing", {
+        lastQuestionMessageId: 1,
+      });
+
+      assert.equal(updated, false);
+    });
+  });
+
   describe("cascade delete", () => {
     it("should delete channels when ticket is deleted", () => {
       const channel = channelStore.createChannel({

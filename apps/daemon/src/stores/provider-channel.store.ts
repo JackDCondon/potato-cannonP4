@@ -201,6 +201,16 @@ export class ProviderChannelStore {
     return rows.map(rowToChannel);
   }
 
+  updateChannelMetadata(
+    id: string,
+    metadata: Record<string, unknown>,
+  ): boolean {
+    const result = this.db
+      .prepare("UPDATE provider_channels SET metadata = ? WHERE id = ?")
+      .run(JSON.stringify(metadata), id);
+    return result.changes > 0;
+  }
+
   deleteChannel(id: string): boolean {
     const result = this.db
       .prepare("DELETE FROM provider_channels WHERE id = ?")
@@ -283,6 +293,16 @@ export function listProviderChannels(
   options?: ListChannelsOptions
 ): ProviderChannel[] {
   return new ProviderChannelStore(getDatabase()).listChannels(options);
+}
+
+export function updateProviderChannelMetadata(
+  id: string,
+  metadata: Record<string, unknown>,
+): boolean {
+  return new ProviderChannelStore(getDatabase()).updateChannelMetadata(
+    id,
+    metadata,
+  );
 }
 
 export function deleteProviderChannel(id: string): boolean {
