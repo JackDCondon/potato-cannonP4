@@ -83,56 +83,50 @@ pytest
 go test ./...
 ```
 
-## Step 5: Report Results
-
-Use the skill: `potato:notify-user` to report the final status.
+## Step 5: Signal Verdict
 
 **If all checks pass:**
 
+Call `ralph_loop_dock` with `approved: true`:
+
+```
+ralph_loop_dock(approved: true)
+```
+
+Also use `chat_notify` to report:
 ```
 ## QA Verification: PASSED
 
 ### Linting
-- ESLint: Passed (0 errors, 0 warnings)
+- {tool}: Passed (0 errors, 0 warnings)
 
 ### Type Checking
-- TypeScript: Passed (no errors)
+- {tool}: Passed (no errors)
 
 ### Tests
-- 42 passed, 0 failed
-- Coverage: 85%
+- {N} passed, 0 failed
 
-Build phase complete. Ready for pull request.
+Build phase complete.
 ```
 
 **If any checks fail:**
 
+Call `ralph_loop_dock` with `approved: false` and a detailed feedback string listing every failure with file paths and line numbers:
+
 ```
-## QA Verification: FAILED
-
-### Linting
-- ESLint: FAILED
-  - src/api/users.ts:45 - 'foo' is defined but never used
-  - src/utils/helpers.ts:12 - Missing semicolon
-
-### Type Checking
-- TypeScript: FAILED
-  - src/services/auth.ts:23 - Type 'string' is not assignable to type 'number'
-
-### Tests
-- 40 passed, 2 failed
-  - src/api/users.test.ts > should create user - Expected 201, got 500
-  - src/utils/helpers.test.ts > should format date - undefined is not a function
-
-Build cannot proceed until issues are resolved.
+ralph_loop_dock(
+  approved: false,
+  feedback: "## QA Failures\n\n### Linting\n- {file}:{line} — {error}\n\n### Type Checking\n- {file}:{line} — {error}\n\n### Tests\n- {test name}: {error message}"
+)
 ```
+
+Also use `chat_notify` to report the same summary to the user.
 
 ## Guidelines
 
 - Run ALL checks, not just one
 - Report the full output for failures
 - Be specific about what failed and where
-- Don't try to fix issues—report them
 
 ## What NOT to Do
 
@@ -140,7 +134,6 @@ Build cannot proceed until issues are resolved.
 | ------------------------------- | ------------------------------------------------ |
 | Skip linting if tests pass      | Lint errors indicate code quality issues         |
 | Only run tests on changed files | Integration issues may exist elsewhere           |
-| Try to fix failures yourself    | That's not your job—report and let humans decide |
 | Ignore warnings                 | Warnings often become errors                     |
 
 ## Important
