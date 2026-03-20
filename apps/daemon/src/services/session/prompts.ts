@@ -413,9 +413,10 @@ export async function buildPmPrompt(
   options?: {
     pendingContext?: { question: string; response: string };
     pmMode?: string;
+    userMessage?: string;
   },
 ): Promise<string> {
-  const { pendingContext, pmMode } = options ?? {};
+  const { pendingContext, pmMode, userMessage } = options ?? {};
 
   // Try to load decisions artifact
   let decisionsContent: string | undefined;
@@ -444,6 +445,15 @@ The previous session ended before processing the user's response. Here is the co
 **User's response:** ${pendingContext.response}
 
 Continue the conversation from here. Do NOT ask a new opening question.`;
+  } else if (userMessage) {
+    instructions += `
+## User Message
+
+The user has sent you this message:
+
+"${userMessage}"
+
+Respond to it directly. Call \`get_epic_status\` first if you need current board state to answer accurately.`;
   } else {
     instructions += `
 Begin by summarising the current epic status and asking how you can help.`;

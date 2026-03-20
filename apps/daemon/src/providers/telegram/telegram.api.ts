@@ -64,7 +64,7 @@ export class TelegramApi {
     messageId: number,
     options: {
       messageThreadId?: number;
-      replyMarkup?: unknown | null;
+      replyMarkup?: unknown;
     } = {},
   ): Promise<TelegramMessage> {
     const body: Record<string, unknown> = {
