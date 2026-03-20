@@ -19,6 +19,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { pathToFileURL } from 'node:url';
+import { buildMcpAuthHeaders } from './auth.js';
 
 // Context from environment (set by session spawner)
 const PROJECT_ID = process.env.POTATO_PROJECT_ID || '';
@@ -88,7 +89,9 @@ async function getDaemonUrl(): Promise<string> {
 async function fetchTools(daemonUrl: string, agentSource?: string, projectId?: string): Promise<unknown[]> {
   try {
     const url = buildToolsUrl(daemonUrl, agentSource ?? '', projectId ?? '', MCP_SCOPE);
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: buildMcpAuthHeaders(),
+    });
     const data = await response.json();
     return data.tools || [];
   } catch (error) {
@@ -104,7 +107,10 @@ async function callTool(
 ): Promise<{ content: Array<{ type: string; text: string }>; error?: string }> {
   const response = await fetch(`${daemonUrl}/mcp/call`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildMcpAuthHeaders(),
+    },
     body: JSON.stringify(buildCallToolPayload(tool, args)),
   });
 

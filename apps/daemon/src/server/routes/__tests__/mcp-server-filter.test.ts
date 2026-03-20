@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, mock } from "node:test";
+import { after, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { Express } from "express";
 
@@ -71,9 +71,28 @@ function createResponse() {
 }
 
 describe("GET /mcp/tools mcpServer filter", () => {
+  const originalToken = process.env.POTATO_MCP_AUTH_TOKEN;
+  const originalTokenFile = process.env.POTATO_MCP_AUTH_TOKEN_FILE;
+
   beforeEach(() => {
     mockFindAgentWorkerInWorkflow.mock.resetCalls();
     mockFilterToolsByDisallowList.mock.resetCalls();
+    delete process.env.POTATO_MCP_AUTH_TOKEN;
+    process.env.POTATO_MCP_AUTH_TOKEN_FILE = "__missing_mcp_auth_token_file__";
+  });
+
+  after(() => {
+    if (originalToken === undefined) {
+      delete process.env.POTATO_MCP_AUTH_TOKEN;
+    } else {
+      process.env.POTATO_MCP_AUTH_TOKEN = originalToken;
+    }
+
+    if (originalTokenFile === undefined) {
+      delete process.env.POTATO_MCP_AUTH_TOKEN_FILE;
+    } else {
+      process.env.POTATO_MCP_AUTH_TOKEN_FILE = originalTokenFile;
+    }
   });
 
   it("filters PM tools after applying scope and disallowTools", async () => {
@@ -92,6 +111,7 @@ describe("GET /mcp/tools mcpServer filter", () => {
           agentSource: "agents/builder.md",
           projectId: "proj-1",
         },
+        headers: {},
       },
       res,
     );
@@ -120,6 +140,7 @@ describe("GET /mcp/tools mcpServer filter", () => {
           agentSource: "agents/builder.md",
           projectId: "proj-1",
         },
+        headers: {},
       },
       res,
     );

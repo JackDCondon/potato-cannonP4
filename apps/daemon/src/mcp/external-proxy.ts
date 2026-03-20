@@ -21,6 +21,7 @@ import {
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { buildMcpAuthHeaders } from './auth.js';
 
 // Context from environment
 const PROJECT_ID_ENV = process.env.POTATO_PROJECT_ID || '';
@@ -73,7 +74,9 @@ async function resolveProjectId(daemonUrl: string): Promise<string> {
 async function fetchTools(daemonUrl: string): Promise<unknown[]> {
   try {
     // Request only external-scoped tools (session-only tools are filtered out)
-    const response = await fetch(`${daemonUrl}/mcp/tools?scope=external`);
+    const response = await fetch(`${daemonUrl}/mcp/tools?scope=external`, {
+      headers: buildMcpAuthHeaders(),
+    });
     const data = await response.json();
     return data.tools || [];
   } catch (error) {
@@ -90,7 +93,10 @@ async function callTool(
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean; error?: string }> {
   const response = await fetch(`${daemonUrl}/mcp/call`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...buildMcpAuthHeaders(),
+    },
     body: JSON.stringify({
       tool,
       args,
