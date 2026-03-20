@@ -12,7 +12,7 @@ Use `chat_notify` to announce:
 [ ] Step 2 - Review all code changes
 [ ] Step 3 - Run quality checks
 [ ] Step 4 - Run the fix checklist
-[ ] Step 5 - Report results
+[ ] Step 5 - Signal Verdict
 
 ## Step 1: Read the Resolution Artifact
 
