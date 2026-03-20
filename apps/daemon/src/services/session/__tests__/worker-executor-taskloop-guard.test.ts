@@ -127,6 +127,8 @@ await mock.module("../loops/ralph-loop.js", {
   namedExports: {
     initRalphLoop: () => ({ id: "rl", type: "ralphLoop", iteration: 1, workerIndex: 0, activeWorker: null }),
     handleAgentCompletion: () => ({ loopComplete: true }),
+    captureDoerSessionIdIfNeeded: () => {},
+    getCurrentWorker: () => null,
   },
 });
 

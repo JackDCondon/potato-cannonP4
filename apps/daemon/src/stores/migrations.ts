@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import * as nodeFs from "node:fs";
 import type Database from "better-sqlite3";
 import { getWorkflowTemplateDir } from "../config/paths.js";
 
@@ -1158,10 +1158,10 @@ function readWorkflowLocalTemplateVersion(
       projectId,
       workflowId
     )}/workflow.json`;
-    if (!existsSync(workflowTemplatePath)) {
+    if (!nodeFs.existsSync(workflowTemplatePath)) {
       return null;
     }
-    const raw = readFileSync(workflowTemplatePath, "utf-8");
+    const raw = nodeFs.readFileSync(workflowTemplatePath, "utf-8");
     const parsed = JSON.parse(raw) as { version?: string | number };
     if (typeof parsed.version === "number") {
       return `${parsed.version}.0.0`;

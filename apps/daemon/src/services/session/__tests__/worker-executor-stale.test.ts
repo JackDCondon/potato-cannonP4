@@ -16,7 +16,9 @@ let mockedWorkerState: Record<string, unknown> = {
 };
 
 await mock.module("fs", {
-  defaultExport: {},
+  defaultExport: {
+    access: (_path: string, callback: (error: Error | null) => void) => callback(null),
+  },
 });
 
 await mock.module("child_process", {
@@ -82,6 +84,20 @@ await mock.module("../../../stores/project.store.js", {
   },
 });
 
+await mock.module("../../../stores/template.store.js", {
+  namedExports: {
+    WorkflowContextError: class WorkflowContextError extends Error {
+      code: string;
+
+      constructor(code: string, message: string) {
+        super(message);
+        this.code = code;
+      }
+    },
+    installDefaultTemplates: async () => {},
+  },
+});
+
 await mock.module("../../../stores/chat.store.js", {
   namedExports: {
     readQuestion: async () => null,
@@ -127,6 +143,8 @@ await mock.module("../loops/ralph-loop.js", {
       nextState: null,
       result: { status: "approved" },
     }),
+    captureDoerSessionIdIfNeeded: () => {},
+    getCurrentWorker: () => null,
   },
 });
 
