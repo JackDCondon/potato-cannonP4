@@ -103,6 +103,23 @@ function IconGrid({ selectedIcon, epicColor, onSelect, disabled }: IconGridProps
   )
 }
 
+function mergePmConfig(base: PmConfig, override?: PmConfig | null): PmConfig {
+  if (!override) return base
+
+  return {
+    ...base,
+    ...override,
+    polling: {
+      ...base.polling,
+      ...override.polling,
+    },
+    alerts: {
+      ...base.alerts,
+      ...override.alerts,
+    },
+  }
+}
+
 // ---------- Main Component ----------
 
 export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: EpicSettingsTabProps) {
@@ -143,7 +160,7 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
   const workflowId = brainstorm.workflowId
   const hasPmConfig = !!workflowId
   const initialPmConfig = useMemo(
-    () => brainstorm.pmConfig ?? loadBoardPmDefaults(),
+    () => mergePmConfig(loadBoardPmDefaults(), brainstorm.pmConfig),
     [brainstorm.id, brainstorm.pmConfig],
   )
   const [savingPm, setSavingPm] = useState(false)
@@ -178,8 +195,9 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
       .getBoardSettings(projectId, workflowId)
       .then(({ pmConfig }) => {
         if (cancelled) return
-        applyPmConfig(pmConfig)
-        setSavedSnapshot(JSON.stringify(pmConfig))
+        const effectiveConfig = mergePmConfig(pmConfig, brainstorm.pmConfig)
+        applyPmConfig(effectiveConfig)
+        setSavedSnapshot(JSON.stringify(effectiveConfig))
       })
       .catch(() => {
         // Keep the fallback config seeded from the brainstorm row or local defaults.
@@ -215,9 +233,14 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
     }
     setSavingPm(true)
     try {
-      const { pmConfig } = await api.updateBoardPmSettings(projectId, workflowId, currentPmConfig)
-      applyPmConfig(pmConfig)
-      setSavedSnapshot(JSON.stringify(pmConfig))
+      const updatedBrainstorm = await api.updateBrainstorm(projectId, brainstorm.id, {
+        pmEnabled: currentPmConfig.mode !== 'passive',
+        pmConfig: currentPmConfig,
+      })
+      const savedConfig = mergePmConfig(loadBoardPmDefaults(), updatedBrainstorm.pmConfig)
+      applyPmConfig(savedConfig)
+      setSavedSnapshot(JSON.stringify(savedConfig))
+      onBrainstormUpdated()
       toast.success('PM settings saved')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to save PM settings'
@@ -225,7 +248,7 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
     } finally {
       setSavingPm(false)
     }
-  }, [projectId, workflowId, currentPmConfig, applyPmConfig, polling])
+  }, [projectId, workflowId, brainstorm.id, currentPmConfig, applyPmConfig, onBrainstormUpdated, polling])
 
   const isPassive = mode === 'passive'
   const pmDisabled = savingPm || loadingPm

@@ -9,6 +9,7 @@ import { runMigrations } from "../migrations.js";
 import { createProjectStore } from "../project.store.js";
 import { createBrainstormStore, BrainstormStore } from "../brainstorm.store.js";
 import { createTicketStore, TicketStore } from "../ticket.store.js";
+import { createProjectWorkflowStore } from "../project-workflow.store.js";
 
 describe("BrainstormStore", () => {
   let db: Database.Database;
@@ -16,6 +17,13 @@ describe("BrainstormStore", () => {
   let ticketStore: TicketStore;
   let testDbPath: string;
   let projectId: string;
+  let defaultWorkflowId: string;
+  let alternateWorkflowId: string;
+  const createOwnedBrainstorm = (input: { name?: string } = {}) =>
+    store.createBrainstorm(projectId, {
+      workflowId: defaultWorkflowId,
+      ...input,
+    });
 
   before(() => {
     testDbPath = path.join(os.tmpdir(), `potato-brainstorm-test-${Date.now()}.db`);
@@ -29,6 +37,20 @@ describe("BrainstormStore", () => {
       path: "/test/project",
     });
     projectId = project.id;
+    const workflowStore = createProjectWorkflowStore(db);
+    const alternateWorkflow = workflowStore.createWorkflow({
+      projectId,
+      name: "Alternate Workflow",
+      templateName: "product-development",
+    });
+    defaultWorkflowId = (
+      db
+        .prepare(
+          "SELECT id FROM project_workflows WHERE project_id = ? AND is_default = 1 LIMIT 1"
+        )
+        .get(projectId) as { id: string }
+    ).id;
+    alternateWorkflowId = alternateWorkflow.id;
 
     store = createBrainstormStore(db);
     ticketStore = createTicketStore(db);
@@ -58,19 +80,35 @@ describe("BrainstormStore", () => {
   });
 
   describe("createBrainstorm", () => {
+    it("should reject brainstorm creation without workflow ownership", () => {
+      let error: unknown;
+      try {
+        store.createBrainstorm(projectId, {} as any);
+      } catch (caught) {
+        error = caught;
+      }
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /workflow/i);
+    });
+
     it("should create a brainstorm with generated ID", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = store.createBrainstorm(projectId, {
+        workflowId: defaultWorkflowId,
+      });
 
       assert.ok(brainstorm.id);
       assert.ok(brainstorm.id.startsWith("brain_"));
       assert.strictEqual(brainstorm.projectId, projectId);
       assert.strictEqual(brainstorm.status, "active");
+      assert.strictEqual(brainstorm.workflowId, defaultWorkflowId);
       assert.ok(brainstorm.createdAt);
       assert.ok(brainstorm.updatedAt);
     });
 
     it("should auto-generate name with timestamp", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = store.createBrainstorm(projectId, {
+        workflowId: defaultWorkflowId,
+      });
 
       assert.ok(brainstorm.name);
       assert.ok(brainstorm.name.startsWith("Brainstorm "));
@@ -79,19 +117,24 @@ describe("BrainstormStore", () => {
     it("should use custom name when provided", () => {
       const brainstorm = store.createBrainstorm(projectId, {
         name: "My Custom Brainstorm",
+        workflowId: defaultWorkflowId,
       });
 
       assert.strictEqual(brainstorm.name, "My Custom Brainstorm");
     });
 
     it("should create associated conversation", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = store.createBrainstorm(projectId, {
+        workflowId: defaultWorkflowId,
+      });
 
       assert.ok(brainstorm.conversationId);
     });
 
     it("should have null createdTicketId initially", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = store.createBrainstorm(projectId, {
+        workflowId: defaultWorkflowId,
+      });
 
       assert.strictEqual(brainstorm.createdTicketId, null);
     });
@@ -104,7 +147,7 @@ describe("BrainstormStore", () => {
     });
 
     it("should return brainstorm by ID", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
       const brainstorm = store.getBrainstorm(created.id);
 
       assert.ok(brainstorm);
@@ -114,14 +157,14 @@ describe("BrainstormStore", () => {
 
   describe("getBrainstormByProject", () => {
     it("should return null for wrong project", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
       const brainstorm = store.getBrainstormByProject("wrong-project", created.id);
 
       assert.strictEqual(brainstorm, null);
     });
 
     it("should return brainstorm for correct project", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
       const brainstorm = store.getBrainstormByProject(projectId, created.id);
 
       assert.ok(brainstorm);
@@ -131,43 +174,57 @@ describe("BrainstormStore", () => {
 
   describe("listBrainstorms", () => {
     it("should return empty array when no brainstorms", () => {
-      const brainstorms = store.listBrainstorms(projectId);
+      const brainstorms = store.listBrainstorms(projectId, defaultWorkflowId);
       assert.deepStrictEqual(brainstorms, []);
     });
 
     it("should return brainstorms for project", () => {
-      store.createBrainstorm(projectId, { name: "First" });
-      store.createBrainstorm(projectId, { name: "Second" });
+      createOwnedBrainstorm({ name: "First" });
+      createOwnedBrainstorm({ name: "Second" });
 
-      const brainstorms = store.listBrainstorms(projectId);
+      const brainstorms = store.listBrainstorms(projectId, defaultWorkflowId);
 
       assert.strictEqual(brainstorms.length, 2);
     });
 
     it("should sort by updated_at descending", () => {
-      const first = store.createBrainstorm(projectId, { name: "First" });
-      store.createBrainstorm(projectId, { name: "Second" });
+      const first = createOwnedBrainstorm({ name: "First" });
+      createOwnedBrainstorm({ name: "Second" });
 
       // Update first to make it most recent
       store.updateBrainstorm(first.id, { name: "First Updated" });
 
-      const brainstorms = store.listBrainstorms(projectId);
+      const brainstorms = store.listBrainstorms(projectId, defaultWorkflowId);
 
       assert.strictEqual(brainstorms[0].name, "First Updated");
     });
 
     it("should not return brainstorms from other projects", () => {
-      store.createBrainstorm(projectId);
+      createOwnedBrainstorm();
 
-      const brainstorms = store.listBrainstorms("other-project");
+      const brainstorms = store.listBrainstorms("other-project", defaultWorkflowId);
 
       assert.deepStrictEqual(brainstorms, []);
+    });
+
+    it("should only return brainstorms for the requested workflow", () => {
+      createOwnedBrainstorm({ name: "Default Workflow Brainstorm" });
+      store.createBrainstorm(projectId, {
+        name: "Alternate Workflow Brainstorm",
+        workflowId: alternateWorkflowId,
+      });
+
+      const brainstorms = store.listBrainstorms(projectId, alternateWorkflowId);
+
+      assert.strictEqual(brainstorms.length, 1);
+      assert.strictEqual(brainstorms[0].workflowId, alternateWorkflowId);
+      assert.strictEqual(brainstorms[0].name, "Alternate Workflow Brainstorm");
     });
   });
 
   describe("updateBrainstorm", () => {
     it("should update name", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
 
       const updated = store.updateBrainstorm(created.id, {
         name: "New Name",
@@ -178,7 +235,7 @@ describe("BrainstormStore", () => {
     });
 
     it("should update status", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
 
       const updated = store.updateBrainstorm(created.id, {
         status: "completed",
@@ -189,7 +246,7 @@ describe("BrainstormStore", () => {
     });
 
     it("should update createdTicketId", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
 
       const updated = store.updateBrainstorm(created.id, {
         createdTicketId: "TES-1",
@@ -200,7 +257,7 @@ describe("BrainstormStore", () => {
     });
 
     it("should update updatedAt timestamp", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
       const originalUpdatedAt = created.updatedAt;
 
       const updated = store.updateBrainstorm(created.id, { name: "Updated" });
@@ -217,7 +274,7 @@ describe("BrainstormStore", () => {
 
   describe("deleteBrainstorm", () => {
     it("should delete existing brainstorm", () => {
-      const created = store.createBrainstorm(projectId);
+      const created = createOwnedBrainstorm();
 
       const deleted = store.deleteBrainstorm(created.id);
 
@@ -231,7 +288,7 @@ describe("BrainstormStore", () => {
     });
 
     it("should null brainstorm_id on linked tickets when deleted", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = createOwnedBrainstorm();
       const ticket = ticketStore.createTicket(projectId, { title: "Linked" });
       // Directly set brainstorm_id since ticket store brainstormId support is in a parallel task
       db.prepare("UPDATE tickets SET brainstorm_id = ? WHERE id = ?").run(brainstorm.id, ticket.id);
@@ -245,12 +302,12 @@ describe("BrainstormStore", () => {
 
   describe("planSummary", () => {
     it("should be undefined initially", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = createOwnedBrainstorm();
       assert.strictEqual(brainstorm.planSummary, undefined);
     });
 
     it("should be settable via updateBrainstorm", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = createOwnedBrainstorm();
       const updated = store.updateBrainstorm(brainstorm.id, {
         planSummary: "This epic delivers auth features",
       });
@@ -260,14 +317,14 @@ describe("BrainstormStore", () => {
 
   describe("getTicketCountsForBrainstorm", () => {
     it("should return zero counts for brainstorm with no tickets", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = createOwnedBrainstorm();
       const counts = store.getTicketCountsForBrainstorm(brainstorm.id);
       assert.strictEqual(counts.ticketCount, 0);
       assert.strictEqual(counts.activeTicketCount, 0);
     });
 
     it("should return correct counts with linked tickets", () => {
-      const brainstorm = store.createBrainstorm(projectId);
+      const brainstorm = createOwnedBrainstorm();
 
       const t1 = ticketStore.createTicket(projectId, { title: "Active ticket" });
       const t2 = ticketStore.createTicket(projectId, { title: "Done ticket" });
@@ -289,8 +346,8 @@ describe("BrainstormStore", () => {
     });
 
     it("should return counts for multiple brainstorms", () => {
-      const b1 = store.createBrainstorm(projectId);
-      const b2 = store.createBrainstorm(projectId);
+      const b1 = createOwnedBrainstorm();
+      const b2 = createOwnedBrainstorm();
 
       const t1 = ticketStore.createTicket(projectId, { title: "B1 T1" });
       const t2 = ticketStore.createTicket(projectId, { title: "B1 T2" });
@@ -308,7 +365,7 @@ describe("BrainstormStore", () => {
     });
 
     it("should not include entry for brainstorm with no tickets", () => {
-      const b1 = store.createBrainstorm(projectId);
+      const b1 = createOwnedBrainstorm();
       const result = store.getTicketCountsBatch([b1.id]);
       // No tickets → no row in GROUP BY result → not in map
       assert.strictEqual(result.has(b1.id), false);
@@ -317,29 +374,29 @@ describe("BrainstormStore", () => {
 
   describe("getUsedEpicColors", () => {
     it("returns colors of epic brainstorms", () => {
-      const b = store.createBrainstorm(projectId);
+      const b = createOwnedBrainstorm();
       store.updateBrainstorm(b.id, { status: "epic", color: "#3b82f6" });
       const colors = store.getUsedEpicColors(projectId);
       assert.deepStrictEqual(colors, ["#3b82f6"]);
     });
 
     it("excludes non-epic brainstorms with colors", () => {
-      const b = store.createBrainstorm(projectId);
+      const b = createOwnedBrainstorm();
       store.updateBrainstorm(b.id, { color: "#3b82f6" });
       const colors = store.getUsedEpicColors(projectId);
       assert.deepStrictEqual(colors, []);
     });
 
     it("excludes epics with null color", () => {
-      const b = store.createBrainstorm(projectId);
+      const b = createOwnedBrainstorm();
       store.updateBrainstorm(b.id, { status: "epic" });
       const colors = store.getUsedEpicColors(projectId);
       assert.deepStrictEqual(colors, []);
     });
 
     it("returns distinct colors", () => {
-      const b1 = store.createBrainstorm(projectId);
-      const b2 = store.createBrainstorm(projectId);
+      const b1 = createOwnedBrainstorm();
+      const b2 = createOwnedBrainstorm();
       store.updateBrainstorm(b1.id, { status: "epic", color: "#3b82f6" });
       store.updateBrainstorm(b2.id, { status: "epic", color: "#3b82f6" });
       const colors = store.getUsedEpicColors(projectId);
@@ -354,7 +411,7 @@ describe("BrainstormStore", () => {
 
   describe("updateBrainstorm color/icon", () => {
     it("sets color and icon", () => {
-      const b = store.createBrainstorm(projectId);
+      const b = createOwnedBrainstorm();
       const updated = store.updateBrainstorm(b.id, { color: "#10b981", icon: "rocket" });
       assert.ok(updated, "updateBrainstorm should return non-null");
       assert.strictEqual(updated!.color, "#10b981");
@@ -362,7 +419,7 @@ describe("BrainstormStore", () => {
     });
 
     it("clears color and icon with explicit null", () => {
-      const b = store.createBrainstorm(projectId);
+      const b = createOwnedBrainstorm();
       store.updateBrainstorm(b.id, { color: "#10b981", icon: "rocket" });
       const updated = store.updateBrainstorm(b.id, { color: null, icon: null });
       assert.ok(updated, "updateBrainstorm should return non-null");
@@ -371,7 +428,7 @@ describe("BrainstormStore", () => {
     });
 
     it("new brainstorm has null color and icon", () => {
-      const b = store.createBrainstorm(projectId);
+      const b = createOwnedBrainstorm();
       assert.strictEqual(b.color, null);
       assert.strictEqual(b.icon, null);
     });

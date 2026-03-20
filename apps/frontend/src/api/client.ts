@@ -435,16 +435,18 @@ export const api = {
 
   // ============ Brainstorms ============
 
-  getBrainstorms: (projectId: string) =>
-    request<Brainstorm[]>(`/api/brainstorms/${encodeURIComponent(projectId)}`),
+  getBrainstorms: (projectId: string, workflowId: string) =>
+    request<Brainstorm[]>(
+      `/api/brainstorms/${encodeURIComponent(projectId)}?workflowId=${encodeURIComponent(workflowId)}`
+    ),
 
   getBrainstorm: (projectId: string, brainstormId: string) =>
     request<Brainstorm>(`/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}`),
 
-  createBrainstorm: (projectId: string, options?: { name?: string | null; initialMessage?: string; workflowId?: string }) =>
+  createBrainstorm: (projectId: string, options: { name?: string | null; initialMessage?: string; workflowId: string }) =>
     request<CreateBrainstormResponse>(`/api/brainstorms/${encodeURIComponent(projectId)}`, {
       method: 'POST',
-      body: JSON.stringify(options ?? {})
+      body: JSON.stringify(options)
     }),
 
   resumeBrainstorm: (projectId: string, brainstormId: string) =>
@@ -485,7 +487,17 @@ export const api = {
       `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}/artifacts`
     ),
 
-  updateBrainstorm: (projectId: string, brainstormId: string, updates: { name?: string; color?: string | null; icon?: string | null }) =>
+  updateBrainstorm: (
+    projectId: string,
+    brainstormId: string,
+    updates: {
+      name?: string;
+      color?: string | null;
+      icon?: string | null;
+      pmEnabled?: boolean;
+      pmConfig?: PmConfig | null;
+    }
+  ) =>
     request<Brainstorm>(
       `/api/brainstorms/${encodeURIComponent(projectId)}/${brainstormId}`,
       { method: 'PUT', body: JSON.stringify(updates) }

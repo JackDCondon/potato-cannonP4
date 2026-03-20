@@ -9,6 +9,7 @@ import { runMigrations } from "../migrations.js";
 import { createProjectStore } from "../project.store.js";
 import { createTicketStore, TicketStore } from "../ticket.store.js";
 import { createBrainstormStore, BrainstormStore } from "../brainstorm.store.js";
+import { createProjectWorkflowStore } from "../project-workflow.store.js";
 import { createSessionStore, SessionStore } from "../session.store.js";
 
 describe("SessionStore", () => {
@@ -18,6 +19,7 @@ describe("SessionStore", () => {
   let brainstormStore: BrainstormStore;
   let testDbPath: string;
   let projectId: string;
+  let workflowId: string;
 
   before(() => {
     testDbPath = path.join(os.tmpdir(), `potato-session-test-${Date.now()}.db`);
@@ -31,6 +33,9 @@ describe("SessionStore", () => {
       path: "/test/project",
     });
     projectId = project.id;
+    workflowId = createProjectWorkflowStore(db)
+      .listWorkflows(projectId)
+      .find((workflow) => workflow.isDefault)!.id;
 
     sessionStore = createSessionStore(db);
     ticketStore = createTicketStore(db);
@@ -85,7 +90,7 @@ describe("SessionStore", () => {
     });
 
     it("should create session with brainstormId", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
 
       const session = sessionStore.createSession({
         projectId,
@@ -266,13 +271,13 @@ describe("SessionStore", () => {
 
   describe("getSessionsByBrainstorm", () => {
     it("should return empty array when no sessions", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
       const sessions = sessionStore.getSessionsByBrainstorm(brainstorm.id);
       assert.deepStrictEqual(sessions, []);
     });
 
     it("should return sessions for brainstorm", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
 
       sessionStore.createSession({ projectId, brainstormId: brainstorm.id });
       sessionStore.createSession({ projectId, brainstormId: brainstorm.id });
@@ -326,13 +331,13 @@ describe("SessionStore", () => {
 
   describe("getActiveSessionForBrainstorm", () => {
     it("should return null when no active sessions", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
       const session = sessionStore.getActiveSessionForBrainstorm(brainstorm.id);
       assert.strictEqual(session, null);
     });
 
     it("should return active session", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
       const created = sessionStore.createSession({ projectId, brainstormId: brainstorm.id });
 
       const active = sessionStore.getActiveSessionForBrainstorm(brainstorm.id);
@@ -368,7 +373,7 @@ describe("SessionStore", () => {
     });
 
     it("should return true when brainstorm has active session", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
       sessionStore.createSession({ projectId, brainstormId: brainstorm.id });
 
       const result = sessionStore.hasActiveSession(undefined, brainstorm.id);
@@ -379,13 +384,13 @@ describe("SessionStore", () => {
 
   describe("getLatestClaudeSessionId", () => {
     it("should return null when no sessions", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
       const result = sessionStore.getLatestClaudeSessionId(brainstorm.id);
       assert.strictEqual(result, null);
     });
 
     it("should return null when no claude session ID set", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
       sessionStore.createSession({ projectId, brainstormId: brainstorm.id });
 
       const result = sessionStore.getLatestClaudeSessionId(brainstorm.id);
@@ -394,7 +399,7 @@ describe("SessionStore", () => {
     });
 
     it("should return latest claude session ID", () => {
-      const brainstorm = brainstormStore.createBrainstorm(projectId);
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
 
       sessionStore.createSession({
         projectId,

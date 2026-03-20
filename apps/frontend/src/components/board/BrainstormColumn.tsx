@@ -6,11 +6,11 @@ import { BrainstormCard } from './BrainstormCard'
 
 interface BrainstormColumnProps {
   projectId: string
-  workflowId?: string
+  workflowId: string
 }
 
 export function BrainstormColumn({ projectId, workflowId }: BrainstormColumnProps) {
-  const { data: brainstorms } = useBrainstorms(projectId)
+  const { data: brainstorms } = useBrainstorms(projectId, workflowId)
   const openNewBrainstormSheet = useAppStore((s) => s.openNewBrainstormSheet)
 
   return (

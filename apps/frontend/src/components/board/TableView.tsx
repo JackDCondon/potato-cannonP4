@@ -92,7 +92,7 @@ function getRowBackgroundStyle(
 
 interface TableViewProps {
   projectId: string
-  workflowId?: string
+  workflowId: string
 }
 
 export function TableView({ projectId, workflowId }: TableViewProps) {
@@ -105,7 +105,7 @@ export function TableView({ projectId, workflowId }: TableViewProps) {
   const { data: projects } = useProjects()
   const { data: tickets } = useTickets(projectId, workflowId)
   const { data: phases } = useProjectPhases(projectId)
-  const { data: brainstorms } = useBrainstorms(projectId)
+  const { data: brainstorms } = useBrainstorms(projectId, workflowId)
 
   // Build a lookup map: brainstormId → Brainstorm
   const brainstormMap = useMemo(() => {

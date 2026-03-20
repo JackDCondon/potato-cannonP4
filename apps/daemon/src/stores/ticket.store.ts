@@ -74,6 +74,12 @@ interface HistoryRow {
   metadata: string | null;
 }
 
+interface BrainstormWorkflowRow {
+  id: string;
+  project_id: string;
+  workflow_id: string | null;
+}
+
 
 // =============================================================================
 // Helper Functions
@@ -215,10 +221,34 @@ export class TicketStore {
     const initialPhase = "Ideas";
     const description = input.description || "";
 
+    let brainstormWorkflowId: string | undefined;
+    if (input.brainstormId) {
+      const linkedBrainstorm = this.db
+        .prepare(
+          "SELECT id, project_id, workflow_id FROM brainstorms WHERE id = ? LIMIT 1"
+        )
+        .get(input.brainstormId) as BrainstormWorkflowRow | undefined;
+      if (!linkedBrainstorm) {
+        throw new Error(`Brainstorm ${input.brainstormId} not found`);
+      }
+      if (linkedBrainstorm.project_id !== projectId) {
+        throw new Error(
+          `Brainstorm ${input.brainstormId} does not belong to project ${projectId}`
+        );
+      }
+      if (!linkedBrainstorm.workflow_id) {
+        throw new Error(
+          `Brainstorm ${input.brainstormId} is missing workflow ownership`
+        );
+      }
+      brainstormWorkflowId = linkedBrainstorm.workflow_id;
+    }
+
     // Resolve workflowId:
     // 1) explicit workflowId if it belongs to this project
-    // 2) project's default workflow
-    // 3) throw explicit error before any DB writes
+    // 2) linked brainstorm workflow
+    // 3) project's default workflow
+    // 4) throw explicit error before any DB writes
     let resolvedWorkflowId: string;
     if (input.workflowId) {
       const ownedWorkflow = this.db
@@ -232,6 +262,16 @@ export class TicketStore {
         );
       }
       resolvedWorkflowId = ownedWorkflow.id;
+      if (
+        brainstormWorkflowId &&
+        resolvedWorkflowId !== brainstormWorkflowId
+      ) {
+        throw new Error(
+          `Ticket workflow ${resolvedWorkflowId} must belong to the same workflow as brainstorm ${input.brainstormId}`
+        );
+      }
+    } else if (brainstormWorkflowId) {
+      resolvedWorkflowId = brainstormWorkflowId;
     } else {
       const defaultWorkflow = this.db
         .prepare(

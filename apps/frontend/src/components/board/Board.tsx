@@ -97,10 +97,7 @@ function getDependencyWarning(
 export function Board({ projectId, workflowId }: BoardProps) {
   // Queries
   const { data: projects } = useProjects()
-  const { data: workflows } = useWorkflows(projectId)
-  const { data: tickets, isLoading: ticketsLoading, error: ticketsError } = useTickets(projectId, workflowId)
-  const { data: projectPhases } = useProjectPhases(projectId)
-  const { data: brainstorms } = useBrainstorms(projectId)
+  const { data: workflows, isLoading: workflowsLoading } = useWorkflows(projectId)
 
   // Get current project to access template name
   const currentProject = useMemo(
@@ -115,6 +112,10 @@ export function Board({ projectId, workflowId }: BoardProps) {
         : workflows?.find((w) => w.isDefault) ?? workflows?.[0],
     [workflowId, workflows]
   )
+  const activeWorkflowId = activeWorkflow?.id ?? null
+  const { data: tickets, isLoading: ticketsLoading, error: ticketsError } = useTickets(projectId, activeWorkflowId)
+  const { data: projectPhases } = useProjectPhases(projectId)
+  const { data: brainstorms } = useBrainstorms(projectId, activeWorkflowId)
 
   const activeTemplateName =
     activeWorkflow?.templateName ?? currentProject?.template?.name ?? null
@@ -370,7 +371,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
   }, [activeTicket, blockedFromPhaseByTier, phases])
 
   // Loading state
-  if (ticketsLoading) {
+  if (workflowsLoading || ticketsLoading || !activeWorkflowId) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-text-muted" />
@@ -419,9 +420,9 @@ export function Board({ projectId, workflowId }: BoardProps) {
         <div className="h-full flex">
           {/* Desktop only: fixed brainstorm column */}
           <div className="hidden sm:block shrink-0 h-full overflow-y-auto border-r border-border p-4 pr-2">
-            <BrainstormColumn projectId={projectId} workflowId={workflowId} />
+            <BrainstormColumn projectId={projectId} workflowId={activeWorkflowId} />
           </div>
-          <TableView projectId={projectId} workflowId={workflowId} />
+          <TableView projectId={projectId} workflowId={activeWorkflowId} />
         </div>
       ) : (
         <div className="flex-1 min-h-0 h-full">
@@ -430,7 +431,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
               <div className="flex gap-4 h-full">
                 {/* Brainstorm column */}
                 <div className="shrink-0">
-                  <BrainstormColumn projectId={projectId} workflowId={workflowId} />
+                  <BrainstormColumn projectId={projectId} workflowId={activeWorkflowId} />
                 </div>
 
                 {phases?.map((phase) => {
@@ -445,7 +446,7 @@ export function Board({ projectId, workflowId }: BoardProps) {
                       phase={phase}
                       tickets={ticketsByPhase[phase] || []}
                       projectId={projectId}
-                      workflowId={workflowId}
+                      workflowId={activeWorkflowId ?? undefined}
                       showAddTicket={phase === phases?.[0]}
                       isManualPhase={isManual}
                       isDisabled={isDisabled}

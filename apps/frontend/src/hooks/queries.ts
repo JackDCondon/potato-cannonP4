@@ -394,19 +394,27 @@ export function useProjectPhases(projectId: string | null) {
 
 // ============ Brainstorms ============
 
-export function useBrainstorms(projectId: string | null) {
+export function useBrainstorms(projectId: string | null, workflowId: string | null) {
   return useQuery({
-    queryKey: ['brainstorms', projectId],
-    queryFn: () => api.getBrainstorms(projectId!),
-    enabled: !!projectId
+    queryKey: ['brainstorms', projectId, workflowId],
+    queryFn: () => api.getBrainstorms(projectId!, workflowId!),
+    enabled: !!projectId && !!workflowId
+  })
+}
+
+export function useBrainstorm(projectId: string | null, brainstormId: string | null) {
+  return useQuery({
+    queryKey: ['brainstorm', projectId, brainstormId],
+    queryFn: () => api.getBrainstorm(projectId!, brainstormId!),
+    enabled: !!projectId && !!brainstormId
   })
 }
 
 export function useCreateBrainstorm() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ projectId, name, initialMessage }: { projectId: string; name?: string; initialMessage?: string }) =>
-      api.createBrainstorm(projectId, { name, initialMessage }),
+    mutationFn: ({ projectId, workflowId, name, initialMessage }: { projectId: string; workflowId: string; name?: string; initialMessage?: string }) =>
+      api.createBrainstorm(projectId, { name, initialMessage, workflowId }),
     onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: ['brainstorms', projectId] })
     }
