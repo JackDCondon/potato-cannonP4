@@ -1803,7 +1803,10 @@ export class SessionService {
       project: { providerOverride: project.providerOverride },
       config: globalConfig,
     });
-    const disallowedTools = ["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])];
+    // Deduplicate: Skill(superpowers:*) is always disallowed; workflow.json disallowTools
+    // may also list it for the MCP filter system (ix6.12), so dedup to avoid duplicate
+    // entries in the --disallowed-tools CSV passed to Claude CLI.
+    const disallowedTools = [...new Set(["Skill(superpowers:*)", ...(agentWorker.disallowTools || [])])];
     const compatibilityKey = this.buildContinuityCompatibilityKey({
       ticketId,
       phase,
