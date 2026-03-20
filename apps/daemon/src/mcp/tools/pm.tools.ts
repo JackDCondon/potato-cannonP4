@@ -1,4 +1,5 @@
-import { updateTicket } from "../../stores/ticket.store.js";
+import { getTicket, updateTicket } from "../../stores/ticket.store.js";
+import { getPhaseConfig } from "../../services/session/phase-config.js";
 import type {
   ToolDefinition,
   McpContext,
@@ -115,6 +116,27 @@ export const pmHandlers: Record<
 
     if (!targetPhase) {
       return errorResult("Error: targetPhase is required");
+    }
+
+    const isPmBrainstormSession = !!ctx.brainstormId && !ctx.ticketId;
+    if (isPmBrainstormSession && ctx.workflowId) {
+      const ticket = getTicket(ctx.projectId, ticketId);
+      const [currentPhaseConfig, targetPhaseConfig] = await Promise.all([
+        getPhaseConfig(ctx.projectId, ticket.phase, ctx.workflowId),
+        getPhaseConfig(ctx.projectId, targetPhase, ctx.workflowId),
+      ]);
+
+      if (currentPhaseConfig?.transitions?.manual) {
+        return errorResult(
+          `Error: PM agents cannot move ticket ${ticketId} out of manual phase '${ticket.phase}'. Notify the user and wait for direct human action instead.`,
+        );
+      }
+
+      if (targetPhaseConfig?.transitions?.manual) {
+        return errorResult(
+          `Error: PM agents cannot move ticket ${ticketId} into manual phase '${targetPhase}'. Notify the user and wait for direct human action instead.`,
+        );
+      }
     }
 
     try {

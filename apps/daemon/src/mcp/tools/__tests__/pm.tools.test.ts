@@ -26,7 +26,35 @@ const mockUpdateTicket = mock.fn(
 
 mock.module("../../../stores/ticket.store.js", {
   namedExports: {
+    getTicket: () => ({
+      id: "TKT-9",
+      project: "proj-1",
+      title: "Existing title",
+      description: "",
+      phase: "Specification Review",
+      executionGeneration: 0,
+      complexity: "standard",
+      createdAt: "2026-03-20T00:00:00.000Z",
+      updatedAt: "2026-03-20T00:00:00.000Z",
+      history: [],
+      archived: false,
+      paused: false,
+      pauseRetryCount: 0,
+      workflowId: "wf-1",
+    }),
     updateTicket: mockUpdateTicket,
+  },
+});
+
+mock.module("../../../services/session/phase-config.js", {
+  namedExports: {
+    getPhaseConfig: async (_projectId: string, phaseName: string) => ({
+      id: phaseName,
+      name: phaseName,
+      transitions: {
+        manual: phaseName === "Specification Review" || phaseName === "Done",
+      },
+    }),
   },
 });
 
@@ -126,6 +154,21 @@ describe("move_ticket", () => {
     assert.strictEqual((result as { isError?: boolean }).isError, true);
     assert.ok(result.content[0].text.includes("Failed to move ticket"));
     assert.ok(result.content[0].text.includes("Conflict"));
+  });
+
+  it("blocks PM brainstorm sessions from moving tickets out of manual phases", async () => {
+    const result = await pmHandlers.move_ticket(
+      {
+        projectId: "proj-1",
+        brainstormId: "brain-1",
+        workflowId: "wf-1",
+        daemonUrl: "http://localhost:8443",
+      },
+      { ticketId: "TKT-9", targetPhase: "Done" },
+    );
+
+    assert.strictEqual((result as { isError?: boolean }).isError, true);
+    assert.ok(result.content[0].text.includes("cannot move ticket TKT-9 out of manual phase"));
   });
 });
 

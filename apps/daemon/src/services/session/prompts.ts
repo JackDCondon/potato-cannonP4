@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { fileURLToPath } from "url";
 import type {
   Ticket,
   TicketImage,
@@ -418,6 +419,7 @@ export async function buildPmPrompt(
   },
 ): Promise<string> {
   const { pendingContext, pmMode, userMessage } = options ?? {};
+  const effectiveMode = pmMode ?? "passive";
 
   // Try to load decisions artifact
   let decisionsContent: string | undefined;
@@ -432,9 +434,39 @@ export async function buildPmPrompt(
     // Not present yet — proceed without it
   }
 
+  // Load dedicated PM agent instructions so the runtime prompt matches the
+  // workflow-authored guardrails instead of a weaker duplicated summary.
+  let pmAgentInstructions: string | undefined;
+  const promptsDir = path.dirname(fileURLToPath(import.meta.url));
+  const pmAgentPromptPath = path.resolve(
+    promptsDir,
+    "..",
+    "..",
+    "..",
+    "templates",
+    "workflows",
+    "product-development",
+    "agents",
+    "project-manager.md",
+  );
+  try {
+    pmAgentInstructions = await fs.readFile(pmAgentPromptPath, "utf-8");
+  } catch {
+    // If the template is unavailable, fall back to the inline instructions below.
+  }
+
   let instructions = `You are the Project Manager for this epic. Monitor ticket progress, identify blockers, and coordinate the team.
 
 ${USER_VISIBLE_OUTPUT_REMINDER}
+
+## Mode Guardrails
+
+- The current PM mode is \`${effectiveMode}\`. Treat it as fixed session context, not a suggestion.
+- Never call \`set_epic_pm_mode\` unless the user explicitly asks you to change modes.
+- In \`watching\` mode, alert and remind only. Do not move tickets, create implementation work, or bypass review gates yourself.
+- In \`executing\` mode, you may only advance tickets through non-human-gated phases. Human-gated phases still require the user's direct action in the UI.
+- Never use \`move_ticket\` to push a ticket into, out of, or across a manual/human-gated phase.
+- If a ticket is stuck behind a human gate or an unavailable external action, notify the user with \`chat_notify\`, explain the blocker, and stop there.
 `;
 
   if (pendingContext) {
@@ -469,6 +501,9 @@ Begin by summarising the current epic status and asking how you can help.`;
   const decisionsSection = decisionsContent
     ? `\n## Decisions\n\n${decisionsContent}\n`
     : "";
+  const agentInstructionsSection = pmAgentInstructions
+    ? `\n## Project Manager Agent Instructions\n\n${pmAgentInstructions}\n`
+    : "";
 
   return `
 ## Context
@@ -476,8 +511,8 @@ Begin by summarising the current epic status and asking how you can help.`;
 **Project:** ${projectId}
 **Brainstorm ID:** ${brainstormId}
 **Epic Name:** ${brainstorm.name}
-**Mode:** ${pmMode ?? "passive"}
-${planSection}${decisionsSection}
+**Mode:** ${effectiveMode}
+${planSection}${decisionsSection}${agentInstructionsSection}
 ## Available MCP Commands
 
 - \`chat_ask\` — Ask the user a question (waits for reply)
@@ -485,6 +520,8 @@ ${planSection}${decisionsSection}
 - \`get_epic_status\` — Get a structured snapshot of all epic tickets
 - \`create_ticket\` — Create a new ticket
 - \`get_ticket\` — Get ticket details
+- \`move_ticket\` — Move a ticket, but never through manual/human-gated phases
+- \`set_epic_pm_mode\` — Change PM mode only when the user explicitly instructs you to
 
 ## Instructions
 
