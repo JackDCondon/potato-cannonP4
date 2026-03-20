@@ -30,6 +30,7 @@ export function BrainstormDetailPanel() {
   const queryClient = useQueryClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [resolvedPmMode, setResolvedPmMode] = useState<string | null>(null)
   // Track the initial message so BrainstormChat can show a thinking indicator immediately
   const [pendingInitialMessage, setPendingInitialMessage] = useState<string | null>(null)
 
@@ -40,7 +41,7 @@ export function BrainstormDetailPanel() {
   const isEpic = brainstorm?.status === 'epic'
   const isEpicPm = isEpic && brainstorm?.pmEnabled
   const epicColor = isEpic ? getEpicColor(brainstorm?.color) : undefined
-  const pmMode = brainstorm?.pmConfig?.mode
+  const pmMode = resolvedPmMode ?? brainstorm?.pmConfig?.mode
 
   // Editable name state
   const [isEditingName, setIsEditingName] = useState(false)
@@ -63,6 +64,32 @@ export function BrainstormDetailPanel() {
     storageKey: 'potato-panel-width',
     disabled: isMobile,
   })
+
+  useEffect(() => {
+    if (!brainstormSheetProjectId || !brainstorm?.workflowId || !isEpicPm) {
+      setResolvedPmMode(null)
+      return
+    }
+
+    let cancelled = false
+
+    api
+      .getBoardSettings(brainstormSheetProjectId, brainstorm.workflowId)
+      .then(({ pmConfig }) => {
+        if (!cancelled) {
+          setResolvedPmMode(pmConfig.mode)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResolvedPmMode(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [brainstorm?.workflowId, brainstormSheetProjectId, isEpicPm])
 
   // Start editing the name
   const handleStartEditName = useCallback(() => {

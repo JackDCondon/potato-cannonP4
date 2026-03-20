@@ -16,11 +16,13 @@ vi.mock('sonner', () => ({
 
 // Mock api client
 const mockUpdateBrainstorm = vi.fn()
+const mockGetBoardSettings = vi.fn()
 const mockUpdateBoardPmSettings = vi.fn()
 
 vi.mock('@/api/client', () => ({
   api: {
     updateBrainstorm: (...args: unknown[]) => mockUpdateBrainstorm(...args),
+    getBoardSettings: (...args: unknown[]) => mockGetBoardSettings(...args),
     updateBoardPmSettings: (...args: unknown[]) => mockUpdateBoardPmSettings(...args),
   },
 }))
@@ -67,6 +69,10 @@ describe('EpicSettingsTab', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetBoardSettings.mockResolvedValue({
+      pmConfig: DEFAULT_PM_CONFIG,
+      chatNotificationPolicy: null,
+    })
   })
 
   it('renders color swatches from EPIC_BADGE_COLORS', () => {
@@ -187,6 +193,7 @@ describe('EpicSettingsTab', () => {
   })
 
   it('seeds PM config from localStorage defaults when pmConfig is missing', async () => {
+    mockGetBoardSettings.mockRejectedValue(new Error('offline'))
     localStorage.setItem(
       'potato-board-pm-defaults',
       JSON.stringify({
@@ -202,6 +209,34 @@ describe('EpicSettingsTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('watching')
+    })
+  })
+
+  it('hydrates PM config from saved board settings for the epic workflow', async () => {
+    mockGetBoardSettings.mockResolvedValue({
+      pmConfig: {
+        ...DEFAULT_PM_CONFIG,
+        mode: 'executing',
+      },
+      chatNotificationPolicy: null,
+    })
+
+    const brainstorm = makeBrainstorm({
+      workflowId: 'wf-1',
+      pmConfig: {
+        ...DEFAULT_PM_CONFIG,
+        mode: 'passive',
+      },
+    })
+    const onUpdated = vi.fn()
+    render(<EpicSettingsTab projectId="proj-1" brainstorm={brainstorm} onBrainstormUpdated={onUpdated} />)
+
+    await waitFor(() => {
+      expect(mockGetBoardSettings).toHaveBeenCalledWith('proj-1', 'wf-1')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pm-mode-selector')).toHaveTextContent('executing')
     })
   })
 

@@ -147,6 +147,7 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
     [brainstorm.id, brainstorm.pmConfig],
   )
   const [savingPm, setSavingPm] = useState(false)
+  const [loadingPm, setLoadingPm] = useState(false)
   const [mode, setMode] = useState<PmMode>(initialPmConfig.mode)
   const [polling, setPolling] = useState<PmPollingConfig>({ ...initialPmConfig.polling })
   const [alerts, setAlerts] = useState<PmAlertConfig>({ ...initialPmConfig.alerts })
@@ -166,6 +167,33 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
     applyPmConfig(initialPmConfig)
     setSavedSnapshot(JSON.stringify(initialPmConfig))
   }, [applyPmConfig, initialPmConfig])
+
+  useEffect(() => {
+    if (!workflowId) return
+
+    let cancelled = false
+    setLoadingPm(true)
+
+    api
+      .getBoardSettings(projectId, workflowId)
+      .then(({ pmConfig }) => {
+        if (cancelled) return
+        applyPmConfig(pmConfig)
+        setSavedSnapshot(JSON.stringify(pmConfig))
+      })
+      .catch(() => {
+        // Keep the fallback config seeded from the brainstorm row or local defaults.
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingPm(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyPmConfig, projectId, workflowId])
 
   const handlePollingChange = useCallback(
     (field: keyof PmPollingConfig, raw: string) => {
@@ -200,7 +228,7 @@ export function EpicSettingsTab({ projectId, brainstorm, onBrainstormUpdated }: 
   }, [projectId, workflowId, currentPmConfig, applyPmConfig, polling])
 
   const isPassive = mode === 'passive'
-  const pmDisabled = savingPm
+  const pmDisabled = savingPm || loadingPm
 
   return (
     <div className="@container h-full overflow-y-auto">

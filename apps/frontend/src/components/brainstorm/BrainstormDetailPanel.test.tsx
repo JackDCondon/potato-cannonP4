@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { BrainstormDetailPanel } from './BrainstormDetailPanel'
 
 // Mock useLocation from react-router
@@ -57,6 +57,16 @@ vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
+const mockGetBoardSettings = vi.fn()
+
+vi.mock('@/api/client', () => ({
+  api: {
+    getBoardSettings: (...args: unknown[]) => mockGetBoardSettings(...args),
+    updateBrainstorm: vi.fn(),
+    createBrainstorm: vi.fn(),
+  },
+}))
+
 // Mock BrainstormChat, BrainstormNewForm, BrainstormArtifactsTab
 vi.mock('./BrainstormChat', () => ({
   BrainstormChat: () => <div data-testid="brainstorm-chat">BrainstormChat</div>,
@@ -104,6 +114,22 @@ describe('BrainstormDetailPanel', () => {
   beforeEach(() => {
     cleanup()
     vi.clearAllMocks()
+    mockGetBoardSettings.mockResolvedValue({
+      pmConfig: {
+        mode: 'watching',
+        polling: {
+          intervalMinutes: 5,
+          stuckThresholdMinutes: 30,
+          alertCooldownMinutes: 15,
+        },
+        alerts: {
+          stuckTickets: true,
+          emptyPhases: true,
+          sessionErrors: true,
+        },
+      },
+      chatNotificationPolicy: null,
+    })
     mockAppState = createMockAppState()
     mockBrainstormsData = []
   })
@@ -128,7 +154,7 @@ describe('BrainstormDetailPanel', () => {
     expect(screen.getByText('Test Brainstorm')).toBeDefined()
   })
 
-  it('shows the brainstorm title and epic badges for pm-enabled epic brainstorms', () => {
+  it('shows the brainstorm title and epic badges for pm-enabled epic brainstorms', async () => {
     mockAppState.brainstormSheetOpen = true
     mockAppState.brainstormSheetBrainstormId = 'bs-1'
     mockAppState.brainstormSheetProjectId = 'proj-1'
@@ -141,10 +167,13 @@ describe('BrainstormDetailPanel', () => {
     expect(screen.getByText('Test Brainstorm')).toBeDefined()
     expect(screen.queryByText(/managed by pm/i)).toBeNull()
     expect(screen.getByText('Epic')).toBeDefined()
-    expect(screen.getByText('watching')).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText('watching')).toBeDefined()
+    })
   })
 
-  it('shows passive as default PM mode when board settings not loaded', () => {
+  it('shows passive as default PM mode when board settings not loaded', async () => {
+    mockGetBoardSettings.mockRejectedValue(new Error('offline'))
     const passiveEpicBrainstorm = {
       ...epicBrainstorm,
       pmConfig: null,
@@ -159,7 +188,36 @@ describe('BrainstormDetailPanel', () => {
 
     render(<BrainstormDetailPanel />)
 
-    expect(screen.getByText('passive')).toBeDefined()
+    await waitFor(() => {
+      expect(screen.getByText('passive')).toBeDefined()
+    })
+  })
+
+  it('prefers saved board PM mode over stale brainstorm PM mode in the header badge', async () => {
+    mockGetBoardSettings.mockResolvedValue({
+      pmConfig: {
+        ...epicBrainstorm.pmConfig,
+        mode: 'executing',
+      },
+      chatNotificationPolicy: null,
+    })
+
+    mockAppState.brainstormSheetOpen = true
+    mockAppState.brainstormSheetBrainstormId = 'bs-1'
+    mockAppState.brainstormSheetProjectId = 'proj-1'
+    mockAppState.brainstormSheetBrainstormName = 'Test Brainstorm'
+    mockAppState.currentProjectId = 'proj-1'
+    mockBrainstormsData = [epicBrainstorm]
+
+    render(<BrainstormDetailPanel />)
+
+    await waitFor(() => {
+      expect(mockGetBoardSettings).toHaveBeenCalledWith('proj-1', 'wf-1')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('executing')).toBeDefined()
+    })
   })
 
   it('shows Brainstorm badge when status is not epic', () => {
