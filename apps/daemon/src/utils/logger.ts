@@ -42,7 +42,12 @@ export class Logger {
 
   private formatMessage(args: unknown[]): string {
     return args
-      .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+      .map((a) => {
+        if (a instanceof Error) {
+          return a.stack ?? `${a.name}: ${a.message}`;
+        }
+        return typeof a === 'object' ? JSON.stringify(a) : String(a);
+      })
       .join(' ');
   }
 

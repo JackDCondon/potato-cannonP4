@@ -8,7 +8,8 @@ import {
   useSensor,
   useSensors
 } from '@dnd-kit/core'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, Loader2, Settings } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import {
   useTickets,
   useProjectPhases,
@@ -393,7 +394,17 @@ export function Board({ projectId, workflowId }: BoardProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden h-full">
       {/* Board Header */}
-      <div className="flex items-center justify-end px-4 py-3">
+      <div className="flex items-center justify-end px-4 py-3 gap-2">
+        {currentProject && activeWorkflow && (
+          <Link
+            to="/projects/$projectId/workflows/$workflowId/settings"
+            params={{ projectId: currentProject.slug, workflowId: activeWorkflow.id }}
+            className="flex items-center justify-center h-8 w-8 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+            title="Board Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
+        )}
         <ViewToggle />
       </div>
 

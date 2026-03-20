@@ -1,9 +1,13 @@
 // src/providers/telegram/telegram.poller.ts
 
+const BACKOFF_MIN_MS = 5_000;
+const BACKOFF_MAX_MS = 5 * 60_000;
+
 export class TelegramPoller {
   private running = false;
   private offset = 0;
   private abortController: AbortController | null = null;
+  private backoffMs = BACKOFF_MIN_MS;
 
   constructor(
     private botToken: string,
@@ -29,6 +33,9 @@ export class TelegramPoller {
         this.abortController = new AbortController();
         const updates = await this.getUpdates();
 
+        // Successful poll — reset backoff
+        this.backoffMs = BACKOFF_MIN_MS;
+
         for (const update of updates) {
           const u = update as { update_id: number };
           this.offset = u.update_id + 1;
@@ -40,9 +47,12 @@ export class TelegramPoller {
           }
         }
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          console.error('[TelegramPoller] Poll error:', (error as Error).message);
-          await new Promise(resolve => setTimeout(resolve, 5000));
+        const err = error as Error & { cause?: { code?: string; message?: string } };
+        if (err.name !== 'AbortError') {
+          const cause = err.cause?.code ?? err.cause?.message ?? '';
+          console.error(`[TelegramPoller] Poll error: ${err.message}${cause ? ` (${cause})` : ''} — retrying in ${this.backoffMs / 1000}s`);
+          await new Promise(resolve => setTimeout(resolve, this.backoffMs));
+          this.backoffMs = Math.min(this.backoffMs * 2, BACKOFF_MAX_MS);
         }
       }
     }
