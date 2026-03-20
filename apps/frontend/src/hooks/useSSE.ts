@@ -1,6 +1,7 @@
 // src/hooks/useSSE.ts
 import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useAppStore } from '@/stores/appStore'
 import { formatToolActivity } from '@/lib/utils'
 import type { Ticket } from '@potato-cannon/shared'
@@ -13,6 +14,7 @@ type SSEEventType =
   | 'ticket:deleted'
   | 'ticket:restarted'
   | 'ticket:message'
+  | 'ticket:paused'
   | 'ticket:task-updated'
   | 'session:started'
   | 'session:output'
@@ -294,6 +296,28 @@ export function useSSE() {
           }
         } catch (err) {
           console.error('Failed to parse ticket message:', err)
+        }
+      })
+
+      // Ticket paused — show warning toast
+      eventSource.addEventListener('ticket:paused', (e) => {
+        try {
+          const data = JSON.parse(e.data) as {
+            projectId?: string
+            ticketId?: string
+            reason?: string
+            retryAt?: string | null
+          }
+          const { ticketId, reason, retryAt } = data
+          const retryInfo = retryAt
+            ? `Auto-retry scheduled.`
+            : `Manual resume required.`
+          toast.warning(`Ticket ${ticketId} paused`, {
+            description: `${reason ? reason.slice(0, 120) : "Transient error"}\n${retryInfo}`,
+            duration: 10_000,
+          })
+        } catch (err) {
+          console.error('Failed to parse ticket:paused:', err)
         }
       })
 
