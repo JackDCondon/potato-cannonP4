@@ -220,6 +220,7 @@ interface RalphLoopState {
   id: string;
   type: "ralphLoop";
   iteration: number;
+  maxAttempts: number;               // copied from worker config at loop init
   workerIndex: number;
   activeWorker: WorkerState | null;
   lastDoerClaudeSessionId?: string;  // captured after doer finishes
@@ -230,7 +231,7 @@ This value is written by `captureDoerSessionIdIfNeeded()` in `ralph-loop.ts` imm
 
 ### Execution Flow
 
-1. When a ralphLoop starts a new iteration (iteration 2+), it checks `resumeOnRalphRetry` on the doer config
+1. When `executeNextWorker` is about to spawn the doer agent on iteration 2+, it checks `resumeOnRalphRetry` on the doer config (the resume ID is resolved at agent-spawn time inside `executeNextWorker`, not at the loop boundary)
 2. If true and `lastDoerClaudeSessionId` is set, the ID is passed as `resumeClaudeSessionId` through `executeNextWorker` → `spawnAgentWorker`
 3. Inside `spawnAgentWorker`, when `resumeClaudeSessionId` is present:
    - The continuity compatibility check is bypassed (session is resumed regardless of model/config changes)

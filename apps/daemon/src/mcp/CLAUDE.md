@@ -46,7 +46,7 @@ When both are provided, the daemon filters the tool list using a three-tier casc
 
 | Priority | Source | Description |
 | -------- | ------ | ----------- |
-| 1 (highest) | Workflow-local copy | Agent config in `project-data/{projectId}/template/workflow.json` |
+| 1 (highest) | Workflow-local copy | Agent config in `project-data/{projectId}/workflows/{workflowId}/template/workflow.json` |
 | 2 | Project-local copy | Agent config in the project's workflow copy |
 | 3 (lowest) | Global template | Agent config in `templates/{templateName}/workflow.json` |
 
