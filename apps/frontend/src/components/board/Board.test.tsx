@@ -6,6 +6,34 @@ import type { Ticket } from "@potato-cannon/shared";
 import { Board } from "./Board";
 import { WorkerTreeItem } from "./WorkerTreeItem";
 
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    children,
+    to,
+    params,
+    ...props
+  }: {
+    children: ReactNode;
+    to?: string;
+    params?: Record<string, string | undefined>;
+    [key: string]: unknown;
+  }) => {
+    let href = typeof to === "string" ? to : "#";
+
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        href = href.replace(`$${key}`, value ?? "");
+      }
+    }
+
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+  },
+}));
+
 const mockState = vi.hoisted(() => ({
   tickets: [] as Ticket[],
   updateTicketMutate: vi.fn(),
