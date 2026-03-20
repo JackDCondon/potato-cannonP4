@@ -1864,8 +1864,10 @@ export class SessionService {
           existingClaudeSessionId ??
           undefined
         : undefined);
+    // Suppress handoff when using an explicit resume session (ralph retry): injecting a
+    // handoff packet alongside --resume would conflict with the resumed conversation context.
     const handoffDecision =
-      continuityDecision.mode === "handoff" ? continuityDecision : undefined;
+      !resumeClaudeSessionId && continuityDecision.mode === "handoff" ? continuityDecision : undefined;
 
     // Build prompt with task context if provided
     let prompt = agentDefinition.prompt;
