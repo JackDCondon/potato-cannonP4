@@ -79,7 +79,10 @@ mock.module("../../stores/template.store.js", {
 });
 
 mock.module("../../stores/session.store.js", {
-  namedExports: { getActiveSessionForTicket: () => null },
+  namedExports: {
+    getActiveSessionForTicket: () => null,
+    hasActiveStoredSession: () => false,
+  },
 });
 
 mock.module("../../stores/conversation.store.js", {

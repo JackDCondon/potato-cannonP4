@@ -353,7 +353,8 @@ export function useTicketSessions(projectId: string | undefined, ticketId: strin
 export function useSessions() {
   return useQuery({
     queryKey: ['sessions'],
-    queryFn: api.getSessions
+    queryFn: api.getSessions,
+    refetchInterval: 5000,
   })
 }
 

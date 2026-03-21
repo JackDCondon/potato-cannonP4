@@ -270,7 +270,13 @@ export function registerTicketRoutes(
         }
       }
 
-      res.json(tickets);
+      // Augment each ticket with live session liveness
+      const ticketsWithSession = tickets.map((ticket) => ({
+        ...ticket,
+        hasActiveSession: hasActiveStoredSession(ticket.id),
+      }));
+
+      res.json(ticketsWithSession);
     } catch (error) {
       const workflowError = mapWorkflowContextError(error);
       if (workflowError) {

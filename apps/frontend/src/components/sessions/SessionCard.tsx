@@ -97,15 +97,32 @@ export function SessionCard({ session, onStop, onViewLog }: SessionCardProps) {
         </div>
         {(session.ticketId || session.brainstormId) && (
           <div className="text-xs text-text-muted mt-1">
-            {session.ticketId && <span>Ticket: {session.ticketId}</span>}
-            {session.brainstormId && <span>Brainstorm: {session.brainstormId}</span>}
+            {session.ticketId && (
+              <span>
+                {session.ticketTitle
+                  ? `${session.ticketId}: ${session.ticketTitle}`
+                  : `Ticket: ${session.ticketId}`}
+              </span>
+            )}
+            {session.brainstormId && (
+              <span>
+                {session.brainstormName
+                  ? session.brainstormName
+                  : `Brainstorm: ${session.brainstormId}`}
+              </span>
+            )}
+          </div>
+        )}
+        {session.phase && (
+          <div className="text-xs text-text-muted mt-0.5">
+            Phase: <span className="font-medium">{session.phase}</span>
           </div>
         )}
       </div>
 
       {/* Duration */}
       <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
-        <span>Duration: {duration}</span>
+        <span>Elapsed: {duration}</span>
         {session.status === 'running' && (
           <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
         )}

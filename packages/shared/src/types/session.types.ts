@@ -36,8 +36,11 @@ export interface Session {
   id: string
   projectId: string
   ticketId?: string
+  ticketTitle?: string
   executionGeneration?: number | null
   brainstormId?: string
+  brainstormName?: string
+  phase?: string
   status: SessionStatus
   startedAt: string
   endedAt?: string
