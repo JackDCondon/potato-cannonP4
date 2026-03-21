@@ -48,10 +48,6 @@ test('fetchWithRetry retries up to maxAttempts and re-throws last error', async 
 });
 
 test('fetchWithRetry uses exponential backoff delays', async () => {
-  const delays: number[] = [];
-  const originalSetTimeout = global.setTimeout;
-
-  // Track sleep calls by monkey-patching Promise-based sleep
   // We pass baseDelayMs=10 to make this fast while verifying the multiplier.
   let callCount = 0;
   const mockFetch = async (): Promise<Response> => {
