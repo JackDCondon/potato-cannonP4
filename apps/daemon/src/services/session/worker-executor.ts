@@ -722,8 +722,6 @@ export async function handleAgentCompletion(
   callbacks: ExecutorCallbacks,
   callbackIdentity?: SessionCallbackIdentity,
 ): Promise<void> {
-  const strictStaleDrop =
-    process.env.POTATO_LIFECYCLE_STRICT_STALE_DROP !== "false";
   const currentTicket = getTicketIfPresent(projectId, ticketId);
   if (!currentTicket) {
     await logToDaemon(projectId, ticketId, "Skipping completion callback because ticket no longer exists", {
@@ -735,29 +733,20 @@ export async function handleAgentCompletion(
   const ticketGeneration = currentTicket?.executionGeneration ?? 0;
   const workflowId = currentTicket?.workflowId;
   const callbackGeneration = callbackIdentity?.executionGeneration;
-  const isStaleCallback =
+  const isGenerationMismatch =
     callbackGeneration === undefined ||
     callbackGeneration === null ||
     callbackGeneration !== ticketGeneration;
-  if (isStaleCallback && strictStaleDrop) {
-    await logToDaemon(projectId, ticketId, `Dropping stale completion callback`, {
+  // Generation mismatches are always hard-dropped unconditionally.
+  // The strictStaleDrop escape hatch must NOT apply here — a session from an
+  // earlier generation is a zombie and must never advance worker state.
+  if (isGenerationMismatch) {
+    await logToDaemon(projectId, ticketId, `Dropping stale completion callback (generation mismatch)`, {
       agentId,
       callbackIdentity,
       ticketGeneration,
     });
     return;
-  }
-  if (isStaleCallback) {
-    await logToDaemon(
-      projectId,
-      ticketId,
-      `Strict stale-drop disabled; allowing callback despite generation mismatch`,
-      {
-        agentId,
-        callbackIdentity,
-        ticketGeneration,
-      },
-    );
   }
 
   let phaseConfig;
