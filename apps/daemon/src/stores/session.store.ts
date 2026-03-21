@@ -247,14 +247,18 @@ export class SessionStore {
     return false;
   }
 
-  getLatestClaudeSessionId(brainstormId: string): string | null {
-    const row = this.db
-      .prepare(
-        `SELECT claude_session_id FROM sessions
-         WHERE brainstorm_id = ? AND claude_session_id IS NOT NULL
+  getLatestClaudeSessionId(brainstormId: string, agentSource?: string): string | null {
+    const sql = agentSource
+      ? `SELECT claude_session_id FROM sessions
+         WHERE brainstorm_id = ? AND claude_session_id IS NOT NULL AND agent_source = ?
          ORDER BY started_at DESC, ROWID DESC LIMIT 1`
-      )
-      .get(brainstormId) as { claude_session_id: string } | undefined;
+      : `SELECT claude_session_id FROM sessions
+         WHERE brainstorm_id = ? AND claude_session_id IS NOT NULL
+         ORDER BY started_at DESC, ROWID DESC LIMIT 1`;
+    const params = agentSource ? [brainstormId, agentSource] : [brainstormId];
+    const row = this.db
+      .prepare(sql)
+      .get(...params) as { claude_session_id: string } | undefined;
 
     return row?.claude_session_id || null;
   }
@@ -363,8 +367,8 @@ export function hasActiveStoredSession(
   );
 }
 
-export function getLatestClaudeSessionId(brainstormId: string): string | null {
-  return new SessionStore(getDatabase()).getLatestClaudeSessionId(brainstormId);
+export function getLatestClaudeSessionId(brainstormId: string, agentSource?: string): string | null {
+  return new SessionStore(getDatabase()).getLatestClaudeSessionId(brainstormId, agentSource);
 }
 
 export function getLatestClaudeSessionIdForTicket(ticketId: string): string | null {

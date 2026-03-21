@@ -416,6 +416,45 @@ describe("SessionStore", () => {
 
       assert.strictEqual(result, "claude_second");
     });
+
+    it("should filter by agentSource when provided", () => {
+      const brainstorm = brainstormStore.createBrainstorm(projectId, { workflowId });
+
+      sessionStore.createSession({
+        projectId,
+        brainstormId: brainstorm.id,
+        claudeSessionId: "claude_brainstorm",
+        agentSource: "agents/brainstorm.md",
+      });
+      sessionStore.createSession({
+        projectId,
+        brainstormId: brainstorm.id,
+        claudeSessionId: "claude_pm",
+        agentSource: "agents/project-manager.md",
+      });
+
+      // Without filter: returns latest regardless of agent
+      assert.strictEqual(
+        sessionStore.getLatestClaudeSessionId(brainstorm.id),
+        "claude_pm",
+      );
+
+      // With filter: returns only matching agent source
+      assert.strictEqual(
+        sessionStore.getLatestClaudeSessionId(brainstorm.id, "agents/brainstorm.md"),
+        "claude_brainstorm",
+      );
+      assert.strictEqual(
+        sessionStore.getLatestClaudeSessionId(brainstorm.id, "agents/project-manager.md"),
+        "claude_pm",
+      );
+
+      // Non-matching filter: returns null
+      assert.strictEqual(
+        sessionStore.getLatestClaudeSessionId(brainstorm.id, "agents/nonexistent.md"),
+        null,
+      );
+    });
   });
 
   describe("endAllOpenSessions", () => {

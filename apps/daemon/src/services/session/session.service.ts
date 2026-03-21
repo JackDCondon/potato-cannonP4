@@ -1592,14 +1592,24 @@ export class SessionService {
 
     const brainstorm = await getBrainstorm(projectId, brainstormId);
     const workflowId = brainstorm.workflowId || "";
-    const existingClaudeSessionId = getLatestClaudeSessionId(brainstormId);
+
+    // Determine whether this brainstorm should use the PM skill
+    const usePm = shouldUsePmSkill(brainstorm);
+
+    // Load agent from template — PM skill takes priority when transition has occurred
+    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
+
+    // Only resume a Claude session that matches the current agent type.
+    // When a brainstorm transitions to epic PM mode, the old brainstorm session
+    // must NOT be resumed — the PM agent needs a fresh session with its own identity.
+    const existingClaudeSessionId = getLatestClaudeSessionId(brainstormId, agentType);
 
     // Create session record in database
     const storedSession = createStoredSession({
       projectId,
       brainstormId,
       claudeSessionId: existingClaudeSessionId || undefined,
-      agentSource: "brainstorm",
+      agentSource: agentType,
     });
     const sessionId = storedSession.id;
 
@@ -1629,12 +1639,6 @@ export class SessionService {
       unsolicitedUserMessage = pendingResponse.answer;
       await clearResponse(projectId, brainstormId);
     }
-
-    // Determine whether this brainstorm should use the PM skill
-    const usePm = shouldUsePmSkill(brainstorm);
-
-    // Load agent from template — PM skill takes priority when transition has occurred
-    const agentType = usePm ? "agents/project-manager.md" : "agents/brainstorm.md";
 
     // Resolve PM mode from board config so the PM agent knows how autonomous to be
     const pmMode = usePm
@@ -1902,7 +1906,7 @@ export class SessionService {
     const additionalMcpServers = provider.getMcpServers(nodePath, projectId, ticketId);
 
     // Load agent definition
-    const agentDefinition = await tryLoadAgentDefinition(projectId, agentWorker.source);
+    const agentDefinition = await tryLoadAgentDefinition(projectId, agentWorker.source, ticket?.workflowId);
     if (!agentDefinition) {
       throw new Error(`Agent ${agentWorker.source} not found in template`);
     }
