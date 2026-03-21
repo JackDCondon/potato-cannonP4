@@ -11,7 +11,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { eventBus } from '../utils/event-bus.js';
-import { getProjectById } from '../stores/project.store.js';
+import { getProjectById, getAllProjects } from '../stores/project.store.js';
 import { listTickets, getTicket } from '../stores/ticket.store.js';
 import {
   getActiveSessionForTicket,
@@ -138,6 +138,24 @@ async function writeSentinel(
 }
 
 /**
+ * Write the sentinel file for every registered project.
+ * Call this once at daemon startup (after ghost sessions are cleared) to ensure
+ * the sentinel reflects the current, accurate session state rather than a stale
+ * value left over from a previous daemon run.
+ */
+export async function initSentinelForAllProjects(daemonPort: number): Promise<void> {
+  const projects = getAllProjects();
+  await Promise.allSettled(
+    projects.map((p) => writeSentinel(p.id, daemonPort)),
+  );
+  if (projects.length > 0) {
+    console.log(
+      `[sentinel] Initialised .potato-context.json for ${projects.length} project(s)`,
+    );
+  }
+}
+
+/**
  * Register EventBus listeners that trigger sentinel writes.
  * Call this once during daemon startup.
  */
@@ -152,6 +170,8 @@ export function registerSentinelListeners(daemonPort: number): void {
   eventBus.on('ticket:updated', trigger);
   eventBus.on('session:started', trigger);
   eventBus.on('session:ended', trigger);
+  // ticket:paused changes session status perception (PM-managed pauses) — refresh sentinel
+  eventBus.on('ticket:paused', trigger);
 
   console.log('[sentinel] Registered .potato-context.json listeners');
 }

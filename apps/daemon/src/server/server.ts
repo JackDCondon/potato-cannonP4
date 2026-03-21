@@ -98,7 +98,7 @@ import {
   isSpawnPendingWorkerStateRoot,
 } from "../services/session/worker-state.js";
 import { getPhaseConfig } from "../services/session/phase-config.js";
-import { registerSentinelListeners } from "../services/sentinel.service.js";
+import { registerSentinelListeners, initSentinelForAllProjects } from "../services/sentinel.service.js";
 import { PmPoller } from "../services/pm/pm-poller.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1243,6 +1243,16 @@ export async function main(): Promise<void> {
     if (staleSessions > 0) {
       console.log(`[startup] Cleared ${staleSessions} stale session(s) from previous run`);
     }
+
+    // Immediately flush accurate sentinel state for all projects now that ghost
+    // sessions have been cleared.  Without this, any .potato-context.json written
+    // by the previous daemon run would keep showing sessionStatus:"active" until
+    // the next ticket/session event — which could be 13+ minutes if no activity occurs.
+    const sentinelPort =
+      typeof (process.env.POTATO_DAEMON_PORT || globalConfig?.daemon?.port || DEFAULT_PORT) === 'string'
+        ? parseInt(process.env.POTATO_DAEMON_PORT || String(globalConfig?.daemon?.port || DEFAULT_PORT), 10)
+        : (globalConfig?.daemon?.port || DEFAULT_PORT);
+    await initSentinelForAllProjects(sentinelPort);
 
     // Recover pending responses first so ticket-input reconciliation happens before worker recovery.
     await recoverPendingResponses();
