@@ -552,6 +552,9 @@ export const ticketHandlers: Record<
       slug?: string;
       template?: { name: string };
     }>;
+    if (!Array.isArray(projects)) {
+      throw new Error(`Unexpected response from /api/projects: ${JSON.stringify(projects)}`);
+    }
     const compact = projects.map((p) => ({
       id: p.id,
       name: p.displayName,
