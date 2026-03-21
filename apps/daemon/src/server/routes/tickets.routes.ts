@@ -33,7 +33,7 @@ import {
   writeResponse,
   clearPendingInteraction,
 } from "../../stores/chat.store.js";
-import { getActiveSessionForTicket } from "../../stores/session.store.js";
+import { getActiveSessionForTicket, hasActiveStoredSession } from "../../stores/session.store.js";
 import { getMessages } from "../../stores/conversation.store.js";
 import type { SessionService } from "../../services/session/index.js";
 import { deleteTicketWithLifecycle } from "../../services/ticket-deletion.service.js";
@@ -843,6 +843,18 @@ export function registerTicketRoutes(
               });
               return;
             }
+          }
+
+          // No questionId supplied — this is a free-text message sent while no question
+          // is active (e.g., PM is thinking). Persist it to the conversation so it is
+          // visible in the chat history and not silently dropped.
+          if (typeof questionId !== "string") {
+            await chatService.persistFreeTextMessage(
+              { projectId, ticketId },
+              message,
+            );
+            res.json({ success: true, freeText: true });
+            return;
           }
 
           if (!strictStaleResume409) {

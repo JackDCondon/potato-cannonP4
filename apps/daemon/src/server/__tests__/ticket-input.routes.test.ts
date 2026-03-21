@@ -3,6 +3,7 @@ import assert from "node:assert";
 
 let pendingQuestion: any = null;
 let writeResponseCalls: Array<any> = [];
+let persistFreeTextCalls: Array<any> = [];
 let reconcileResult: { accepted: boolean; stale: boolean; found: boolean } = {
   accepted: true,
   stale: false,
@@ -155,6 +156,9 @@ mock.module("../../services/chat.service.js", {
   namedExports: {
     chatService: {
       reconcileWebAnswer: async () => reconcileResult,
+      persistFreeTextMessage: async (...args: unknown[]) => {
+        persistFreeTextCalls.push(args);
+      },
     },
   },
 });
@@ -165,6 +169,7 @@ describe("ticket input route queue reconciliation", () => {
   beforeEach(() => {
     pendingQuestion = null;
     writeResponseCalls = [];
+    persistFreeTextCalls = [];
     reconcileResult = { accepted: true, stale: false, found: true };
     phaseConfigError = null;
   });
@@ -221,6 +226,65 @@ describe("ticket input route queue reconciliation", () => {
       queueResolved: true,
     });
     assert.equal(writeResponseCalls.length, 0);
+  });
+
+  it("persists free-text message to conversation when no pending question and no questionId supplied", async () => {
+    // pendingQuestion is null — PM is thinking, no active question open
+    let inputHandler: ((req: any, res: any) => Promise<void>) | null = null;
+
+    const app = {
+      get: () => {},
+      post: (path: string, handler: any) => {
+        if (path === "/api/tickets/:project/:id/input") {
+          inputHandler = handler;
+        }
+      },
+      put: () => {},
+      patch: () => {},
+      delete: () => {},
+      use: () => {},
+    };
+
+    registerTicketRoutes(
+      app as any,
+      { resumeSuspendedTicket: async () => "sess-1", spawnForTicket: async () => "sess-2" } as any,
+      () => new Map([["proj-1", { path: "/tmp/proj-1" } as any]]),
+      () => ({ strictStaleResume409: true, strictStaleDrop: true }),
+    );
+
+    assert.ok(inputHandler, "input route should be registered");
+
+    const req = {
+      params: { project: "proj-1", id: "POT-1" },
+      // No questionId — this is a free-text message, not an answer to a question
+      body: { message: "hey what's the status?" },
+    };
+
+    const responseBody: any = { status: 200, json: null };
+    const res = {
+      status(code: number) {
+        responseBody.status = code;
+        return this;
+      },
+      json(payload: unknown) {
+        responseBody.json = payload;
+        return this;
+      },
+    };
+
+    const handler = inputHandler as unknown as (req: unknown, res: unknown) => Promise<void>;
+    await handler(req, res);
+
+    // Should succeed, not return 409
+    assert.equal(responseBody.status, 200);
+    assert.deepStrictEqual(responseBody.json, { success: true, freeText: true });
+    // Should persist via persistFreeTextMessage, not writeResponse
+    assert.equal(writeResponseCalls.length, 0, "should not write stale pending response");
+    assert.equal(persistFreeTextCalls.length, 1, "should persist free-text message");
+    assert.deepStrictEqual(persistFreeTextCalls[0], [
+      { projectId: "proj-1", ticketId: "POT-1" },
+      "hey what's the status?",
+    ]);
   });
 
   it("persists lifecycle identity for legacy web answer when strict stale enforcement is disabled", async () => {

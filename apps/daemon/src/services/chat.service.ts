@@ -225,10 +225,17 @@ export class ChatService {
       context.projectId,
       getContextId(context),
     );
+    if (!pendingQuestion) {
+      // No pending question — this is a free-text message sent while the agent/PM is
+      // thinking. Persist it to the conversation so it is visible in chat history, then
+      // return false so the caller knows no question was answered (no session respawn needed).
+      await this.persistFreeTextMessage(context, answer);
+      return false;
+    }
     const decodedAnswer = decodeStructuredAnswer(answer);
     if (
       decodedAnswer.questionId &&
-      pendingQuestion?.questionId &&
+      pendingQuestion.questionId &&
       decodedAnswer.questionId !== pendingQuestion.questionId
     ) {
       return false;
@@ -273,6 +280,36 @@ export class ChatService {
     await this.notifyProvidersAnswered(context, mappedAnswer, providerId);
 
     return true;
+  }
+
+  /**
+   * Persist a free-text user message to the conversation when no pending question exists.
+   * This handles messages sent while the PM is thinking / no active question is open.
+   * The message is saved to the conversation store and broadcast via SSE so the UI reflects it.
+   */
+  async persistFreeTextMessage(
+    context: ChatContext,
+    message: string,
+  ): Promise<void> {
+    const conversationId = getConversationId(context);
+    if (!conversationId) {
+      console.warn(
+        `[ChatService] persistFreeTextMessage: no conversationId for ${getContextId(context)}, message dropped`,
+      );
+      return;
+    }
+
+    addMessage(conversationId, {
+      type: "user",
+      text: message,
+      metadata: createConversationMetadata(context, "user"),
+    });
+
+    this.emitChatEvent(context, {
+      type: "user",
+      text: message,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   async reconcileWebAnswer(
