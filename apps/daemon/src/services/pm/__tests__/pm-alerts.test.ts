@@ -30,6 +30,9 @@ let mockActiveSession: { id: string } | null = null;
 // db.prepare().get() — returns ticket_history row for stuck check
 let mockHistoryRow: { entered_at: string } | undefined = undefined;
 
+// db.prepare().get() — returns most-recent ended session row (for grace-period check)
+let mockRecentSessionRow: { ended_at: string } | undefined = undefined;
+
 // db.prepare().all() — for ralph_feedback, sessions, ticket_dependencies
 let mockQueryResults: unknown[] = [];
 
@@ -44,6 +47,8 @@ function makeMockDb() {
         get: (_ticketId: unknown) => {
           // ticket_history query
           if (sql.includes("ticket_history")) return mockHistoryRow;
+          // recent-session grace-period query (c2w.2)
+          if (sql.includes("ended_at IS NOT NULL")) return mockRecentSessionRow;
           return undefined;
         },
         all: (..._args: unknown[]) => {
@@ -104,6 +109,7 @@ describe("detectAlerts", () => {
     mockTickets = [];
     mockActiveSession = null;
     mockHistoryRow = undefined;
+    mockRecentSessionRow = undefined;
     mockQueryResults = [];
     executedQueries.length = 0;
   });
@@ -155,9 +161,8 @@ describe("detectAlerts", () => {
       assert.strictEqual(alerts.length, 0);
     });
 
-    it("skips terminal phases (Ideas, Done, Blocked)", () => {
+    it("skips terminal phases (Done, Blocked) — they require no PM action", () => {
       mockTickets = [
-        { id: "TKT-I", phase: "Ideas", archived: false },
         { id: "TKT-D", phase: "Done", archived: false },
         { id: "TKT-B", phase: "Blocked", archived: false },
       ];
@@ -168,6 +173,77 @@ describe("detectAlerts", () => {
 
       const alerts = detectAlerts(EPIC_ID, PROJECT_ID, fullConfig());
       assert.strictEqual(alerts.length, 0);
+    });
+
+    // c2w.6: Ideas phase must be included in the stuck-ticket scan
+    it("fires stuck_ticket alert for a ticket in Ideas phase (c2w.6)", () => {
+      mockTickets = [{ id: "TKT-I", phase: "Ideas", archived: false }];
+      mockActiveSession = null;
+
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      mockHistoryRow = { entered_at: twoHoursAgo };
+
+      const alerts = detectAlerts(EPIC_ID, PROJECT_ID, fullConfig());
+      assert.strictEqual(alerts.length, 1);
+      assert.strictEqual(alerts[0].kind, "stuck_ticket");
+      assert.strictEqual(alerts[0].ticketId, "TKT-I");
+    });
+
+    // c2w.2: Ticket with a recently-completed session should not be flagged
+    it("skips ticket whose last session completed within grace period (c2w.2)", () => {
+      mockTickets = [{ id: "TKT-R", phase: "Build", archived: false }];
+      mockActiveSession = null;
+
+      // Ticket has been in phase for 2 hours (would normally be flagged)
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      mockHistoryRow = { entered_at: twoHoursAgo };
+
+      // But the last session ended only 2 minutes ago — still in grace period
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+      mockRecentSessionRow = { ended_at: twoMinutesAgo };
+
+      const alerts = detectAlerts(EPIC_ID, PROJECT_ID, fullConfig());
+      assert.strictEqual(alerts.length, 0);
+    });
+
+    it("fires stuck_ticket when last session ended well outside grace period", () => {
+      mockTickets = [{ id: "TKT-S", phase: "Build", archived: false }];
+      mockActiveSession = null;
+
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      mockHistoryRow = { entered_at: twoHoursAgo };
+
+      // Last session ended 30 minutes ago — outside the 5-minute grace period
+      const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      mockRecentSessionRow = { ended_at: thirtyMinsAgo };
+
+      const alerts = detectAlerts(EPIC_ID, PROJECT_ID, fullConfig());
+      assert.strictEqual(alerts.length, 1);
+      assert.strictEqual(alerts[0].kind, "stuck_ticket");
+      assert.strictEqual(alerts[0].ticketId, "TKT-S");
+    });
+
+    // c2w.8: Stuck alerts sorted by phase priority — later phases first
+    it("returns stuck alerts sorted by phase priority descending (c2w.8)", () => {
+      mockTickets = [
+        { id: "TKT-IDEAS", phase: "Ideas", archived: false },
+        { id: "TKT-BUILD", phase: "Build", archived: false },
+        { id: "TKT-REFINE", phase: "Refinement", archived: false },
+      ];
+      mockActiveSession = null;
+      mockRecentSessionRow = undefined;
+
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      mockHistoryRow = { entered_at: twoHoursAgo };
+
+      const alerts = detectAlerts(EPIC_ID, PROJECT_ID, fullConfig());
+      const stuckAlerts = alerts.filter((a) => a.kind === "stuck_ticket");
+
+      assert.strictEqual(stuckAlerts.length, 3);
+      // Build (priority 8) > Refinement (priority 2) > Ideas (priority 1)
+      assert.strictEqual(stuckAlerts[0].ticketId, "TKT-BUILD");
+      assert.strictEqual(stuckAlerts[1].ticketId, "TKT-REFINE");
+      assert.strictEqual(stuckAlerts[2].ticketId, "TKT-IDEAS");
     });
 
     it("skips archived tickets", () => {

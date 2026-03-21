@@ -11,6 +11,32 @@ import { getTicketsByBrainstormId } from "../../stores/ticket.store.js";
 import { getActiveSessionForTicket } from "../../stores/session.store.js";
 
 // =============================================================================
+// Phase Priority
+// =============================================================================
+
+/**
+ * Phase priority order for focus selection (higher = closer to Done = higher priority).
+ * Tickets in later phases should be attended to before earlier ones.
+ * Phases not listed get a default priority of 0.
+ */
+const PHASE_PRIORITY: Record<string, number> = {
+  "Ideas": 1,
+  "Refinement": 2,
+  "Backlog": 3,
+  "Architecture": 4,
+  "Architecture Review": 5,
+  "Specification": 6,
+  "Specification Review": 7,
+  "Build": 8,
+  "Pull Requests": 9,
+};
+
+/** How recently a session must have ended to be considered "just finished"
+ *  (anti-race guard for c2w.2: skip tickets where the workflow engine is
+ *  still transitioning after a completed session). */
+const RECENTLY_COMPLETED_SESSION_GRACE_MS = 5 * 60 * 1000; // 5 minutes
+
+// =============================================================================
 // Alert Types
 // =============================================================================
 
@@ -41,6 +67,9 @@ export interface PmAlert {
  * - Ralph loop max_attempts failures
  * - Recent session crashes (non-zero exit code)
  * - Dependency unblocks (watching mode only)
+ *
+ * Stuck-ticket alerts are sorted by phase priority descending so that tickets
+ * closest to Done are surfaced first (fixes c2w.8).
  */
 export function detectAlerts(
   epicId: string,
@@ -61,8 +90,13 @@ export function detectAlerts(
   // Stuck Tickets
   // -------------------------------------------------------------------------
   if (config.alerts.stuckTickets) {
-    // Working phases are anything except Ideas, Done, Blocked
-    const terminalPhases = new Set(["Ideas", "Done", "Blocked"]);
+    // Only truly terminal phases (ticket is done or intentionally waiting for
+    // external reasons) are excluded. Ideas IS actionable — the PM should
+    // advance Ideas tickets in executing mode or alert in watching mode (c2w.6).
+    const terminalPhases = new Set(["Done", "Blocked"]);
+
+    // Collect stuck alerts before sorting so we can order by phase priority
+    const stuckAlerts: Array<PmAlert & { phasePriority: number }> = [];
 
     for (const ticket of tickets) {
       if (terminalPhases.has(ticket.phase)) continue;
@@ -71,6 +105,22 @@ export function detectAlerts(
       // Skip if ticket has an active session
       const activeSession = getActiveSessionForTicket(ticket.id);
       if (activeSession) continue;
+
+      // c2w.2: Skip tickets where a session completed very recently.
+      // The workflow engine may still be transitioning the ticket to the next
+      // phase — treating it as "stuck" would produce a redundant move_ticket.
+      const recentSessionRow = db
+        .prepare(
+          `SELECT ended_at FROM sessions
+           WHERE ticket_id = ? AND ended_at IS NOT NULL
+           ORDER BY ended_at DESC LIMIT 1`,
+        )
+        .get(ticket.id) as { ended_at: string } | undefined;
+
+      if (recentSessionRow) {
+        const endedAt = new Date(recentSessionRow.ended_at).getTime();
+        if (now - endedAt < RECENTLY_COMPLETED_SESSION_GRACE_MS) continue;
+      }
 
       // Check how long the ticket has been in this phase
       const historyRow = db
@@ -86,14 +136,23 @@ export function detectAlerts(
       const enteredAt = new Date(historyRow.entered_at).getTime();
       if (now - enteredAt > stuckThresholdMs) {
         const idleMinutes = Math.round((now - enteredAt) / 60_000);
-        alerts.push({
+        stuckAlerts.push({
           kind: "stuck_ticket",
           alertKey: `stuck_ticket:${ticket.id}`,
           ticketId: ticket.id,
           projectId,
           message: `Ticket ${ticket.id} stuck in ${ticket.phase} for ${idleMinutes}m with no active session`,
+          // c2w.8: track priority for sorting (later phases = higher priority)
+          phasePriority: PHASE_PRIORITY[ticket.phase] ?? 0,
         });
       }
+    }
+
+    // Sort stuck alerts: highest phase priority first (closest to Done first)
+    stuckAlerts.sort((a, b) => b.phasePriority - a.phasePriority);
+
+    for (const { phasePriority: _p, ...alert } of stuckAlerts) {
+      alerts.push(alert);
     }
   }
 
