@@ -21,12 +21,74 @@ import {
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { pathToFileURL } from 'node:url';
 import { buildMcpAuthHeaders } from './auth.js';
 
 // Context from environment
 const PROJECT_ID_ENV = process.env.POTATO_PROJECT_ID || '';
 const PROJECT_SLUG_ENV = process.env.POTATO_PROJECT_SLUG || '';
 const DAEMON_URL_ENV = process.env.POTATO_DAEMON_URL || '';
+
+// =============================================================================
+// Retry helpers
+// =============================================================================
+
+/** Maximum number of fetch attempts (initial + retries). */
+const MAX_FETCH_ATTEMPTS = 4;
+/** Base delay in ms for exponential backoff. Doubles each retry: 500, 1000, 2000. */
+const RETRY_BASE_DELAY_MS = 500;
+
+/**
+ * Sleep for the given number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute `fn` up to `maxAttempts` times with exponential backoff between
+ * attempts. Returns the resolved value on success. On every failed attempt
+ * (network error or non-ok status that throws) a warning is logged to stderr.
+ * If all attempts fail the last error is re-thrown.
+ */
+export async function fetchWithRetry(
+  fn: () => Promise<Response>,
+  maxAttempts: number = MAX_FETCH_ATTEMPTS,
+  baseDelayMs: number = RETRY_BASE_DELAY_MS,
+): Promise<Response> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fn();
+      return response;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxAttempts) {
+        const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+        console.error(
+          `[External MCP] Fetch attempt ${attempt}/${maxAttempts} failed: ${lastError.message}. Retrying in ${delayMs}ms...`,
+        );
+        await sleep(delayMs);
+      }
+    }
+  }
+  throw lastError ?? new Error('[External MCP] All fetch attempts failed');
+}
+
+/**
+ * Ping the daemon's /health endpoint and return true if it responds ok.
+ * Used to detect connectivity issues early before making tool calls.
+ */
+export async function pingDaemon(daemonUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${daemonUrl}/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 async function getDaemonUrl(): Promise<string> {
   if (DAEMON_URL_ENV) {
@@ -51,7 +113,11 @@ async function resolveProjectId(daemonUrl: string): Promise<string> {
 
   // Resolve slug to project ID via daemon API
   try {
-    const response = await fetch(`${daemonUrl}/api/projects`);
+    const response = await fetchWithRetry(() =>
+      fetch(`${daemonUrl}/api/projects`, {
+        headers: buildMcpAuthHeaders(),
+      }),
+    );
     if (!response.ok) {
       console.error(`[External MCP] Failed to fetch projects: ${response.statusText}`);
       return '';
@@ -74,9 +140,11 @@ async function resolveProjectId(daemonUrl: string): Promise<string> {
 async function fetchTools(daemonUrl: string): Promise<unknown[]> {
   try {
     // Request only external-scoped tools (session-only tools are filtered out)
-    const response = await fetch(`${daemonUrl}/mcp/tools?scope=external`, {
-      headers: buildMcpAuthHeaders(),
-    });
+    const response = await fetchWithRetry(() =>
+      fetch(`${daemonUrl}/mcp/tools?scope=external`, {
+        headers: buildMcpAuthHeaders(),
+      }),
+    );
     const data = await response.json();
     return data.tools || [];
   } catch (error) {
@@ -91,22 +159,31 @@ async function callTool(
   tool: string,
   args: Record<string, unknown>,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean; error?: string }> {
-  const response = await fetch(`${daemonUrl}/mcp/call`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...buildMcpAuthHeaders(),
-    },
-    body: JSON.stringify({
-      tool,
-      args,
-      context: {
-        projectId,
-        // No ticketId/brainstormId/workflowId — external mode.
-        // Tools that need a ticketId will read it from args.ticketId.
+  // Proactively ping the daemon before the real call to surface connectivity
+  // issues early and give the retry loop a chance to recover.
+  const alive = await pingDaemon(daemonUrl);
+  if (!alive) {
+    console.error(`[External MCP] Daemon unreachable at ${daemonUrl} — will attempt tool call with retry`);
+  }
+
+  const response = await fetchWithRetry(() =>
+    fetch(`${daemonUrl}/mcp/call`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildMcpAuthHeaders(),
       },
+      body: JSON.stringify({
+        tool,
+        args,
+        context: {
+          projectId,
+          // No ticketId/brainstormId/workflowId — external mode.
+          // Tools that need a ticketId will read it from args.ticketId.
+        },
+      }),
     }),
-  });
+  );
 
   return response.json();
 }
@@ -175,7 +252,11 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch((error) => {
-  console.error('External MCP proxy error:', error);
-  process.exit(1);
-});
+// Only run main if this module is being executed directly (not imported for testing)
+const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (entryUrl && import.meta.url === entryUrl) {
+  main().catch((error) => {
+    console.error('External MCP proxy error:', error);
+    process.exit(1);
+  });
+}
