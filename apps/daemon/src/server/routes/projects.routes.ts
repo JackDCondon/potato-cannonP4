@@ -268,7 +268,7 @@ export function registerProjectRoutes(
             console.log(`[projects] Migrated template for project ${project.id}`);
           }
         } catch (err) {
-          console.error(`[projects] Failed to migrate template for ${project.id}: ${(err as Error).message}`);
+          console.warn(`[projects] Skipping template migration for ${project.id}: ${(err as Error).message}`);
         }
       }
 

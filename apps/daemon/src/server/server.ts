@@ -615,7 +615,7 @@ async function migrateProjectTemplates(): Promise<void> {
         migrated++;
       }
     } catch (err) {
-      console.error(`[migration] Failed to migrate template for ${projectId}: ${(err as Error).message}`);
+      console.warn(`[migration] Skipping template migration for ${projectId}: ${(err as Error).message}`);
     }
   }
 

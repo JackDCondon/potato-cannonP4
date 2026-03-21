@@ -352,11 +352,19 @@ export async function ensureTemplatesDir(): Promise<void> {
 export async function getWorkflow(name: string): Promise<WorkflowTemplate | null> {
   try {
     const content = await fs.readFile(getWorkflowPath(name), "utf-8");
+    if (!content.trim()) {
+      console.warn(`[templates] workflow.json for template "${name}" is empty — skipping`);
+      return null;
+    }
     const template = JSON.parse(content) as WorkflowTemplate;
     validateWorkflowTemplate(template, name);
     return template;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    if (error instanceof SyntaxError) {
+      console.warn(`[templates] workflow.json for template "${name}" contains invalid JSON — skipping: ${error.message}`);
       return null;
     }
     throw error;
