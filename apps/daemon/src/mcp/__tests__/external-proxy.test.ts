@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchWithRetry, pingDaemon } from '../external-proxy.js';
+import { fetchWithRetry, pingDaemon, callTool } from '../external-proxy.js';
 
 // ---------------------------------------------------------------------------
 // fetchWithRetry
@@ -96,4 +96,85 @@ test('pingDaemon returns true when daemon responds with ok status', async () => 
 test('pingDaemon returns false on network error', async () => {
   const result = await pingDaemon('http://localhost:0');
   assert.equal(result, false);
+});
+
+// ---------------------------------------------------------------------------
+// callTool
+// ---------------------------------------------------------------------------
+
+test('callTool uses defaultProjectId when no projectId in args', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+
+  const mockFetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    // Health ping returns ok
+    if (typeof _url === 'string' && _url.includes('/health')) {
+      return new Response('ok', { status: 200 });
+    }
+    capturedBody = JSON.parse(init?.body as string);
+    return new Response(JSON.stringify({ content: [{ type: 'text', text: 'result' }] }), { status: 200 });
+  };
+
+  await callTool('http://localhost:8443', 'proj-default', 'get_ticket', { ticketId: 'T1' }, mockFetch as typeof fetch);
+
+  assert.ok(capturedBody, 'fetch should have been called');
+  const context = capturedBody.context as Record<string, unknown>;
+  assert.equal(context.projectId, 'proj-default');
+  assert.equal((capturedBody.args as Record<string, unknown>).ticketId, 'T1');
+});
+
+test('callTool uses args.projectId over defaultProjectId when provided', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+
+  const mockFetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    if (typeof _url === 'string' && _url.includes('/health')) {
+      return new Response('ok', { status: 200 });
+    }
+    capturedBody = JSON.parse(init?.body as string);
+    return new Response(JSON.stringify({ content: [{ type: 'text', text: 'result' }] }), { status: 200 });
+  };
+
+  await callTool('http://localhost:8443', 'proj-default', 'get_ticket', { ticketId: 'T1', projectId: 'proj-override' }, mockFetch as typeof fetch);
+
+  assert.ok(capturedBody, 'fetch should have been called');
+  const context = capturedBody.context as Record<string, unknown>;
+  assert.equal(context.projectId, 'proj-override');
+  // projectId should be stripped from forwarded args
+  assert.equal((capturedBody.args as Record<string, unknown>).projectId, undefined);
+  assert.equal((capturedBody.args as Record<string, unknown>).ticketId, 'T1');
+});
+
+test('callTool strips projectId from forwarded args', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+
+  const mockFetch = async (_url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    if (typeof _url === 'string' && _url.includes('/health')) {
+      return new Response('ok', { status: 200 });
+    }
+    capturedBody = JSON.parse(init?.body as string);
+    return new Response(JSON.stringify({ content: [{ type: 'text', text: 'done' }] }), { status: 200 });
+  };
+
+  await callTool('http://localhost:8443', 'default-proj', 'some_tool', { projectId: 'explicit', foo: 'bar' }, mockFetch as typeof fetch);
+
+  assert.ok(capturedBody);
+  const forwardedArgs = capturedBody.args as Record<string, unknown>;
+  assert.equal(forwardedArgs.projectId, undefined, 'projectId must be stripped from forwarded args');
+  assert.equal(forwardedArgs.foo, 'bar');
+});
+
+test('callTool returns parsed response content', async () => {
+  const mockFetch = async (_url: string | URL | Request): Promise<Response> => {
+    if (typeof _url === 'string' && _url.includes('/health')) {
+      return new Response('ok', { status: 200 });
+    }
+    return new Response(
+      JSON.stringify({ content: [{ type: 'text', text: 'hello world' }], isError: false }),
+      { status: 200 },
+    );
+  };
+
+  const result = await callTool('http://localhost:8443', 'proj', 'chat_notify', {}, mockFetch as typeof fetch);
+
+  assert.equal(result.content[0].text, 'hello world');
+  assert.equal(result.isError, false);
 });

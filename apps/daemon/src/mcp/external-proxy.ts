@@ -153,12 +153,21 @@ async function fetchTools(daemonUrl: string): Promise<unknown[]> {
   }
 }
 
-async function callTool(
+export async function callTool(
   daemonUrl: string,
-  projectId: string,
+  defaultProjectId: string,
   tool: string,
   args: Record<string, unknown>,
+  fetchFn: typeof fetch = fetch,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean; error?: string }> {
+  // Allow per-call projectId override via args.projectId, falling back to defaultProjectId
+  const rawProjectId = args.projectId;
+  const resolvedProjectId = (typeof rawProjectId === 'string' && rawProjectId) || defaultProjectId;
+
+  // Strip projectId from forwarded args so it isn't double-sent
+  const forwardArgs = { ...args };
+  delete forwardArgs.projectId;
+
   // Proactively ping the daemon before the real call to surface connectivity
   // issues early and give the retry loop a chance to recover.
   const alive = await pingDaemon(daemonUrl);
@@ -167,7 +176,7 @@ async function callTool(
   }
 
   const response = await fetchWithRetry(() =>
-    fetch(`${daemonUrl}/mcp/call`, {
+    fetchFn(`${daemonUrl}/mcp/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -175,9 +184,9 @@ async function callTool(
       },
       body: JSON.stringify({
         tool,
-        args,
+        args: forwardArgs,
         context: {
-          projectId,
+          projectId: resolvedProjectId,
           // No ticketId/brainstormId/workflowId — external mode.
           // Tools that need a ticketId will read it from args.ticketId.
         },
@@ -236,9 +245,8 @@ async function main() {
 
   if (!projectId) {
     console.error(
-      'Error: POTATO_PROJECT_ID or POTATO_PROJECT_SLUG environment variable is required',
+      '[External MCP] Warning: POTATO_PROJECT_ID or POTATO_PROJECT_SLUG environment variable is not set — tools that require a project context may fail',
     );
-    process.exit(1);
   }
 
   // Pre-fetch tools to validate daemon connection
