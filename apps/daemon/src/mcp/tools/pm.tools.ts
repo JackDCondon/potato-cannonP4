@@ -32,7 +32,7 @@ export const pmTools: ToolDefinition[] = [
     name: "move_ticket",
     mcpServer: "pm" as const,
     description:
-      "Move a ticket to another phase. Uses the daemon ticket route so lifecycle invalidation and session management stay consistent.",
+      "Move a ticket to another phase. Uses the daemon ticket route so lifecycle invalidation and session management stay consistent. Always send a chat_notify (or chat_ask in watching mode) BEFORE calling this tool so the user knows what is happening and why.",
     inputSchema: {
       type: "object",
       properties: {
@@ -44,12 +44,16 @@ export const pmTools: ToolDefinition[] = [
           type: "string",
           description: "Phase to move the ticket into.",
         },
+        reason: {
+          type: "string",
+          description: "Plain-English explanation of why the ticket is being moved (e.g. 'session completed successfully', 'dependency now satisfied', 'user requested advance'). Required — do not call move_ticket without a reason.",
+        },
         overrideDependencies: {
           type: "boolean",
           description: "Allow the move even when dependency guards would normally block it.",
         },
       },
-      required: ["targetPhase"],
+      required: ["targetPhase", "reason"],
     },
   },
   {
@@ -106,6 +110,7 @@ export const pmHandlers: Record<
   move_ticket: async (ctx, args) => {
     const ticketId = resolveTicketId(ctx, args);
     const targetPhase = args.targetPhase as string | undefined;
+    const reason = args.reason as string | undefined;
     const overrideDependencies = args.overrideDependencies as boolean | undefined;
 
     if (!ticketId) {
@@ -116,6 +121,12 @@ export const pmHandlers: Record<
 
     if (!targetPhase) {
       return errorResult("Error: targetPhase is required");
+    }
+
+    if (!reason) {
+      return errorResult(
+        "Error: reason is required. Provide a brief explanation of why the ticket is being moved, and ensure you sent a chat_notify to the user before calling this tool.",
+      );
     }
 
     try {
@@ -139,7 +150,7 @@ export const pmHandlers: Record<
         content: [
           {
             type: "text",
-            text: `Ticket ${ticketId} moved to ${targetPhase}`,
+            text: `Ticket ${ticketId} moved to ${targetPhase}. Reason: ${reason}`,
           },
         ],
       };
