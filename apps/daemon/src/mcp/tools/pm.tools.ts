@@ -1,4 +1,5 @@
 import { updateTicket } from "../../stores/ticket.store.js";
+import { eventBus } from "../../utils/event-bus.js";
 import type {
   ToolDefinition,
   McpContext,
@@ -166,10 +167,13 @@ export const pmHandlers: Record<
       );
     }
 
-    await updateTicket(ctx.projectId, ticketId, {
+    const updatedTicket = await updateTicket(ctx.projectId, ticketId, {
       ...(title !== undefined ? { title } : {}),
       ...(description !== undefined ? { description } : {}),
     });
+
+    // Emit SSE event so the frontend Kanban board reflects the title/description change
+    eventBus.emit("ticket:updated", { projectId: ctx.projectId, ticket: updatedTicket });
 
     return {
       content: [
@@ -197,9 +201,12 @@ export const pmHandlers: Record<
       );
     }
 
-    await updateTicket(ctx.projectId, ticketId, {
+    const updatedTicket = await updateTicket(ctx.projectId, ticketId, {
       complexity: complexity as Complexity,
     });
+
+    // Emit SSE event so the frontend Kanban board reflects the complexity change
+    eventBus.emit("ticket:updated", { projectId: ctx.projectId, ticket: updatedTicket });
 
     return {
       content: [

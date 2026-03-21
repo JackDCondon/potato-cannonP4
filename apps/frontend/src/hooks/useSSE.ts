@@ -56,6 +56,14 @@ export function useSSE() {
       eventSource.onopen = () => {
         console.log('SSE connected')
         reconnectDelayRef.current = 1000
+        // Invalidate all ticket and session queries on (re)connect to recover any
+        // phase-change events that were emitted while the connection was down.
+        // This is the primary recovery mechanism for the "board stuck after move" bug:
+        // SSE events are fire-and-forget, so a brief connection gap permanently loses
+        // any ticket:moved / ticket:updated events emitted during the gap.
+        queryClient.invalidateQueries({ queryKey: ['tickets'] })
+        queryClient.invalidateQueries({ queryKey: ['brainstorms'] })
+        queryClient.invalidateQueries({ queryKey: ['sessions'] })
         // Notify RC components to re-fetch state (recovers from SSE dropout during RC startup)
         window.dispatchEvent(new CustomEvent('sse:reconnected'))
       }
