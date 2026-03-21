@@ -6,11 +6,16 @@ const mockHandler = mock.fn(async () => ({
   content: [{ type: "text", text: "ok" }],
 }));
 
+const mockListProjectsHandler = mock.fn(async () => ({
+  content: [{ type: "text", text: "projects list" }],
+}));
+
 mock.module("../../../mcp/tools/index.js", {
   namedExports: {
-    allTools: [{ name: "get_ticket" }],
+    allTools: [{ name: "get_ticket" }, { name: "list_projects" }],
     allHandlers: {
       get_ticket: mockHandler,
+      list_projects: mockListProjectsHandler,
     },
   },
 });
@@ -95,7 +100,7 @@ describe("MCP route auth", () => {
     await handler!({ query: {}, headers: {} }, res);
 
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.payload, { tools: [{ name: "get_ticket" }] });
+    assert.deepEqual(res.payload, { tools: [{ name: "get_ticket" }, { name: "list_projects" }] });
   });
 
   it("rejects unauthenticated tool listing when auth token is configured", async () => {
@@ -169,5 +174,33 @@ describe("MCP route auth", () => {
       content: [{ type: "text", text: "ok" }],
     });
     assert.equal(mockHandler.mock.calls.length, 1);
+  });
+
+  it("allows list_projects with no projectId", async () => {
+    const { app, routes } = createAppStub();
+    registerMcpRoutes(app);
+
+    const handler = routes.get("POST /mcp/call");
+    assert.ok(handler, "expected POST /mcp/call to be registered");
+
+    const res = createResponse();
+    await handler!(
+      {
+        headers: {},
+        socket: { localPort: 3131 },
+        body: {
+          tool: "list_projects",
+          args: {},
+          context: { projectId: "" },
+        },
+      },
+      res,
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.payload, {
+      content: [{ type: "text", text: "projects list" }],
+    });
+    assert.equal(mockListProjectsHandler.mock.calls.length, 1);
   });
 });

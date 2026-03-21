@@ -82,6 +82,10 @@ export const ticketTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        projectId: {
+          type: "string",
+          description: "Project ID to create the ticket in. Defaults to the configured project.",
+        },
         title: {
           type: "string",
           description: "The ticket title",
@@ -144,6 +148,10 @@ export const ticketTools: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
+        projectId: {
+          type: "string",
+          description: "Project ID to list tickets for. Defaults to the configured project.",
+        },
         phase: {
           type: "string",
           description: "Optional phase filter (e.g., 'Build', 'Review'). Omit to return all tickets.",
@@ -158,7 +166,12 @@ export const ticketTools: ToolDefinition[] = [
       "Get a compact overview of the current project: tickets grouped by phase, active sessions, blocked tickets, and totals.",
     inputSchema: {
       type: "object",
-      properties: {},
+      properties: {
+        projectId: {
+          type: "string",
+          description: "Project ID to query. Defaults to the configured project.",
+        },
+      },
       required: [],
     },
   },

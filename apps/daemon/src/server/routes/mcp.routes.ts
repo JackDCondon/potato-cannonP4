@@ -10,6 +10,8 @@ import {
   findAgentWorkerInWorkflow,
 } from "./mcp-tools-filter.js";
 
+const PROJECT_EXEMPT_TOOLS = new Set(["list_projects"]);
+
 function ensureAuthorized(req: Request, res: Response): boolean {
   const expectedToken = getMcpAuthToken();
   if (isValidMcpAuthHeader(req.headers?.authorization, expectedToken)) {
@@ -100,7 +102,7 @@ export function registerMcpRoutes(app: Express): void {
         );
       }
 
-      if (!context?.projectId) {
+      if (!context?.projectId && !PROJECT_EXEMPT_TOOLS.has(tool)) {
         res.status(400).json({ error: "Missing context.projectId" });
         return;
       }
