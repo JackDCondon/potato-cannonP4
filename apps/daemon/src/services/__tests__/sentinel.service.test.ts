@@ -58,8 +58,7 @@ describe("sentinel sessionStatus derivation", () => {
     const ticket = ticketStore.createTicket(projectId, {
       title: "Sentinel Test Ticket",
       workflowId,
-      phase: "Build" as any,
-    });
+    } as any);
     ticketId = ticket.id;
   });
 
