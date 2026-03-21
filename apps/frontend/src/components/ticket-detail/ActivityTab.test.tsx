@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { render, act, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ActivityTab } from './ActivityTab'
 
@@ -66,6 +66,75 @@ function wrapper(qc: QueryClient) {
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
 }
+
+describe('ActivityTab — free-text send without pending question', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    mockIsTicketProcessing.mockReturnValue(false)
+    mockIsTicketPending.mockReturnValue(false)
+    mockGetTicketMessages.mockResolvedValue({ messages: [] })
+    mockGetTicket.mockResolvedValue({ phase: 'Ideas' })
+    // No pending question
+    mockGetTicketPending.mockResolvedValue({ question: null })
+    mockSendTicketInput.mockResolvedValue({ success: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('shows "Send a message..." placeholder when there is no pending question', async () => {
+    const qc = makeQueryClient()
+    const { container } = render(
+      <ActivityTab projectId="proj-1" ticketId="P4P-15" />,
+      { wrapper: wrapper(qc) },
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100)
+    })
+
+    const textarea = container.querySelector('textarea')
+    expect(textarea?.placeholder).toBe('Send a message...')
+  })
+
+  it('does not start polling after sending free-text with no pending question and no active session', async () => {
+    const qc = makeQueryClient()
+    const { container } = render(
+      <ActivityTab projectId="proj-1" ticketId="P4P-15" />,
+      { wrapper: wrapper(qc) },
+    )
+
+    // Let initial queries resolve
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100)
+    })
+
+    const pendingCallsBeforeSend = mockGetTicketPending.mock.calls.length
+    const messageCallsBeforeSend = mockGetTicketMessages.mock.calls.length
+
+    // Type and submit free text
+    const textarea = container.querySelector('textarea')!
+    fireEvent.change(textarea, { target: { value: 'Hello agent' } })
+
+    const sendButton = container.querySelector('button[aria-label="Send"]') ??
+      Array.from(container.querySelectorAll('button')).find(b => b.querySelector('svg'))!
+    await act(async () => {
+      fireEvent.click(sendButton)
+    })
+
+    // Advance 2100ms — should NOT trigger extra polling since no pending question
+    // and no active session (isWaitingForResponse should stay false)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2100)
+    })
+
+    // Queries should NOT have polled more after the send
+    expect(mockGetTicketPending.mock.calls.length).toBe(pendingCallsBeforeSend)
+    expect(mockGetTicketMessages.mock.calls.length).toBe(messageCallsBeforeSend)
+  })
+})
 
 describe('ActivityTab — ticket-pending polling when session is suspended', () => {
   beforeEach(() => {

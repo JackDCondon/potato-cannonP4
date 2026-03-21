@@ -247,6 +247,11 @@ export function ActivityTab({
     setInput('')
     setIsSubmitting(true)
 
+    // Capture whether we are answering a pending question before the send.
+    // When there is no pending question, the message is delivered but no agent
+    // session is waiting for it — do not show an indefinite "Thinking" spinner.
+    const wasPendingQuestion = !!pendingState?.question?.questionId
+
     // Optimistically add user message
     const optimisticConversationId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const optimisticMessage: ChatMessage = {
@@ -265,7 +270,15 @@ export function ActivityTab({
         questionId: pendingState?.question?.questionId,
         ticketGeneration: pendingState?.question?.ticketGeneration,
       })
-      setIsWaitingForResponse(true)
+      // Only activate the waiting-for-response spinner when answering a known
+      // pending question or when an active session is running (it may pick up the
+      // message immediately).  For free-text messages sent with no pending question
+      // and no active session there is nothing waiting, so showing "Thinking"
+      // indefinitely would mislead the user and cause the optimistic message to be
+      // overwritten by the 2-second poll that the spinner enables.
+      if (wasPendingQuestion || hasActiveSession) {
+        setIsWaitingForResponse(true)
+      }
     } catch (error) {
       const isLifecycleConflict =
         error instanceof ApiError &&
@@ -300,7 +313,7 @@ export function ActivityTab({
       setIsSubmitting(false)
       textareaRef.current?.focus()
     }
-  }, [projectId, ticketId, isSubmitting, pendingState, queryClient])
+  }, [projectId, ticketId, isSubmitting, pendingState, queryClient, hasActiveSession])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -418,7 +431,7 @@ export function ActivityTab({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your response..."
+              placeholder={awaitingUserInput ? "Type your response..." : "Send a message..."}
               className="min-h-[44px] max-h-[120px] resize-none"
               disabled={isSubmitting}
             />
