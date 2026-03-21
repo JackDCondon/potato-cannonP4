@@ -171,7 +171,16 @@ export function BrainstormChat({
           timestamp: msg.type === 'notification' ? msg.timestamp : undefined
         }))
 
-        setMessages(historyMessages)
+        // Merge instead of replace: preserve any SSE messages that arrived during
+        // the async fetch window but aren't yet in the DB snapshot.
+        // SSE messages have no conversationId (not included in the SSE payload);
+        // DB-loaded messages have conversationId = message UUID.
+        // Deduplicate by type+text fingerprint to avoid showing the same message twice.
+        setMessages(prev => {
+          const historyFingerprints = new Set(historyMessages.map(m => `${m.type}::${m.text}`))
+          const sseOnly = prev.filter(m => !m.conversationId && !historyFingerprints.has(`${m.type}::${m.text}`))
+          return [...historyMessages, ...sseOnly]
+        })
 
       } catch (error) {
         console.error('Failed to load message history:', error)
@@ -211,7 +220,12 @@ export function BrainstormChat({
           sentAt: msg.type === 'user' ? msg.timestamp : undefined,
           timestamp: msg.type === 'notification' ? msg.timestamp : undefined
         }))
-        setMessages(historyMessages)
+        // Same merge logic as loadHistory: preserve SSE-only messages not in DB snapshot
+        setMessages(prev => {
+          const historyFingerprints = new Set(historyMessages.map(m => `${m.type}::${m.text}`))
+          const sseOnly = prev.filter(m => !m.conversationId && !historyFingerprints.has(`${m.type}::${m.text}`))
+          return [...historyMessages, ...sseOnly]
+        })
       } catch (error) {
         console.error('Failed to reload messages after SSE reconnect:', error)
       }
