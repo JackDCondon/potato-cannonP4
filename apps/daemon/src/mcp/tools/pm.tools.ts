@@ -1,4 +1,5 @@
-import { updateTicket } from "../../stores/ticket.store.js";
+import { getTicket, updateTicket } from "../../stores/ticket.store.js";
+import { getPhaseConfig } from "../../services/session/phase-config.js";
 import { eventBus } from "../../utils/event-bus.js";
 import type {
   ToolDefinition,
@@ -127,6 +128,23 @@ export const pmHandlers: Record<
       return errorResult(
         "Error: reason is required. Provide a brief explanation of why the ticket is being moved, and ensure you sent a chat_notify to the user before calling this tool.",
       );
+    }
+
+    // Block PM brainstorm sessions from moving tickets out of manual phases
+    const isPmBrainstormSession = !!ctx.brainstormId && !ctx.ticketId;
+    if (isPmBrainstormSession && ctx.workflowId) {
+      const ticket = getTicket(ctx.projectId, ticketId);
+      const currentPhaseConfig = await getPhaseConfig(
+        ctx.projectId,
+        ticket.phase,
+        ctx.workflowId,
+      );
+
+      if (currentPhaseConfig?.transitions?.manual) {
+        return errorResult(
+          `Error: cannot move ticket ${ticketId} out of manual phase ${ticket.phase} from a brainstorm session. Manual phases require direct user action on the Kanban board.`,
+        );
+      }
     }
 
     try {

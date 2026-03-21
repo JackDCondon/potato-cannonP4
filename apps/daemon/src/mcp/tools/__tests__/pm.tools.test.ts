@@ -105,6 +105,7 @@ describe("move_ticket", () => {
       {
         ticketId: "TKT-9",
         targetPhase: "Review",
+        reason: "test advancement",
         overrideDependencies: true,
       },
     );
@@ -148,7 +149,7 @@ describe("move_ticket", () => {
 
     const result = await pmHandlers.move_ticket(
       { projectId: "proj-1", daemonUrl: "http://localhost:8443" },
-      { ticketId: "TKT-9", targetPhase: "Review" },
+      { ticketId: "TKT-9", targetPhase: "Review", reason: "test" },
     );
 
     assert.strictEqual((result as { isError?: boolean }).isError, true);
@@ -164,7 +165,7 @@ describe("move_ticket", () => {
         workflowId: "wf-1",
         daemonUrl: "http://localhost:8443",
       },
-      { ticketId: "TKT-9", targetPhase: "Done" },
+      { ticketId: "TKT-9", targetPhase: "Done", reason: "test" },
     );
 
     assert.strictEqual((result as { isError?: boolean }).isError, true);
