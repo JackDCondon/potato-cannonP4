@@ -9,6 +9,7 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import { eventBus } from '../utils/event-bus.js';
 import { getProjectById, getAllProjects } from '../stores/project.store.js';
@@ -125,6 +126,9 @@ async function writeSentinel(
     const project = getProjectById(projectId);
     if (!project?.path) return;
 
+    // Skip silently if the project directory no longer exists (stale entries)
+    if (!fsSync.existsSync(project.path)) return;
+
     const sentinelPath = path.join(project.path, SENTINEL_FILENAME);
     await atomicWrite(sentinelPath, JSON.stringify(context, null, 2) + '\n');
   } catch (error) {
@@ -145,12 +149,14 @@ async function writeSentinel(
  */
 export async function initSentinelForAllProjects(daemonPort: number): Promise<void> {
   const projects = getAllProjects();
+  // Only attempt projects whose directories still exist; stale entries are silently skipped
+  const activeProjects = projects.filter((p) => p.path && fsSync.existsSync(p.path));
   await Promise.allSettled(
-    projects.map((p) => writeSentinel(p.id, daemonPort)),
+    activeProjects.map((p) => writeSentinel(p.id, daemonPort)),
   );
-  if (projects.length > 0) {
+  if (activeProjects.length > 0) {
     console.log(
-      `[sentinel] Initialised .potato-context.json for ${projects.length} project(s)`,
+      `[sentinel] Initialised .potato-context.json for ${activeProjects.length} project(s)`,
     );
   }
 }
