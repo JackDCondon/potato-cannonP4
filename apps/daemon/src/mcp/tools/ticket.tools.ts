@@ -162,6 +162,17 @@ export const ticketTools: ToolDefinition[] = [
       required: [],
     },
   },
+  {
+    name: "list_projects",
+    scope: "external" as const,
+    description:
+      "List all registered projects. Returns id, name, slug, and template for each. Use this to discover projectIds before calling other tools.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 interface CommentEntry {
@@ -527,6 +538,28 @@ export const ticketHandlers: Record<
     };
     return {
       content: [{ type: "text", text: JSON.stringify(overview, null, 2) }],
+    };
+  },
+
+  list_projects: async (ctx) => {
+    const response = await fetch(`${ctx.daemonUrl}/api/projects`);
+    if (!response.ok) {
+      throw new Error(`Failed to list projects: ${response.statusText}`);
+    }
+    const projects = (await response.json()) as Array<{
+      id: string;
+      displayName: string;
+      slug?: string;
+      template?: { name: string };
+    }>;
+    const compact = projects.map((p) => ({
+      id: p.id,
+      name: p.displayName,
+      slug: p.slug ?? null,
+      template: p.template?.name ?? null,
+    }));
+    return {
+      content: [{ type: "text", text: JSON.stringify(compact, null, 2) }],
     };
   },
 
