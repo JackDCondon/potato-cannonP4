@@ -132,6 +132,7 @@
       "id": "Pull Requests",
       "name": "Pull Requests",
       "description": "Create pull request for the bug fix",
+      "requiresWorktree": true,
       "workers": [
         {
           "id": "pr-agent",

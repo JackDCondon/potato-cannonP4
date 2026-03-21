@@ -255,6 +255,7 @@
       "id": "Pull Requests",
       "name": "Pull Requests",
       "description": "Create pull request for completed build",
+      "requiresWorktree": true,
       "workers": [
         {
           "id": "pr-agent",
