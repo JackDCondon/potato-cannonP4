@@ -12,6 +12,12 @@ packages/*/dist/
 # Logs
 *.log
 
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.sample
+
 # System
 .DS_Store
 
